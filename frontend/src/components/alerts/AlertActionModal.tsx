@@ -32,7 +32,7 @@ export const AlertActionModal: React.FC<AlertActionModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Revisión de Seguridad">
+    <Modal isOpen={isOpen} onClose={onClose} title="Revisión de Seguridad" isSubmitting={isSubmitting}>
       <div className="space-y-4">
         <div className="p-4 bg-[var(--color-bg-surface-hover)] border border-[var(--color-border-subtle)] rounded-xl space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-subtle)]">
@@ -78,7 +78,7 @@ export const AlertActionModal: React.FC<AlertActionModalProps> = ({
               variant="outline"
               onClick={() => handleAction("FUI_YO")}
               disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 w-full border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10"
+              className="flex items-center justify-center gap-2 w-full border-income/30 text-income hover:bg-income/10"
             >
               <ShieldCheck className="w-4 h-4" />
               Sí, reconozco esta actividad (Fui yo)
@@ -88,7 +88,7 @@ export const AlertActionModal: React.FC<AlertActionModalProps> = ({
               variant="outline"
               onClick={() => handleAction("NO_FUI_YO")}
               disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 w-full border-red-500/30 text-red-500 hover:bg-red-500/10"
+              className="flex items-center justify-center gap-2 w-full border-risk-critical/30 text-risk-critical hover:bg-risk-critical/10"
             >
               <AlertOctagon className="w-4 h-4" />
               No fui yo (Confirmar Fraude)
@@ -98,7 +98,7 @@ export const AlertActionModal: React.FC<AlertActionModalProps> = ({
               type="button"
               onClick={() => handleAction("BLOQUEAR_TARJETA")}
               disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white border-transparent"
+              className="flex items-center justify-center gap-2 w-full bg-risk-critical hover:bg-risk-critical/90 text-white border-transparent"
             >
               <Lock className="w-4 h-4" />
               Solicitar bloqueo de tarjeta

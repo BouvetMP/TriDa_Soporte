@@ -12,6 +12,42 @@ export interface DashboardData {
   };
 }
 
+export interface DashboardAlert {
+  id_alerta: number;
+  id_transaccion: number;
+  severidad: "BAJA" | "MEDIA" | "ALTA" | "CRITICA";
+  fecha_detectada: string;
+  motivo: string;
+  estado: "PENDIENTE" | "CONFIRMADA" | "DESCARTADA";
+  monto: number;
+  comercio: string | null;
+  estado_transaccion: string;
+}
+
+export interface DashboardRecentTransaction {
+  id_transaccion: number;
+  monto: number;
+  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO";
+  fecha_transaccion: string;
+  comercio: string | null;
+  estado: string;
+  score_anomalia: number;
+  categoria: {
+    nombre: string;
+    icono: string | null;
+    color: string | null;
+  };
+}
+
+export interface FinancialAdvice {
+  id_consejo: number;
+  tipo: string;
+  titulo: string;
+  descripcion: string;
+  prioridad: "BAJA" | "MEDIA" | "ALTA";
+  fecha_generado: string;
+}
+
 export interface CategoryExpense {
   id_categoria: number;
   nombre_categoria: string;
@@ -20,11 +56,10 @@ export interface CategoryExpense {
   color?: string | null;
 }
 
-export interface AIRecommendation {
-  id_recomendacion: number;
-  tipo: "ALERTA" | "SUGERENCIA" | "LOGRO";
-  titulo: string;
-  mensaje: string;
-  accion_sugerida?: string | null;
-  fecha_generacion: string;
+export interface DashboardViewData {
+  metrics: DashboardData;
+  recentAlerts: DashboardAlert[];
+  recentTransactions: DashboardRecentTransaction[];
+  categories: CategoryExpense[];
+  advice: FinancialAdvice[];
 }

@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import { config } from "../config.js";
 
 export const isEmailConfigured = (): boolean =>
-  Boolean(config.SMTP_HOST && config.EMAIL_USER && config.EMAIL_PASS);
+  config.SMTP_ENABLED && Boolean(config.SMTP_HOST && config.EMAIL_USER && config.EMAIL_PASS);
 
 export const sendEmail = async (to: string, subject: string, html: string): Promise<void> => {
   if (!isEmailConfigured()) {

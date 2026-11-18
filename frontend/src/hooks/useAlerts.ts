@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { AlertsApi } from "@/api/Alerts";
 import {
   FraudAlert,
@@ -28,6 +28,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const requestId = useRef(0);
   const { showToast } = useToast();
 
   const fetchPendingCount = useCallback(async () => {
@@ -35,6 +36,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
       const response = await AlertsApi.getPendingCount();
       if (response.success) {
         setPendingCount(response.data.count);
+        window.dispatchEvent(new Event("trida-alerts-updated"));
       }
     } catch (error) {
       const err = error as Error;
@@ -47,9 +49,11 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
   }, [showToast]);
 
   const fetchAlerts = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     setIsLoading(true);
     try {
       const response = await AlertsApi.getAll(queryParams);
+      if (currentRequestId !== requestId.current) return;
       if (response.success) {
         setAlerts(response.data.items);
 
@@ -69,6 +73,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         });
       }
     } catch (error) {
+      if (currentRequestId !== requestId.current) return;
       const err = error as Error;
       showToast({
         type: "error",
@@ -76,13 +81,16 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         message: err.message || "No se pudieron cargar las alertas.",
       });
     } finally {
-      setIsLoading(false);
+      if (currentRequestId === requestId.current) setIsLoading(false);
     }
   }, [queryParams, showToast]);
 
   useEffect(() => {
     fetchAlerts();
     fetchPendingCount();
+    return () => {
+      requestId.current += 1;
+    };
   }, [fetchAlerts, fetchPendingCount]);
 
   const updateFilters = (newParams: Partial<ListAlertsQueryParams>) => {

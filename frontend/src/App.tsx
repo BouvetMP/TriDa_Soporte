@@ -11,6 +11,7 @@ import {
   RegisterPage,
   ForgotPasswordPage,
   ResetPasswordPage,
+  VerifyEmailPage,
   DashboardPage,
   AccountsPage,
   TransactionsPage,
@@ -22,6 +23,7 @@ import {
   InsightsPage,
   ReportsPage,
   MapPage,
+  CategoriesPage,
   NotFoundPage,
 } from "@/pages";
 
@@ -41,6 +43,7 @@ export default function App() {
                   element={<ForgotPasswordPage />}
                 />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/verify-email" element={<VerifyEmailPage />} />
 
                 {/* Rutas Protegidas bajo AppLayout */}
                 <Route
@@ -53,6 +56,7 @@ export default function App() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/accounts" element={<AccountsPage />} />
                   <Route path="/transactions" element={<TransactionsPage />} />
+                  <Route path="/categories" element={<CategoriesPage />} />
                   <Route path="/budgets" element={<BudgetsPage />} />
                   <Route path="/savings" element={<SavingsPage />} />
                   <Route path="/insights" element={<InsightsPage />} />

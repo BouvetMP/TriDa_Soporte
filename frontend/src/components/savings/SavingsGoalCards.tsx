@@ -9,7 +9,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { formatCurrency, formatDate } from "@/utils/Formatters";
+import { formatCurrency, formatDateOnly } from "@/utils/Formatters";
 import type { SavingsGoal, EstadoMeta } from "@/types";
 
 interface SavingsGoalCardProps {
@@ -47,7 +47,7 @@ export function SavingsGoalCard({
   };
 
   return (
-    <Card className="p-5 border-[var(--color-border)] bg-[var(--color-bg-card)] flex flex-col justify-between hover:border-[var(--color-primary)]/40 transition-colors">
+    <Card className="p-5 border-[var(--color-border)] bg-[var(--color-bg-card)] flex flex-col justify-between hover:border-primary/40 transition-colors">
       <div>
         {/* Cabecera */}
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -91,7 +91,7 @@ export function SavingsGoalCard({
           {goal.fecha_limite && (
             <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5" />
-              {formatDate(goal.fecha_limite)}
+              {formatDateOnly(goal.fecha_limite)}
             </span>
           )}
         </div>

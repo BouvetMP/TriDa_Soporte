@@ -5,6 +5,7 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError, ZodIssue } from "zod";
 import { sendError } from "../utils/apiResponse.js";
+import { AppError } from "../utils/AppError.js";
 
 type PrismaKnownRequestErrorLike = {
   name: "PrismaClientKnownRequestError";
@@ -62,18 +63,34 @@ export const errorHandler = (
       code = "NOT_FOUND";
     }
 
-    sendError(res, message, statusCode, { prisma_code: err.code }, code);
+    console.error("Prisma request failed", { code: err.code, path: req.originalUrl });
+    sendError(res, message, statusCode, null, code);
+    return;
+  }
+
+  if (err instanceof AppError) {
+    sendError(res, err.message, err.statusCode, null, err.code);
     return;
   }
 
   // 3. Manejo de Errores Genéricos del Sistema (RS-007)
   console.error(`💥 [ERROR UNHANDLED] ${req.method} ${req.originalUrl}:`, err);
 
-  const errorObj = err instanceof Error ? err : new Error("Error desconocido");
-  const statusCode = (errorObj as { statusCode?: number }).statusCode || 500;
-
+  const errorRecord =
+    typeof err === "object" && err !== null
+      ? (err as { status?: unknown; statusCode?: unknown; expose?: unknown })
+      : {};
+  const statusValue = errorRecord.statusCode ?? errorRecord.status;
+  const statusCode =
+    typeof statusValue === "number" && statusValue >= 400 && statusValue < 600
+      ? statusValue
+      : 500;
   const clientMessage =
-    statusCode === 500 ? "Ocurrió un error interno en el servidor." : errorObj.message;
+    statusCode < 500 && errorRecord.expose === true
+      ? err instanceof Error
+        ? err.message
+        : "Solicitud inválida"
+      : "Ocurrió un error interno en el servidor.";
 
   sendError(res, clientMessage, statusCode);
 };

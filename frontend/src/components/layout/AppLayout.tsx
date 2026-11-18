@@ -2,11 +2,45 @@
  * ¿Qué? Layout envolvente principal para las rutas protegidas.
  * ¿Para qué? Integrar la Sidebar, la barra superior móvil y renderizar el contenido con <Outlet />.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Menu, ShieldCheck } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { NAV_ITEMS } from "@/constants/Navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/components/ui/Toast";
+import { registerCurrentDevice } from "@/utils/deviceRegistration";
+
+const CurrentDeviceRegistration: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  const { showToast } = useToast();
+  const userId = user?.id_usuario;
+
+  useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+
+    let active = true;
+    registerCurrentDevice(userId).catch((error: unknown) => {
+      console.error("No se pudo registrar el dispositivo actual", error);
+      if (active) {
+        showToast({
+          type: "error",
+          title: "Dispositivo no registrado",
+          message:
+            error instanceof Error
+              ? error.message
+              : "No se pudo vincular este dispositivo a tu cuenta.",
+        });
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, showToast, userId]);
+
+  return null;
+};
 
 export const AppLayout: React.FC = () => {
   const [isOpenMobile, setIsOpenMobile] = useState(false);
@@ -20,6 +54,7 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
+      <CurrentDeviceRegistration />
       {/* Sidebar Lateral */}
       <Sidebar
         isOpenMobile={isOpenMobile}

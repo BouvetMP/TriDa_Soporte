@@ -43,6 +43,10 @@ export interface VerifyResetTokenPayload {
   token: string;
 }
 
+export interface VerifyEmailPayload {
+  token: string;
+}
+
 export interface ResetPasswordPayload {
   token: string;
   password_nueva: string;
@@ -55,7 +59,7 @@ export interface ChangePasswordPayload {
 
 export interface UpdateProfilePayload {
   nombre_completo?: string;
-  telefono?: string;
+  telefono?: string | null;
 }
 
 /**
@@ -67,7 +71,6 @@ export interface AuthResponseData {
 }
 
 export interface RegisterResponseData {
-  id_usuario: number;
-  email: string;
-  nombre_completo: string;
+  message: string;
+  emailVerificationRequired: boolean;
 }

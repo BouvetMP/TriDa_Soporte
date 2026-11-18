@@ -15,7 +15,7 @@ export const createPasswordResetToken = (
   jwt.sign(
     { id_usuario: userId, purpose: PASSWORD_RESET_PURPOSE },
     passwordResetSecret(passwordHash, serverSecret),
-    { expiresIn: PASSWORD_RESET_TOKEN_TTL_SECONDS },
+    { expiresIn: PASSWORD_RESET_TOKEN_TTL_SECONDS, algorithm: "HS256" },
   );
 
 export const getUnverifiedPasswordResetUserId = (token: string): number | null => {
@@ -44,6 +44,7 @@ export const verifyPasswordResetToken = (
     const payload = jwt.verify(
       token,
       passwordResetSecret(passwordHash, serverSecret),
+      { algorithms: ["HS256"] },
     ) as JwtPayload;
     return payload.id_usuario === userId && payload.purpose === PASSWORD_RESET_PURPOSE;
   } catch {

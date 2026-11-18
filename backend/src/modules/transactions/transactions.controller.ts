@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { transactionsService } from "./transactions.service.js";
+import { parseId } from "../../utils/params.js";
 import {
   createTransactionSchema,
   listTransactionsQuerySchema,
@@ -27,7 +28,7 @@ export class TransactionsController {
   async getTransactionById(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const transactionId = Number(req.params.id);
+      const transactionId = parseId(req.params.id);
 
       const transaction = await transactionsService.getById(userId, transactionId);
 
@@ -75,7 +76,7 @@ export class TransactionsController {
   async deleteTransaction(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const transactionId = Number(req.params.id);
+      const transactionId = parseId(req.params.id);
 
       await transactionsService.delete(userId, transactionId);
       sendSuccess(res, { id_transaccion: transactionId }, "Transacción eliminada exitosamente");
@@ -87,7 +88,7 @@ export class TransactionsController {
   async updateStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const transactionId = Number(req.params.id);
+      const transactionId = parseId(req.params.id);
       const { estado } = updateTransactionStatusSchema.parse(req.body);
       const updated = await transactionsService.updateStatus(userId, transactionId, estado);
 

@@ -11,7 +11,8 @@ export const mapController = {
   async getStats(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const data = await mapService.getStats(userId);
+      const filters = mapQuerySchema.parse(req.query);
+      const data = await mapService.getStats(userId, filters.id_cuenta);
       sendSuccess(res, data);
     } catch (error) {
       next(error);

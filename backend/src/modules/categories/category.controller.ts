@@ -1,14 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { sendError, sendSuccess } from "../../utils/apiResponse.js";
-import { categoryService, CategoryError } from "./category.service.js";
+import { sendSuccess } from "../../utils/apiResponse.js";
+import { categoryService } from "./category.service.js";
 import { createCategorySchema, updateCategorySchema } from "./category.schemas.js";
-
-function handleCategoryError(error: unknown, res: Response, next: NextFunction) {
-  if (error instanceof CategoryError) {
-    return sendError(res, error.message, error.statusCode);
-  }
-  return next(error);
-}
+import { parseId } from "../../utils/params.js";
 
 export class CategoriesController {
   async list(req: Request, res: Response, next: NextFunction) {
@@ -18,19 +12,19 @@ export class CategoriesController {
 
       sendSuccess(res, categories);
     } catch (error) {
-      handleCategoryError(error, res, next);
+      next(error);
     }
   }
 
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const categoryId = Number(req.params.id);
+      const categoryId = parseId(req.params.id);
       const category = await categoryService.getById(userId, categoryId);
 
       sendSuccess(res, category);
     } catch (error) {
-      handleCategoryError(error, res, next);
+      next(error);
     }
   }
 
@@ -42,32 +36,32 @@ export class CategoriesController {
 
       sendSuccess(res, created, "Categoría creada exitosamente", 201);
     } catch (error) {
-      handleCategoryError(error, res, next);
+      next(error);
     }
   }
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const categoryId = Number(req.params.id);
+      const categoryId = parseId(req.params.id);
       const data = updateCategorySchema.parse(req.body);
       const updated = await categoryService.update(userId, categoryId, data);
 
       sendSuccess(res, updated, "Categoría actualizada exitosamente");
     } catch (error) {
-      handleCategoryError(error, res, next);
+      next(error);
     }
   }
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const categoryId = Number(req.params.id);
+      const categoryId = parseId(req.params.id);
       await categoryService.delete(userId, categoryId);
 
       sendSuccess(res, { id_categoria: categoryId }, "Categoría eliminada exitosamente");
     } catch (error) {
-      handleCategoryError(error, res, next);
+      next(error);
     }
   }
 

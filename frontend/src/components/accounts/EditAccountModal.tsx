@@ -25,7 +25,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
   const [entidad, setEntidad] = useState("");
   const [tipo, setTipo] = useState<AccountType>("BANCO");
   const [numeroEnmascarado, setNumeroEnmascarado] = useState("");
-  const [saldoInicial, setSaldoInicial] = useState<string>("0");
   const [color, setColor] = useState("#6366F1");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,7 +34,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
       setEntidad(account.entidad || "");
       setTipo(account.tipo);
       setNumeroEnmascarado(account.numero_enmascarado || "");
-      setSaldoInicial(account.saldo_inicial.toString());
       setColor(account.color || "#6366F1");
     }
   }, [account]);
@@ -53,8 +51,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
       return;
     }
 
-    const parsedSaldo = parseFloat(saldoInicial);
-
     setIsSubmitting(true);
 
     try {
@@ -63,7 +59,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
         entidad: entidad.trim() || undefined,
         tipo,
         numero_enmascarado: numeroEnmascarado.trim() || undefined,
-        saldo_inicial: !isNaN(parsedSaldo) ? parsedSaldo : undefined,
         color,
       });
 
@@ -92,6 +87,7 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      isSubmitting={isSubmitting}
       title="Editar Cuenta"
       description="Modifica los detalles de tu fuente de fondos"
     >
@@ -124,15 +120,6 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Saldo Inicial (COP)"
-            type="number"
-            min="0"
-            value={saldoInicial}
-            onChange={(e) => setSaldoInicial(e.target.value)}
-            required
-          />
-
           <Input
             label="Últimos 4 dígitos"
             maxLength={4}

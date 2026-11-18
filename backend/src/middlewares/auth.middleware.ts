@@ -6,7 +6,6 @@ import { Request, Response, NextFunction } from "express";
 import { prisma } from "../db/prisma.js";
 import { verifyToken, JwtPayload } from "../utils/jwt.js";
 import { sendError } from "../utils/apiResponse.js";
-import { PASSWORD_RESET_PURPOSE } from "../modules/auth/reset-token.js";
 
 /**
  * Middleware principal: Verifica el JWT y confirma que el usuario existe y está activo.
@@ -16,25 +15,36 @@ export const requireAuth = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    sendError(res, "Token no proporcionado.", 401);
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+  let decoded: JwtPayload & { purpose?: string };
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      sendError(res, "Token no proporcionado.", 401);
-      return;
-    }
+    decoded = verifyToken<JwtPayload & { purpose?: string }>(token);
+  } catch {
+    sendError(res, "Token inválido o expirado.", 401);
+    return;
+  }
 
-    const token = authHeader.split(" ")[1];
+  if (
+    !decoded ||
+    !Number.isSafeInteger(decoded.id_usuario) ||
+    decoded.id_usuario <= 0 ||
+    decoded.purpose ||
+    (decoded.token_version !== undefined &&
+      (!Number.isSafeInteger(decoded.token_version) || decoded.token_version < 0))
+  ) {
+    sendError(res, "Token inválido o mal formado.", 401);
+    return;
+  }
 
-    // 1. Verificar firma y expiración del JWT
-    const decoded = verifyToken<JwtPayload & { purpose?: string }>(token);
-
-    if (!decoded || !decoded.id_usuario || decoded.purpose === PASSWORD_RESET_PURPOSE) {
-      sendError(res, "Token inválido o mal formado.", 401);
-      return;
-    }
-
-    // 2. Validar existencia y estado activo en la BD (Prisma model: Usuario)
-    const usuario = await prisma.usuario.findUnique({
+  let usuario;
+  try {
+    usuario = await prisma.usuario.findUnique({
       where: { id_usuario: decoded.id_usuario },
       select: {
         id_usuario: true,
@@ -42,31 +52,35 @@ export const requireAuth = async (
         rol: true,
         nombre_completo: true,
         estado: true,
+        token_version: true,
       },
     });
-
-    if (!usuario) {
-      sendError(res, "Usuario no encontrado en la base de datos.", 401);
-      return;
-    }
-
-    if (!usuario.estado) {
-      sendError(res, "Cuenta de usuario desactivada.", 403);
-      return;
-    }
-
-    // 3. Adjuntar usuario al Request (RS-002: el id viene del JWT verificado)
-    req.user = {
-      id_usuario: usuario.id_usuario,
-      email: usuario.email,
-      rol: usuario.rol,
-    };
-
-    next();
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Error de autenticación";
-    sendError(res, "Token inválido o expirado.", 401, message);
+  } catch (error) {
+    next(error);
+    return;
   }
+
+  if (!usuario) {
+    sendError(res, "Usuario no encontrado en la base de datos.", 401);
+    return;
+  }
+
+  if (!usuario.estado) {
+    sendError(res, "Cuenta de usuario desactivada.", 403);
+    return;
+  }
+
+  if ((decoded.token_version ?? 0) !== usuario.token_version) {
+    sendError(res, "Token inválido o expirado.", 401);
+    return;
+  }
+
+  req.user = {
+    id_usuario: usuario.id_usuario,
+    email: usuario.email,
+    rol: usuario.rol,
+  };
+  next();
 };
 
 /**

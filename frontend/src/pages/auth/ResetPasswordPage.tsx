@@ -31,6 +31,7 @@ export const ResetPasswordPage: React.FC = () => {
   useEffect(() => {
     if (!token) return;
 
+    window.history.replaceState(null, "", window.location.pathname);
     let active = true;
     AuthApi.verifyResetToken({ token })
       .then((valid) => {

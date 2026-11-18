@@ -14,13 +14,6 @@ const errorContentByStatus = {
       },
     },
   },
-  VerifyResetTokenRequest: {
-    type: "object",
-    required: ["token"],
-    properties: {
-      token: { type: "string" },
-    },
-  },
   "401": {
     "application/json": {
       schema: { $ref: "#/components/schemas/ErrorResponse" },
@@ -118,8 +111,8 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: "http://localhost:3000",
-        description: "Desarrollo local",
+        url: "/",
+        description: "Origen actual de la API",
       },
     ],
     tags: [
@@ -191,6 +184,16 @@ const options: swaggerJsdoc.Options = {
             data: {},
           },
         },
+        VerifyResetTokenRequest: {
+          type: "object",
+          required: ["token"],
+          properties: { token: { type: "string" } },
+        },
+        VerifyEmailRequest: {
+          type: "object",
+          required: ["token"],
+          properties: { token: { type: "string" } },
+        },
         RegisterRequest: {
           type: "object",
           required: ["nombre_completo", "email", "password"],
@@ -203,7 +206,12 @@ const options: swaggerJsdoc.Options = {
               example: "ClaveSegura1",
               description: "Mín. 10 caracteres, mayúscula, minúscula y número",
             },
-            telefono: { type: "string", example: "+584121234567" },
+            telefono: {
+              type: "string",
+              nullable: true,
+              example: "+584121234567",
+              description: "Enviar null para eliminar el teléfono guardado.",
+            },
           },
         },
         LoginRequest: {
@@ -332,12 +340,12 @@ const options: swaggerJsdoc.Options = {
               enum: ["FUI_YO", "NO_FUI_YO", "BLOQUEAR_TARJETA"],
             },
           },
-          UpdateTransactionStatusRequest: {
-            type: "object",
-            required: ["estado"],
-            properties: {
-              estado: { type: "string", enum: ["CONFIRMADA", "RECHAZADA"] },
-            },
+        },
+        UpdateTransactionStatusRequest: {
+          type: "object",
+          required: ["estado"],
+          properties: {
+            estado: { type: "string", enum: ["CONFIRMADA", "RECHAZADA"] },
           },
         },
         CreateBudgetRequest: {
@@ -414,7 +422,6 @@ const options: swaggerJsdoc.Options = {
             error: {
               code: "INVALID_REFERENCE",
               message: "Relación inválida: El recurso asociado no existe.",
-              details: { prisma_code: "P2003" },
             },
           },
         },
@@ -425,7 +432,6 @@ const options: swaggerJsdoc.Options = {
             error: {
               code: "NOT_FOUND",
               message: "El recurso solicitado no fue encontrado.",
-              details: { prisma_code: "P2025" },
             },
           },
         },
@@ -521,7 +527,20 @@ const options: swaggerJsdoc.Options = {
             },
           },
           responses: {
-            "201": { description: "Usuario registrado" },
+            "201": {
+              description: "Registro recibido; el inicio de sesión puede requerir verificación por correo",
+              content: {
+                "application/json": {
+                  example: {
+                    status: "success",
+                    data: {
+                      message: "Si el correo puede registrarse, ya puedes intentar iniciar sesión",
+                      emailVerificationRequired: false,
+                    },
+                  },
+                },
+              },
+            },
             "400": {
               description: "Validación fallida",
               content: {
@@ -549,6 +568,25 @@ const options: swaggerJsdoc.Options = {
           responses: {
             "200": { description: "Login exitoso (devuelve JWT)" },
             "401": { description: "Credenciales inválidas" },
+          },
+        },
+      },
+      "/api/v2/auth/verify-email": {
+        post: {
+          tags: ["Auth"],
+          security: [],
+          summary: "Verificar correo electrónico",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/VerifyEmailRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Correo verificado" },
+            "400": { $ref: "#/components/responses/BadRequestError" },
           },
         },
       },
@@ -930,7 +968,7 @@ const options: swaggerJsdoc.Options = {
           tags: ["Transactions"],
           summary: "Conteos por nivel de riesgo",
           security: [{ bearerAuth: [] }],
-          responses: { "200": { description: "Conteos all/low/medium/high/critical" } },
+          responses: { "200": { description: "Conteos por nivel: BAJO, MEDIO, ALTO y CRITICO" } },
         },
       },
       "/api/v2/transactions/{id}": {
@@ -1169,6 +1207,13 @@ const options: swaggerJsdoc.Options = {
           tags: ["Dashboard"],
           summary: "Estadísticas principales",
           security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
           responses: { "200": { description: "Saldos, mes actual y alertas" } },
         },
       },
@@ -1216,6 +1261,35 @@ const options: swaggerJsdoc.Options = {
           responses: { "200": { description: "Lista corta de transacciones" } },
         },
       },
+      "/api/v2/dashboard/advice": {
+        get: {
+          tags: ["Dashboard"],
+          summary: "Consejos financieros no leídos",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": { description: "Consejos recientes generados por reglas del sistema" },
+          },
+        },
+      },
+      "/api/v2/dashboard/advice/{id}/read": {
+        patch: {
+          tags: ["Dashboard"],
+          summary: "Marcar un consejo como leído",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            "200": { description: "Consejo marcado como leído" },
+            "404": { description: "Consejo no encontrado" },
+          },
+        },
+      },
 
       // ───────────── BUDGETS ─────────────
       "/api/v2/budgets": {
@@ -1223,6 +1297,11 @@ const options: swaggerJsdoc.Options = {
           tags: ["Budgets"],
           summary: "Listar presupuestos con gasto calculado",
           security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "id_cuenta", in: "query", schema: { type: "integer", minimum: 1 } },
+            { name: "mes", in: "query", schema: { type: "integer", minimum: 1, maximum: 12 } },
+            { name: "anio", in: "query", schema: { type: "integer", minimum: 2020, maximum: 2100 } },
+          ],
           responses: { "200": { description: "Lista de presupuestos" } },
         },
         post: {
@@ -1374,13 +1453,13 @@ const options: swaggerJsdoc.Options = {
       "/api/v2/profile": {
         get: {
           tags: ["Profile"],
-          summary: "Obtener perfil del usuario",
+          summary: "Alias compatible de GET /auth/me",
           security: [{ bearerAuth: [] }],
           responses: { "200": { description: "Perfil" } },
         },
         patch: {
           tags: ["Profile"],
-          summary: "Actualizar perfil",
+          summary: "Alias compatible de PATCH /auth/me",
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,
@@ -1440,6 +1519,11 @@ const options: swaggerJsdoc.Options = {
               in: "query",
               schema: { type: "string", description: "Fecha ISO 8601 (fecha o fecha-hora)" },
             },
+            {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
+            },
           ],
           responses: { "200": { description: "Totales e indicadores" } },
         },
@@ -1459,6 +1543,11 @@ const options: swaggerJsdoc.Options = {
               name: "fecha_fin",
               in: "query",
               schema: { type: "string", description: "Fecha ISO 8601 (fecha o fecha-hora)" },
+            },
+            {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
             },
             {
               name: "tipo_movimiento",
@@ -1486,13 +1575,22 @@ const options: swaggerJsdoc.Options = {
               schema: { type: "string", description: "Fecha ISO 8601 (fecha o fecha-hora)" },
             },
             {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
+            },
+            {
               name: "tipo_movimiento",
               in: "query",
               schema: { type: "string", enum: ["INGRESO", "GASTO", "AHORRO"] },
             },
             { name: "limit", in: "query", schema: { type: "integer", default: 500 } },
           ],
-          responses: { "200": { description: "Listado detallado" } },
+          responses: {
+            "200": {
+              description: "Listado paginado con total real, truncated y cinco comercios principales",
+            },
+          },
         },
       },
 
@@ -1502,6 +1600,13 @@ const options: swaggerJsdoc.Options = {
           tags: ["Map"],
           summary: "Estadísticas geográficas",
           security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
           responses: {
             "200": {
               description: "Conteos de ubicaciones y riesgo geográfico",
@@ -1515,6 +1620,11 @@ const options: swaggerJsdoc.Options = {
           summary: "Marcadores de transacciones geolocalizadas",
           security: [{ bearerAuth: [] }],
           parameters: [
+            {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
+            },
             {
               name: "limit",
               in: "query",

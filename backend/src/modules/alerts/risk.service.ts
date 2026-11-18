@@ -1,11 +1,10 @@
-import { prisma } from "../../db/prisma.js";
+import type { Prisma } from "@prisma/client";
 import { haversineDistance } from "../../utils/geo.js";
 
 export interface EvaluateRiskInput {
   id_usuario: number;
   monto: number;
   tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO";
-  comercio?: string;
   ubicacion_lat?: number;
   ubicacion_lon?: number;
   id_dispositivo?: number;
@@ -21,21 +20,32 @@ export interface RiskEvaluationResult {
 }
 
 export class RiskService {
-  async evaluateRisk(input: EvaluateRiskInput): Promise<RiskEvaluationResult> {
+  async evaluateRisk(
+    input: EvaluateRiskInput,
+    transaction: Prisma.TransactionClient,
+  ): Promise<RiskEvaluationResult> {
     const razones: string[] = [];
     let score = 0;
     let id_dispositivo_validado: number | null = null;
 
     // 1. Promedio histórico
-    const stats = await prisma.transaccion.aggregate({
-      where: { id_usuario: input.id_usuario, estado: { in: ["CONFIRMADA", "APROBADA"] } },
+    const stats = await transaction.transaccion.aggregate({
+      where: {
+        id_usuario: input.id_usuario,
+        tipo_movimiento: input.tipo_movimiento,
+        estado: { in: ["CONFIRMADA", "APROBADA"] },
+        fecha_transaccion: {
+          gte: new Date(input.fecha_transaccion.getTime() - 90 * 24 * 60 * 60 * 1000),
+          lt: input.fecha_transaccion,
+        },
+      },
       _avg: { monto: true },
       _count: { id_transaccion: true },
     });
     const avgMonto = stats._avg.monto ? Number(stats._avg.monto) : 0;
     const countTx = stats._count.id_transaccion;
 
-    if (countTx >= 3 && avgMonto > 0) {
+    if (countTx >= 1 && avgMonto > 0) {
       if (input.monto > avgMonto * 5) {
         score += 40;
         razones.push(
@@ -51,7 +61,7 @@ export class RiskService {
 
     // 2. Dispositivo confiable
     if (input.id_dispositivo) {
-      const dispositivo = await prisma.dispositivo.findFirst({
+      const dispositivo = await transaction.dispositivo.findFirst({
         where: { id_dispositivo: input.id_dispositivo, id_usuario: input.id_usuario },
       });
 
@@ -69,11 +79,12 @@ export class RiskService {
 
     // 3. Evaluación de Distancia / Velocidad (Geo)
     if (input.ubicacion_lat !== undefined && input.ubicacion_lon !== undefined) {
-      const lastTx = await prisma.transaccion.findFirst({
+      const lastTx = await transaction.transaccion.findFirst({
         where: {
           id_usuario: input.id_usuario,
           estado: { in: ["CONFIRMADA", "APROBADA"] },
           id_ubicacion: { not: null },
+          fecha_transaccion: { lt: input.fecha_transaccion },
         },
         include: {
           ubicacion: {

@@ -27,7 +27,7 @@ export const AlertsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)] flex items-center gap-2">
-            <ShieldAlert className="w-6 h-6 text-red-500" />
+            <ShieldAlert className="w-6 h-6 text-risk-critical" />
             Centro de Alertas de Fraude
           </h1>
           <p className="text-sm text-[var(--color-text-subtle)] mt-1">
@@ -75,7 +75,7 @@ export const AlertsPage: React.FC = () => {
         </div>
       ) : alerts.length === 0 ? (
         <div className="text-center py-12 bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl">
-          <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-3 opacity-80" />
+          <CheckCircle className="w-12 h-12 text-income mx-auto mb-3 opacity-80" />
           <h3 className="text-base font-semibold text-[var(--color-text-primary)]">
             Sin alertas registradas
           </h3>
@@ -90,11 +90,23 @@ export const AlertsPage: React.FC = () => {
             {alerts.map((alert) => (
               <li
                 key={alert.id_alerta}
+                role={alert.estado === "PENDIENTE" ? "button" : undefined}
+                tabIndex={alert.estado === "PENDIENTE" ? 0 : undefined}
                 onClick={() => {
                   if (alert.estado === "PENDIENTE") {
                     setSelectedAlert(alert);
                   }
                 }}
+                onKeyDown={(event) => {
+                  if (
+                    alert.estado === "PENDIENTE" &&
+                    (event.key === "Enter" || event.key === " ")
+                  ) {
+                    event.preventDefault();
+                    setSelectedAlert(alert);
+                  }
+                }}
+                aria-label={alert.estado === "PENDIENTE" ? "Revisar alerta pendiente" : undefined}
                 className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center gap-4 ${
                   alert.estado === "PENDIENTE"
                     ? "bg-[var(--color-bg-surface-hover)] cursor-pointer"

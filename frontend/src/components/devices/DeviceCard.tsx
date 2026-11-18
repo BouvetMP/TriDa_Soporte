@@ -28,7 +28,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
     device.tipo_dispositivo.toLowerCase().includes("smartphone");
 
   return (
-    <div className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl p-5 shadow-sm hover:border-[var(--color-primary-500)]/30 transition-all flex flex-col justify-between">
+    <div className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl p-5 shadow-sm hover:border-primary/30 transition-all flex flex-col justify-between">
       <div>
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-3">
@@ -52,8 +52,8 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
           <span
             className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border font-medium ${
               device.confiable
-                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                ? "bg-income/10 text-income border-income/20"
+                : "bg-budget-warn/10 text-budget-warn border-budget-warn/20"
             }`}
           >
             {device.confiable ? (
@@ -117,7 +117,7 @@ export const DeviceCard: React.FC<DeviceCardProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => onDelete(device.id_dispositivo)}
-          className="text-[var(--color-text-muted)] hover:text-red-500 p-2"
+          className="text-[var(--color-text-muted)] hover:text-expense p-2"
           title="Desvincular dispositivo"
         >
           <Trash2 className="w-4 h-4" />

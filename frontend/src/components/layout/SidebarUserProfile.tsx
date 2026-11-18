@@ -39,7 +39,7 @@ export const SidebarUserProfile: React.FC = () => {
             }
           >
             {theme === "dark" ? (
-              <Sun className="w-4 h-4 text-amber-400" />
+              <Sun className="w-4 h-4 text-budget-warn" />
             ) : (
               <Moon className="w-4 h-4 text-indigo-600" />
             )}

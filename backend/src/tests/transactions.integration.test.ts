@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -64,19 +65,16 @@ test("transaction routes keep account balances consistent across creation and re
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}/api/v2`;
 
-    const registerResponse = await fetch(`${baseUrl}/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    userId = (
+      await prisma.usuario.create({
+        data: {
         nombre_completo: "Usuario de integración",
         email,
-        password: "TestPassword123",
-      }),
-    });
-    assert.equal(registerResponse.status, 201);
-    const registration = await readJson<SuccessEnvelope<{ id_usuario: number }>>(registerResponse);
-    assert.equal(registration.success, true);
-    userId = registration.data.id_usuario;
+          password_hash: await bcrypt.hash("TestPassword123", 10),
+          email_verificado_en: new Date(),
+        },
+      })
+    ).id_usuario;
 
     const loginResponse = await fetch(`${baseUrl}/auth/login`, {
       method: "POST",
@@ -103,19 +101,16 @@ test("transaction routes keep account balances consistent across creation and re
     const account = await readJson<SuccessEnvelope<{ id_cuenta: number }>>(accountResponse);
     const accountId = account.data.id_cuenta;
 
-    const otherRegisterResponse = await fetch(`${baseUrl}/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    otherUserId = (
+      await prisma.usuario.create({
+        data: {
         nombre_completo: "Segundo usuario de integración",
         email: otherEmail,
-        password: "TestPassword123",
-      }),
-    });
-    assert.equal(otherRegisterResponse.status, 201);
-    const otherRegistration =
-      await readJson<SuccessEnvelope<{ id_usuario: number }>>(otherRegisterResponse);
-    otherUserId = otherRegistration.data.id_usuario;
+          password_hash: await bcrypt.hash("TestPassword123", 10),
+          email_verificado_en: new Date(),
+        },
+      })
+    ).id_usuario;
 
     const otherLoginResponse = await fetch(`${baseUrl}/auth/login`, {
       method: "POST",
@@ -127,6 +122,39 @@ test("transaction routes keep account balances consistent across creation and re
       await readJson<SuccessEnvelope<{ token: string; usuario: { id_usuario: number } }>>(
         otherLoginResponse,
       );
+
+    const sharedDeviceIdentifier = `integration-device-${randomUUID()}`;
+    const firstDeviceResponse = await fetch(`${baseUrl}/devices`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        identificador_unico: sharedDeviceIdentifier,
+        tipo_dispositivo: "BROWSER",
+      }),
+    });
+    assert.equal(firstDeviceResponse.status, 201);
+    const firstDevice = await readJson<
+      SuccessEnvelope<{ id_dispositivo: number; confiable: boolean }>
+    >(firstDeviceResponse);
+    assert.equal(firstDevice.data.confiable, true);
+
+    const otherAuthorization = {
+      authorization: `Bearer ${otherLogin.data.token}`,
+    };
+    const otherDeviceResponse = await fetch(`${baseUrl}/devices`, {
+      method: "POST",
+      headers: { ...otherAuthorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        identificador_unico: sharedDeviceIdentifier,
+        tipo_dispositivo: "BROWSER",
+      }),
+    });
+    assert.equal(otherDeviceResponse.status, 201);
+    const otherDevice = await readJson<
+      SuccessEnvelope<{ id_dispositivo: number; confiable: boolean }>
+    >(otherDeviceResponse);
+    assert.equal(otherDevice.data.confiable, true);
+
     const otherAccountResponse = await fetch(`${baseUrl}/accounts`, {
       method: "POST",
       headers: {
@@ -172,6 +200,7 @@ test("transaction routes keep account balances consistent across creation and re
       headers: { ...authorization, "content-type": "application/json" },
       body: JSON.stringify({
         id_cuenta: accountId,
+        id_dispositivo: firstDevice.data.id_dispositivo,
         monto: 25,
         tipo_movimiento: "GASTO",
         pais: "Colombia",
@@ -180,11 +209,17 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(transactionResponse.status, 201);
     const created = await readJson<
       SuccessEnvelope<{
-        transaction: { id_transaccion: number; id_ubicacion: number | null; estado: string };
+        transaction: {
+          id_transaccion: number;
+          id_dispositivo: number | null;
+          id_ubicacion: number | null;
+          estado: string;
+        };
         evaluation: { estado_evaluacion: string };
       }>
     >(transactionResponse);
     assert.equal(created.data.transaction.estado, "CONFIRMADA");
+    assert.equal(created.data.transaction.id_dispositivo, firstDevice.data.id_dispositivo);
     assert.equal(created.data.evaluation.estado_evaluacion, "APROBADA");
     assert.notEqual(created.data.transaction.id_ubicacion, null);
     assert.equal(
@@ -319,6 +354,50 @@ test("transaction routes keep account balances consistent across creation and re
         ).saldo_inicial,
       ),
       100,
+    );
+
+    await prisma.cuenta.update({
+      where: { id_cuenta: accountId },
+      data: { estado: false },
+    });
+    const listedAccounts = await fetch(`${baseUrl}/accounts`, {
+      headers: authorization,
+    });
+    assert.equal(listedAccounts.status, 200);
+    const accounts = await readJson<SuccessEnvelope<Array<{ id_cuenta: number }>>>(
+      listedAccounts,
+    );
+    assert.equal(accounts.data.some((item) => item.id_cuenta === accountId), false);
+
+    const inactiveAccountTransactions = await fetch(
+      `${baseUrl}/transactions?id_cuenta=${accountId}`,
+      { headers: authorization },
+    );
+    assert.equal(inactiveAccountTransactions.status, 200);
+    const transactions = await readJson<
+      SuccessEnvelope<{ items: Array<{ id_cuenta: number | null }> }>
+    >(inactiveAccountTransactions);
+    assert.equal(
+      transactions.data.items.some((item) => item.id_cuenta === accountId),
+      false,
+    );
+
+    const transactionCountBeforeInactiveAccountRequest = await prisma.transaccion.count({
+      where: { id_usuario: userId },
+    });
+    const inactiveAccountTransaction = await fetch(`${baseUrl}/transactions`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        id_cuenta: accountId,
+        monto: 10,
+        tipo_movimiento: "INGRESO",
+      }),
+    });
+    assert.equal(inactiveAccountTransaction.status, 404);
+    assert.equal(
+      await prisma.transaccion.count({ where: { id_usuario: userId } }),
+      transactionCountBeforeInactiveAccountRequest,
     );
   } finally {
     try {

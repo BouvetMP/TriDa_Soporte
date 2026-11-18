@@ -76,7 +76,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         <CardContent className="pl-6 pt-2 space-y-3">
           <div>
             <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
-              Saldo disponible
+              Saldo actual
             </span>
             <p className="text-2xl font-extrabold text-text-primary tracking-tight">
               {formatCurrency(account.saldo_inicial)}
@@ -91,7 +91,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             </span>
             <span className="flex items-center gap-1 text-[11px] text-income font-medium">
               <ShieldCheck className="w-3.5 h-3.5" />
-              Protegida
+              Activa
             </span>
           </div>
         </CardContent>
@@ -101,9 +101,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         isOpen={showConfirmDelete}
         onClose={() => setShowConfirmDelete(false)}
         onConfirm={handleDelete}
-        title="¿Eliminar esta cuenta?"
-        description={`Se eliminará la cuenta "${account.nombre}". Esta acción no se puede deshacer.`}
-        confirmText="Eliminar cuenta"
+        title="¿Desactivar esta cuenta?"
+        description={`La cuenta "${account.nombre}" dejará de mostrarse y no aceptará nuevos movimientos.`}
+        confirmText="Desactivar cuenta"
         variant="danger"
         isLoading={isDeleting}
       />

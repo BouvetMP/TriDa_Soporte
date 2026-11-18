@@ -80,19 +80,21 @@ const ToastCard: React.FC<{ toast: ToastItem; onClose: () => void }> = ({
   const icons = {
     success: <CheckCircle2 className="w-5 h-5 text-income" />,
     error: <AlertCircle className="w-5 h-5 text-expense" />,
-    warning: <AlertTriangle className="w-5 h-5 text-amber-500" />,
+    warning: <AlertTriangle className="w-5 h-5 text-budget-warn" />,
     info: <Info className="w-5 h-5 text-saving" />,
   };
 
   const borders = {
     success: "border-income/30 bg-surface",
     error: "border-expense/30 bg-surface",
-    warning: "border-amber-500/30 bg-surface",
+    warning: "border-budget-warn/30 bg-surface",
     info: "border-saving/30 bg-surface",
   };
 
   return (
     <div
+      role="status"
+      aria-live={toast.type === "error" ? "assertive" : "polite"}
       className={cn(
         "pointer-events-auto flex items-start gap-3 p-4 rounded-xl border shadow-lg transition-all duration-300 animate-slide-up",
         borders[toast.type],
@@ -108,7 +110,9 @@ const ToastCard: React.FC<{ toast: ToastItem; onClose: () => void }> = ({
         )}
       </div>
       <button
+        type="button"
         onClick={onClose}
+        aria-label="Cerrar notificación"
         className="shrink-0 text-text-muted hover:text-text-primary p-0.5 rounded-md"
       >
         <X className="w-4 h-4" />

@@ -44,7 +44,7 @@ export function NewSavingsGoalModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Nueva Meta de Ahorro">
+    <Modal isOpen={isOpen} onClose={onClose} title="Nueva Meta de Ahorro" isSubmitting={submitting}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">

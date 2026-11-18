@@ -1,13 +1,15 @@
 /**
  * ¿Qué? Componente completo de la barra lateral (Desktop + Mobile Drawer).
  */
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { X } from "lucide-react";
 import { SidebarBrand } from "./SidebarBrand";
 import { SidebarAccountSelector } from "./SidebarAccountSelector";
 import { SidebarNav } from "./SidebarNav";
 import { SidebarUserProfile } from "./SidebarUserProfile";
 import { cn } from "@/utils/cn";
+import { AlertsApi } from "@/api/Alerts";
 
 interface SidebarProps {
   isOpenMobile: boolean;
@@ -18,6 +20,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
 }) => {
+  const { pathname } = useLocation();
+  const [pendingAlertsCount, setPendingAlertsCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const refreshPendingAlerts = () => {
+      AlertsApi.getPendingCount()
+        .then((response) => {
+          if (active && response.success) {
+            setPendingAlertsCount(response.data.count);
+          }
+        })
+        .catch((error: unknown) => {
+          console.error("No se pudo actualizar el contador de alertas", error);
+        });
+    };
+    window.addEventListener("trida-alerts-updated", refreshPendingAlerts);
+    refreshPendingAlerts();
+
+    return () => {
+      active = false;
+      window.removeEventListener("trida-alerts-updated", refreshPendingAlerts);
+    };
+  }, [pathname]);
+
   return (
     <>
       {/* Overlay Móvil */}
@@ -56,7 +83,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <SidebarAccountSelector />
 
         {/* Enlaces de Navegación */}
-        <SidebarNav onItemClick={onCloseMobile} />
+        <SidebarNav
+          onItemClick={onCloseMobile}
+          pendingAlertsCount={pendingAlertsCount}
+        />
 
         {/* Pie con Usuario */}
         <SidebarUserProfile />

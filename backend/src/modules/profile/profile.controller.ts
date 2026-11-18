@@ -4,7 +4,7 @@
 import { Request, Response, NextFunction } from "express";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { profileService } from "./profile.service.js";
-import { updateProfileSchema } from "./profile.schemas.js";
+import { updateProfileSchema } from "../auth/auth.schemas.js";
 
 export const profileController = {
   async getProfile(req: Request, res: Response, next: NextFunction) {

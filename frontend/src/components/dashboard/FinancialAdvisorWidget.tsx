@@ -1,87 +1,70 @@
 import React from "react";
-import { AIRecommendation } from "@/types/Dashboard";
-import { Bot, Sparkles, AlertTriangle, Lightbulb, Award } from "lucide-react";
+import { FinancialAdvice } from "@/types/Dashboard";
+import { AlertTriangle, Check, Lightbulb } from "lucide-react";
 
 interface FinancialAdvisorWidgetProps {
-  recommendations: AIRecommendation[];
-  score?: number;
+  recommendations: FinancialAdvice[];
+  onMarkRead: (id: number) => void;
 }
 
 export const FinancialAdvisorWidget: React.FC<FinancialAdvisorWidgetProps> = ({
   recommendations,
-  score,
+  onMarkRead,
 }) => {
-  const getIcon = (tipo: string) => {
-    switch (tipo) {
-      case "ALERTA":
-        return (
-          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-        );
-      case "LOGRO":
-        return <Award className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />;
-      case "SUGERENCIA":
-      default:
-        return (
-          <Lightbulb className="w-4 h-4 text-[var(--color-primary-500)] shrink-0 mt-0.5" />
-        );
-    }
-  };
-
   return (
     <div className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl p-5 shadow-sm space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-[var(--color-primary-500)]/10 text-[var(--color-primary-500)]">
-            <Bot className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-1.5">
-              Asesor TriDa AI{" "}
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            </h3>
-            <p className="text-xs text-[var(--color-text-subtle)]">
-              Análisis financiero automatizado
-            </p>
-          </div>
+      <div className="flex items-center gap-2">
+        <div className="p-2 rounded-lg bg-primary/10 text-[var(--color-primary-500)]">
+          <Lightbulb className="w-5 h-5" />
         </div>
-
-        {typeof score === "number" && (
-          <div className="text-right">
-            <span className="text-xs text-[var(--color-text-subtle)] block">
-              Score Financiero
-            </span>
-            <span className="text-lg font-bold font-mono text-[var(--color-primary-500)]">
-              {score} / 100
-            </span>
-          </div>
-        )}
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+            Consejos financieros
+          </h3>
+          <p className="text-xs text-[var(--color-text-subtle)]">
+            Avisos generados por tus presupuestos
+          </p>
+        </div>
       </div>
 
       {recommendations.length === 0 ? (
         <div className="p-4 rounded-lg bg-[var(--color-bg-surface-hover)] text-xs text-[var(--color-text-subtle)] text-center">
-          Tu salud financiera está equilibrada. No hay alertas ni sugerencias
-          pendientes por el momento.
+          No tienes avisos de presupuesto pendientes.
         </div>
       ) : (
         <div className="space-y-3">
           {recommendations.map((rec) => (
             <div
-              key={rec.id_recomendacion}
+              key={rec.id_consejo}
               className="p-3.5 rounded-lg bg-[var(--color-bg-surface-hover)] border border-[var(--color-border-subtle)] flex items-start gap-3"
             >
-              {getIcon(rec.tipo)}
+              {rec.prioridad === "ALTA" ? (
+                <AlertTriangle className="w-4 h-4 text-risk-high shrink-0 mt-0.5" />
+              ) : (
+                <Lightbulb className="w-4 h-4 text-[var(--color-primary-500)] shrink-0 mt-0.5" />
+              )}
               <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-semibold text-[var(--color-text-primary)]">
-                  {rec.titulo}
-                </h4>
-                <p className="text-xs text-[var(--color-text-subtle)] mt-0.5">
-                  {rec.mensaje}
-                </p>
-                {rec.accion_sugerida && (
-                  <span className="inline-block mt-2 text-xs font-medium text-[var(--color-primary-500)] underline">
-                    {rec.accion_sugerida}
-                  </span>
-                )}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-semibold text-[var(--color-text-primary)]">
+                      {rec.titulo}
+                    </h4>
+                    <p className="text-xs text-[var(--color-text-subtle)] mt-0.5">
+                      {rec.descripcion}
+                    </p>
+                    <span className="mt-1 inline-block text-2xs text-[var(--color-text-muted)]">
+                      Prioridad {rec.prioridad.toLowerCase()}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onMarkRead(rec.id_consejo)}
+                    aria-label={`Marcar como leído: ${rec.titulo}`}
+                    className="rounded-md p-1 text-[var(--color-text-muted)] hover:text-income focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

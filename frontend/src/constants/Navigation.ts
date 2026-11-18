@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   Wallet,
   ArrowLeftRight,
+  Tag,
   PiggyBank,
   Target,
   Sparkles,
@@ -9,7 +10,7 @@ import {
   ShieldAlert,
   MapPin,
   Settings,
-  Tag,
+  Laptop,
 } from "lucide-react";
 import React from "react";
 
@@ -33,14 +34,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Wallet,
   },
   {
-    path: "/categories",
-    label: "Categorías",
-    icon: Tag,
-  },
-  {
     path: "/transactions",
     label: "Movimientos",
     icon: ArrowLeftRight,
+  },
+  {
+    path: "/categories",
+    label: "Categorías",
+    icon: Tag,
   },
   {
     path: "/budgets",
@@ -67,6 +68,11 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Seguridad",
     icon: ShieldAlert,
     badgeKey: "pendingAlerts",
+  },
+  {
+    path: "/devices",
+    label: "Dispositivos",
+    icon: Laptop,
   },
   {
     path: "/map",

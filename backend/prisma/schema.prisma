@@ -20,6 +20,8 @@ model usuario {
   ciudad          String?   @db.VarChar(100)
   rol             String    @default("USER") @db.VarChar(20)
   estado          Boolean   @default(true)
+  email_verificado_en DateTime? @default(now()) @db.Timestamptz
+  token_version   Int       @default(0)
   fecha_registro  DateTime  @default(now()) @db.Timestamptz
   ultimo_acceso   DateTime? @db.Timestamptz
 
@@ -94,6 +96,7 @@ model categoria {
   presupuestos  presupuesto[]
 
   @@unique([id_usuario, nombre], map: "uq_categoria_user")
+  @@index([id_usuario, estado], map: "idx_categories_owner_state")
   @@index([id_usuario], map: "idx_categorias_usuario")
   @@index([tipo], map: "idx_categorias_tipo")
   @@map("categorias")
@@ -104,7 +107,7 @@ model dispositivo {
   id_dispositivo      Int      @id @default(autoincrement())
   id_usuario          Int
   tipo_dispositivo    String   @db.VarChar(50)
-  identificador_unico String   @unique(map: "dispositivos_identificador_unico_key") @db.VarChar(255)
+  identificador_unico String   @db.VarChar(255)
   sistema_operativo   String?  @db.VarChar(100)
   navegador           String?  @db.VarChar(100)
   confiable           Boolean  @default(false)
@@ -117,6 +120,7 @@ model dispositivo {
 
   @@index([id_usuario], map: "idx_dispositivos_usuario")
   @@index([confiable], map: "idx_dispositivos_conf")
+  @@unique([id_usuario, identificador_unico], map: "uq_dispositivo_user_identifier")
   @@map("dispositivos")
   @@schema("trida")
 }
@@ -168,8 +172,11 @@ model transaccion {
   @@index([id_usuario], map: "idx_tx_usuario")
   @@index([id_cuenta], map: "idx_tx_cuenta")
   @@index([id_categoria], map: "idx_tx_categoria")
+  @@index([id_ubicacion], map: "idx_tx_ubicacion")
+  @@index([id_dispositivo], map: "idx_tx_dispositivo")
   @@index([fecha_transaccion(sort: Desc)], map: "idx_tx_fecha")
   @@index([id_usuario, fecha_transaccion(sort: Desc)], map: "idx_tx_usuario_fecha")
+  @@index([id_usuario, id_categoria, fecha_transaccion], map: "idx_tx_user_cat_fecha")
   @@index([tipo_movimiento], map: "idx_tx_tipo")
   @@index([estado], map: "idx_tx_estado")
   @@map("transacciones")
@@ -280,6 +287,7 @@ model alerta_fraude {
   @@index([id_usuario], map: "idx_alertas_usuario")
   @@index([estado], map: "idx_alertas_estado")
   @@index([severidad], map: "idx_alertas_severidad")
+  @@index([id_transaccion, fecha_detectada(sort: Desc)], map: "idx_alertas_tx_fecha")
   @@map("alertas_fraude")
   @@schema("trida")
 }

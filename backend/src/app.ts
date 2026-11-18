@@ -27,13 +27,13 @@ import reportsRoutes from "./modules/reports/reports.routes.js";
 import mapRoutes from "./modules/maps/maps.routes.js";
 
 const app = express();
+app.set("trust proxy", config.TRUST_PROXY);
 
 // Middlewares globales
 app.use(helmet());
 app.use(
   cors({
     origin: config.FRONTEND_URL || "http://localhost:5173",
-    credentials: true,
   }),
 );
 app.use(express.json({ limit: "1mb" }));
@@ -69,20 +69,22 @@ app.use("/api/v2/insights", insightsRoutes);
 app.use("/api/v2/reports", reportsRoutes);
 app.use("/api/v2/map", mapRoutes);
 
-app.use(
-  "/api/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: "TriDa API v2 Docs",
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  }),
-);
+if (config.NODE_ENV !== "production") {
+  app.use(
+    "/api/docs",
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+      customSiteTitle: "TriDa API v2 Docs",
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    }),
+  );
 
-app.get("/api/docs.json", (_req, res) => {
-  res.json(swaggerSpec);
-});
+  app.get("/api/docs.json", (_req, res) => {
+    res.json(swaggerSpec);
+  });
+}
 
 // Manejo de ruta no encontrada (404)
 app.use((_req: Request, res: Response) => {

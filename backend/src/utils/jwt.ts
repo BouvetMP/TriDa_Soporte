@@ -10,6 +10,7 @@ export interface JwtPayload {
   id_usuario: number;
   email: string;
   rol: string;
+  token_version?: number;
 }
 
 export const signToken = (
@@ -18,9 +19,10 @@ export const signToken = (
 ): string => {
   return jwt.sign(payload, config.JWT_SECRET, {
     expiresIn: expiresIn as jwt.SignOptions["expiresIn"],
+    algorithm: "HS256",
   });
 };
 
 export const verifyToken = <T = JwtPayload>(token: string): T => {
-  return jwt.verify(token, config.JWT_SECRET) as T;
+  return jwt.verify(token, config.JWT_SECRET, { algorithms: ["HS256"] }) as T;
 };

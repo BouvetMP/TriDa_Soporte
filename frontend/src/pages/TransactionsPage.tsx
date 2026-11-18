@@ -21,6 +21,7 @@ export const TransactionsPage: React.FC = () => {
     changePage,
     createTransaction,
     deleteTransaction,
+    updateTransactionStatus,
   } = useTransactions();
 
   const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
@@ -53,13 +54,12 @@ export const TransactionsPage: React.FC = () => {
           <p className="text-sm text-[var(--color-text-subtle)] mt-1">
             {selectedAccount
               ? `Cuenta actual: ${selectedAccount.nombre}`
-              : "Selecciona una cuenta en el panel lateral."}
+              : "Mostrando todas tus cuentas"}
           </p>
         </div>
 
         <Button
           onClick={() => setIsNewModalOpen(true)}
-          disabled={!selectedAccount}
           className="flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -78,6 +78,7 @@ export const TransactionsPage: React.FC = () => {
         transactions={transactions}
         isLoading={isLoading}
         onDelete={(id) => setDeleteTxId(id)}
+        onResolve={(id, estado) => void updateTransactionStatus(id, estado)}
       />
 
       {pagination.total_pages > 1 && (

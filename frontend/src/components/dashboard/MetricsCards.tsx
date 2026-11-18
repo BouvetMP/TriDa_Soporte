@@ -16,7 +16,7 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ metrics }) => {
           <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
             Saldo Consolidado
           </span>
-          <div className="p-2 bg-[var(--color-primary-500)]/10 text-[var(--color-primary-500)] rounded-lg">
+          <div className="p-2 bg-primary/10 text-[var(--color-primary-500)] rounded-lg">
             <Wallet className="w-5 h-5" />
           </div>
         </div>
@@ -31,11 +31,11 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ metrics }) => {
           <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
             Ingresos del Mes
           </span>
-          <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg">
+          <div className="p-2 bg-income/10 text-income rounded-lg">
             <TrendingUp className="w-5 h-5" />
           </div>
         </div>
-        <div className="text-2xl font-bold font-mono text-emerald-500">
+        <div className="text-2xl font-bold font-mono text-income">
           + {formatCurrency(metrics.mes_actual.ingresos)}
         </div>
       </div>
@@ -46,11 +46,11 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ metrics }) => {
           <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
             Gastos del Mes
           </span>
-          <div className="p-2 bg-red-500/10 text-red-500 rounded-lg">
+          <div className="p-2 bg-expense/10 text-expense rounded-lg">
             <TrendingDown className="w-5 h-5" />
           </div>
         </div>
-        <div className="text-2xl font-bold font-mono text-red-500">
+        <div className="text-2xl font-bold font-mono text-expense">
           - {formatCurrency(metrics.mes_actual.gastos)}
         </div>
       </div>
@@ -61,12 +61,12 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ metrics }) => {
           <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
             Alertas Pendientes
           </span>
-          <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg">
+          <div className="p-2 bg-saving/10 text-saving rounded-lg">
             <ShieldAlert className="w-5 h-5" />
           </div>
         </div>
         <div className="mt-1">
-          <div className="text-2xl font-bold font-mono text-amber-500">
+          <div className="text-2xl font-bold font-mono text-saving">
             {metrics.alertas.activas}
           </div>
           <p className="mt-1 text-xs text-[var(--color-text-subtle)]">

@@ -37,12 +37,15 @@ export interface Transaction {
 
 export interface CreateTransactionPayload {
   id_cuenta: number;
+  id_dispositivo?: number;
   id_categoria?: number;
   monto: number;
   tipo_movimiento: TipoMovimiento;
   descripcion?: string;
   comercio?: string;
   fecha_transaccion?: string;
+  latitud?: number;
+  longitud?: number;
 }
 
 export interface TransactionFilters {

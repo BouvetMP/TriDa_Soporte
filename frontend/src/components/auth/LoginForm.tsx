@@ -3,7 +3,7 @@
  * ¿Para qué? Capturar credenciales y llamar al contexto de inicio de sesión.
  */
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/Toast";
 
 export const LoginForm: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const { showToast } = useToast();
 
@@ -20,6 +21,33 @@ export const LoginForm: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const getRedirectPath = (): string => {
+    const from = (location.state as { from?: unknown } | null)?.from;
+    let path: string | null = null;
+
+    if (typeof from === "string") {
+      path = from;
+    } else if (typeof from === "object" && from !== null) {
+      const route = from as {
+        pathname?: unknown;
+        search?: unknown;
+        hash?: unknown;
+      };
+      if (typeof route.pathname === "string") {
+        path =
+          route.pathname +
+          (typeof route.search === "string" ? route.search : "") +
+          (typeof route.hash === "string" ? route.hash : "");
+      }
+    }
+
+    return path?.startsWith("/") &&
+      !path.startsWith("//") &&
+      !path.startsWith("/\\")
+      ? path
+      : "/dashboard";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +67,7 @@ export const LoginForm: React.FC = () => {
         title: "¡Bienvenido a TriDa!",
         message: "Has iniciado sesión correctamente.",
       });
-      navigate("/dashboard", { replace: true });
+      navigate(getRedirectPath(), { replace: true });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Credenciales inválidas.";

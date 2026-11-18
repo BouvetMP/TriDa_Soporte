@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "test": "node --import tsx --test src/tests/contracts.test.ts",
     "test:integration": "node --import tsx --test src/tests/transactions.integration.test.ts",

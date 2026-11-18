@@ -4,67 +4,32 @@
  */
 import React from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useTheme } from "@/hooks/useTheme";
 import { useDashboard } from "@/hooks/useDashboard";
-import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
 import { MetricsCards } from "@/components/dashboard/MetricsCards";
+import { CategoryExpenseChart } from "@/components/dashboard/CategoryExpenseChart";
+import { FinancialAdvisorWidget } from "@/components/dashboard/FinancialAdvisorWidget";
+import { AlertBadge } from "@/components/alerts/AlertBadge";
+import { formatCurrency, formatDate } from "@/utils/Formatters";
+import { Link } from "react-router-dom";
 import {
-  ShieldCheck,
-  LogOut,
-  Sun,
-  Moon,
+  ArrowDownLeft,
+  ArrowUpRight,
+  BellRing,
+  PiggyBank,
   User as UserIcon,
   Mail,
   Shield,
-  LayoutDashboard,
 } from "lucide-react";
 
 export const DashboardPage: React.FC = () => {
-  const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
 
-  const { data, isLoading } = useDashboard();
+  const { data, isLoading, markAdviceRead } = useDashboard();
 
   return (
-    <div className="min-h-screen bg-background p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Topbar (Mantiene la estructura original) */}
-      <div className="flex items-center justify-between border-b border-border pb-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-text-primary">
-              TriDa v2 Dashboard
-            </h1>
-            <p className="text-xs text-text-muted">
-              Finanzas personales & Seguridad
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={toggleTheme}>
-            {theme === "dark" ? (
-              <Sun className="w-4 h-4 text-amber-400" />
-            ) : (
-              <Moon className="w-4 h-4 text-indigo-600" />
-            )}
-          </Button>
-
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={logout}
-            icon={<LogOut className="w-4 h-4" />}
-          >
-            Cerrar sesión
-          </Button>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Banner de bienvenida */}
       <Card className="bg-gradient-to-r from-primary/10 via-surface to-surface border-primary/20 shadow-sm">
         <CardHeader>
@@ -75,7 +40,7 @@ export const DashboardPage: React.FC = () => {
         <CardContent className="space-y-4">
           <p className="text-sm text-text-secondary">
             Has iniciado sesión correctamente. Tu conexión con TriDa v2 está
-            100% segura.
+            diseñada para ayudarte a organizar tus finanzas.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -118,10 +83,9 @@ export const DashboardPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      <div className="pt-4">
+      <div>
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
-            <LayoutDashboard className="w-6 h-6 text-primary" />
+          <h2 className="text-xl font-bold text-text-primary">
             Resumen Financiero
           </h2>
           <p className="text-sm text-text-muted mt-1">
@@ -139,13 +103,125 @@ export const DashboardPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            <MetricsCards metrics={data} />
-            <Card className="border-dashed">
-              <CardContent className="py-6 text-sm text-text-muted">
-                El desglose por categoría y las recomendaciones se habilitarán
-                en sus secciones de Reportes y Asesor IA.
-              </CardContent>
-            </Card>
+            <MetricsCards metrics={data.metrics} />
+
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <CategoryExpenseChart categories={data.categories} />
+              <FinancialAdvisorWidget
+                recommendations={data.advice}
+                onMarkRead={markAdviceRead}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-base">Transacciones recientes</CardTitle>
+                  <Link
+                    to="/transactions"
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Ver todas
+                  </Link>
+                </CardHeader>
+                <CardContent>
+                  {data.recentTransactions.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-text-muted">
+                      No hay transacciones recientes para esta cuenta.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {data.recentTransactions.map((transaction) => {
+                        const Icon =
+                          transaction.tipo_movimiento === "INGRESO"
+                            ? ArrowDownLeft
+                            : transaction.tipo_movimiento === "GASTO"
+                              ? ArrowUpRight
+                              : PiggyBank;
+                        const color =
+                          transaction.tipo_movimiento === "INGRESO"
+                            ? "text-income"
+                            : transaction.tipo_movimiento === "GASTO"
+                              ? "text-expense"
+                              : "text-saving";
+
+                        return (
+                          <li
+                            key={transaction.id_transaccion}
+                            className="flex items-center justify-between gap-3 py-3"
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <Icon className={`h-4 w-4 shrink-0 ${color}`} />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-text-primary">
+                                  {transaction.comercio ||
+                                    transaction.categoria.nombre}
+                                </p>
+                                <p className="text-xs text-text-muted">
+                                  {transaction.tipo_movimiento} ·{" "}
+                                  {formatDate(transaction.fecha_transaccion)}
+                                </p>
+                              </div>
+                            </div>
+                            <span className={`shrink-0 text-sm font-semibold ${color}`}>
+                              {formatCurrency(transaction.monto)}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-2">
+                    <BellRing className="h-4 w-4 text-risk-high" />
+                    <CardTitle className="text-base">Alertas recientes</CardTitle>
+                  </div>
+                  <Link
+                    to="/security"
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Ver todas
+                  </Link>
+                </CardHeader>
+                <CardContent>
+                  {data.recentAlerts.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-text-muted">
+                      No hay alertas para esta cuenta.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {data.recentAlerts.map((alert) => (
+                        <li
+                          key={alert.id_alerta}
+                          className="rounded-lg border border-border p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-text-primary">
+                              {alert.comercio || "Transacción sin comercio"}
+                            </p>
+                            <div className="flex gap-2">
+                              <AlertBadge severidad={alert.severidad} />
+                              <AlertBadge estado={alert.estado} />
+                            </div>
+                          </div>
+                          <p className="mt-1 text-xs text-text-secondary">
+                            {alert.motivo}
+                          </p>
+                          <p className="mt-1 text-xs text-text-muted">
+                            {formatCurrency(alert.monto)} ·{" "}
+                            {formatDate(alert.fecha_detectada)}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
       </div>

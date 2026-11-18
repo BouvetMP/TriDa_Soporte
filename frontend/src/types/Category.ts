@@ -7,7 +7,7 @@ export interface Category {
   tipo: TipoCategoria;
   icono?: string | null;
   color?: string | null;
-  es_predeterminada?: boolean;
+  es_personalizada?: boolean;
   created_at?: string;
 }
 

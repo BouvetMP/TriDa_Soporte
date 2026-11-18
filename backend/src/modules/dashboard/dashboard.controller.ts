@@ -5,12 +5,17 @@
 import { Request, Response, NextFunction } from "express";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { dashboardService } from "./dashboard.service.js";
+import { parseId } from "../../utils/params.js";
+
+function getAccountId(req: Request): number | undefined {
+  return req.query.id_cuenta === undefined ? undefined : parseId(req.query.id_cuenta);
+}
 
 export const dashboardController = {
   async getStats(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const data = await dashboardService.getStats(userId);
+      const data = await dashboardService.getStats(userId, getAccountId(req));
       sendSuccess(res, data);
     } catch (error) {
       next(error);
@@ -29,7 +34,7 @@ export const dashboardController = {
         }
       }
 
-      const data = await dashboardService.getRecentAlerts(userId, limit);
+      const data = await dashboardService.getRecentAlerts(userId, limit, getAccountId(req));
       sendSuccess(res, data);
     } catch (error) {
       next(error);
@@ -48,7 +53,32 @@ export const dashboardController = {
         }
       }
 
-      const data = await dashboardService.getRecentTransactions(userId, limit);
+      const data = await dashboardService.getRecentTransactions(
+        userId,
+        limit,
+        getAccountId(req),
+      );
+      sendSuccess(res, data);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getRecentAdvice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id_usuario;
+      const data = await dashboardService.getRecentAdvice(userId);
+      sendSuccess(res, data);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async markAdviceRead(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id_usuario;
+      const adviceId = parseId(req.params.id);
+      const data = await dashboardService.markAdviceRead(userId, adviceId);
       sendSuccess(res, data);
     } catch (error) {
       next(error);

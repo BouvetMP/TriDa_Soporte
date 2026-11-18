@@ -6,11 +6,13 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v2";
 
 export const TOKEN_KEY = "trida_jwt_token";
+export const AUTH_EXPIRED_EVENT = "trida:auth-expired";
 
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: "/auth/login",
     REGISTER: "/auth/register",
+    VERIFY_EMAIL: "/auth/verify-email",
     FORGOT_PASSWORD: "/auth/forgot-password",
     VERIFY_RESET_TOKEN: "/auth/verify-reset-token",
     RESET_PASSWORD: "/auth/reset-password",

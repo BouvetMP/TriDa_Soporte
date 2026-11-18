@@ -2,11 +2,14 @@ import { useState, useCallback, useEffect } from "react";
 import { DevicesApi } from "@/api/Devices";
 import { Device } from "@/types/Device";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/hooks/useAuth";
+import { clearCurrentDeviceRecordId } from "@/utils/deviceRegistration";
 
 export const useDevices = () => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const { showToast } = useToast();
+  const { user } = useAuth();
 
   const fetchDevices = useCallback(async () => {
     setIsLoading(true);
@@ -30,7 +33,16 @@ export const useDevices = () => {
   }, [showToast]);
 
   useEffect(() => {
+    const handleDeviceRegistered = () => {
+      void fetchDevices();
+    };
+    window.addEventListener("trida-device-registered", handleDeviceRegistered);
     fetchDevices();
+    return () =>
+      window.removeEventListener(
+        "trida-device-registered",
+        handleDeviceRegistered,
+      );
   }, [fetchDevices]);
 
   const toggleTrust = async (
@@ -76,6 +88,7 @@ export const useDevices = () => {
     try {
       const response = await DevicesApi.delete(id);
       if (response.success) {
+        if (user) clearCurrentDeviceRecordId(user.id_usuario, id);
         setDevices((prev) => prev.filter((dev) => dev.id_dispositivo !== id));
         showToast({
           type: "success",

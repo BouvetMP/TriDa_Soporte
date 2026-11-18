@@ -2,17 +2,12 @@ import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
 import { riskService } from "../alerts/risk.service.js";
 import { getTransactionBalanceDelta } from "./transaction-balance.js";
+import { AppError } from "../../utils/AppError.js";
+import { config } from "../../config.js";
+import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
 import type { CreateTransactionInput, ListTransactionsQueryInput } from "./transactions.schemas.js";
 
-export class TransactionError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 400,
-  ) {
-    super(message);
-    this.name = "TransactionError";
-  }
-}
+export class TransactionError extends AppError {}
 
 export type TransactionQueryParams = ListTransactionsQueryInput;
 
@@ -22,23 +17,19 @@ export class TransactionsService {
     const offset = params.offset ?? 0;
     const page = Math.floor(offset / limit) + 1;
     const sqlParams: unknown[] = [Number(userId)];
-    const conditions = ["t.id_usuario = $1"];
+    const conditions = [
+      "t.id_usuario = $1",
+      "EXISTS (SELECT 1 FROM trida.cuentas active_account WHERE active_account.id_cuenta = t.id_cuenta AND active_account.id_usuario = t.id_usuario AND active_account.estado = TRUE)",
+    ];
 
     if (params.fecha_inicio) {
-      sqlParams.push(new Date(params.fecha_inicio));
+      sqlParams.push(parseDateStart(params.fecha_inicio, config.APP_TIMEZONE));
       conditions.push(`t.fecha_transaccion >= $${sqlParams.length}`);
     }
 
     if (params.fecha_fin) {
-      const fecha_fin = new Date(params.fecha_fin);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(params.fecha_fin)) {
-        fecha_fin.setUTCDate(fecha_fin.getUTCDate() + 1);
-        sqlParams.push(fecha_fin);
-        conditions.push(`t.fecha_transaccion < $${sqlParams.length}`);
-      } else {
-        sqlParams.push(fecha_fin);
-        conditions.push(`t.fecha_transaccion <= $${sqlParams.length}`);
-      }
+      sqlParams.push(parseDateEnd(params.fecha_fin, config.APP_TIMEZONE));
+      conditions.push(`t.fecha_transaccion <= $${sqlParams.length}`);
     }
 
     if (params.tipo_movimiento) {
@@ -89,9 +80,10 @@ export class TransactionsService {
     }
 
     if (params.search) {
-      sqlParams.push(`%${params.search}%`);
+      const escapedSearch = params.search.replace(/[\\%_]/g, "\\$&");
+      sqlParams.push(`%${escapedSearch}%`);
       conditions.push(
-        `(t.descripcion ILIKE $${sqlParams.length} OR t.comercio ILIKE $${sqlParams.length})`,
+        `(t.descripcion ILIKE $${sqlParams.length} ESCAPE E'\\\\' OR t.comercio ILIKE $${sqlParams.length} ESCAPE E'\\\\')`,
       );
     }
 
@@ -99,24 +91,40 @@ export class TransactionsService {
       fecha_transaccion: "t.fecha_transaccion",
       monto: "t.monto",
       tipo_movimiento: "t.tipo_movimiento",
-      nivel_riesgo: "t.score_anomalia",
+      nivel_riesgo: `CASE
+        WHEN a.id_alerta IS NOT NULL THEN CASE a.severidad
+          WHEN 'BAJA' THEN 1
+          WHEN 'MEDIA' THEN 2
+          WHEN 'ALTA' THEN 3
+          WHEN 'CRITICA' THEN 4
+          ELSE 0
+        END
+        WHEN t.score_anomalia >= 95 THEN 4
+        WHEN t.score_anomalia >= 70 THEN 3
+        WHEN t.score_anomalia >= 30 THEN 2
+        ELSE 1
+      END`,
     };
     const sortField =
       validSortFields[params.sort_by ?? "fecha_transaccion"] ?? "t.fecha_transaccion";
     const sortOrder = params.sort_order?.toUpperCase() === "ASC" ? "ASC" : "DESC";
     const whereClause = conditions.join(" AND ");
-
-    const countResult = await queryRaw<Array<{ total: bigint }>>(
-      `
-        SELECT COUNT(*) AS total
-        FROM trida.transacciones t
-        LEFT JOIN LATERAL (
+    const countAlertJoin =
+      params.nivel_riesgo && params.nivel_riesgo.toUpperCase() !== "ALL"
+        ? `LEFT JOIN LATERAL (
           SELECT a.id_alerta, a.severidad
           FROM trida.alertas_fraude a
           WHERE a.id_transaccion = t.id_transaccion
           ORDER BY a.fecha_detectada DESC
           LIMIT 1
-        ) a ON TRUE
+        ) a ON TRUE`
+        : "";
+
+    const countResult = await queryRaw<Array<{ total: bigint }>>(
+      `
+        SELECT COUNT(*) AS total
+        FROM trida.transacciones t
+        ${countAlertJoin}
         WHERE ${whereClause}
       `,
       ...sqlParams,
@@ -192,7 +200,7 @@ export class TransactionsService {
           LIMIT 1
         ) a ON TRUE
         WHERE ${whereClause}
-        ORDER BY ${sortField} ${sortOrder}
+        ORDER BY ${sortField} ${sortOrder}, t.id_transaccion ${sortOrder}
         LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}
       `,
       ...dataParams,
@@ -246,7 +254,12 @@ export class TransactionsService {
       throw new TransactionError("Transacción no encontrada", 404);
     }
 
-    return transaction;
+    return {
+      ...transaction,
+      monto: Number(transaction.monto),
+      score_anomalia:
+        transaction.score_anomalia === null ? null : Number(transaction.score_anomalia),
+    };
   }
 
   async getById(userId: string | number, transactionId: string | number) {
@@ -259,64 +272,20 @@ export class TransactionsService {
     meta: { userAgent?: string; ip?: string } = {},
   ) {
     const id_usuario = Number(userId);
-    const cuenta = await prisma.cuenta.findFirst({
-      where: {
-        id_cuenta: data.id_cuenta,
-        id_usuario,
-      },
-    });
-
-    if (!cuenta) {
-      throw new TransactionError("La cuenta no existe o no pertenece al usuario", 404);
-    }
-
     const id_categoria = data.id_categoria ?? null;
-    if (id_categoria !== null) {
-      const categoria = await prisma.categoria.findFirst({
-        where: {
-          id_categoria,
-          OR: [{ id_usuario }, { id_usuario: null }],
-        },
-        select: { id_categoria: true },
-      });
-
-      if (!categoria) {
-        throw new TransactionError("La categoría no existe o no pertenece al usuario", 404);
-      }
-    }
-
     const fecha_transaccion = data.fecha_transaccion
       ? new Date(data.fecha_transaccion)
       : new Date();
-    const riskResult = await riskService.evaluateRisk({
-      id_usuario,
-      monto: data.monto,
-      tipo_movimiento: data.tipo_movimiento,
-      comercio: data.comercio,
-      ubicacion_lat: data.latitud,
-      ubicacion_lon: data.longitud,
-      id_dispositivo: data.id_dispositivo,
-      fecha_transaccion,
-    });
-
-    const { id_dispositivo_validado, ...evaluation } = riskResult;
-    const motivo_riesgo = riskResult.razones.join("; ") || null;
     const variacion_saldo = getTransactionBalanceDelta(data.tipo_movimiento, data.monto);
     const direccion_ip = data.ip_origen ?? meta.ip ?? null;
-    const estado =
-      riskResult.estado_evaluacion === "APROBADA"
-        ? "CONFIRMADA"
-        : riskResult.estado_evaluacion === "REVISAR"
-          ? "PENDIENTE"
-          : "RECHAZADA";
 
     return prisma.$transaction(async (transaction) => {
       const cuentaTransaccion = await transaction.cuenta.findFirst({
-        where: { id_cuenta: data.id_cuenta, id_usuario },
+        where: { id_cuenta: data.id_cuenta, id_usuario, estado: true },
         select: { id_cuenta: true },
       });
       if (!cuentaTransaccion) {
-        throw new TransactionError("La cuenta no existe o no pertenece al usuario", 404);
+        throw new TransactionError("La cuenta no existe, no está activa o no pertenece al usuario", 404);
       }
 
       if (id_categoria !== null) {
@@ -332,17 +301,26 @@ export class TransactionsService {
         }
       }
 
-      const dispositivoTransaccion =
-        id_dispositivo_validado === null
-          ? null
-          : await transaction.dispositivo.findFirst({
-              where: {
-                id_dispositivo: id_dispositivo_validado,
-                id_usuario,
-              },
-              select: { id_dispositivo: true },
-            });
-      const id_dispositivo = dispositivoTransaccion?.id_dispositivo ?? null;
+      const riskResult = await riskService.evaluateRisk(
+        {
+          id_usuario,
+          monto: data.monto,
+          tipo_movimiento: data.tipo_movimiento,
+          ubicacion_lat: data.latitud,
+          ubicacion_lon: data.longitud,
+          id_dispositivo: data.id_dispositivo,
+          fecha_transaccion,
+        },
+        transaction,
+      );
+      const { id_dispositivo_validado: id_dispositivo, ...evaluation } = riskResult;
+      const motivo_riesgo = riskResult.razones.join("; ") || null;
+      const estado =
+        riskResult.estado_evaluacion === "APROBADA"
+          ? "CONFIRMADA"
+          : riskResult.estado_evaluacion === "REVISAR"
+            ? "PENDIENTE"
+            : "RECHAZADA";
 
       let id_ubicacion: number | null = null;
       if (
@@ -412,7 +390,14 @@ export class TransactionsService {
       }
 
       return {
-        transaction: transactionData,
+        transaction: {
+          ...transactionData,
+          monto: Number(transactionData.monto),
+          score_anomalia:
+            transactionData.score_anomalia === null
+              ? null
+              : Number(transactionData.score_anomalia),
+        },
         evaluation,
         alert: alerta,
       };

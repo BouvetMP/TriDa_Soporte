@@ -24,9 +24,8 @@ export const DevicesPage: React.FC = () => {
           Dispositivos Conectados
         </h1>
         <p className="text-sm text-[var(--color-text-subtle)] mt-1">
-          Administra los dispositivos que han accedido a tu cuenta. Marca como
-          confiables aquellos que utilizas habitualmente para mejorar la
-          precisión del motor de prevención de fraude.
+          Administra los dispositivos asociados a tus transacciones y marca como
+          confiables aquellos que utilizas habitualmente.
         </p>
       </div>
 
@@ -41,8 +40,7 @@ export const DevicesPage: React.FC = () => {
             No hay dispositivos registrados
           </h3>
           <p className="text-sm text-[var(--color-text-subtle)] mt-1">
-            Los dispositivos desde donde inicies sesión aparecerán aquí
-            automáticamente.
+            Este dispositivo se vinculará automáticamente al iniciar sesión.
           </p>
         </div>
       ) : (
@@ -62,7 +60,7 @@ export const DevicesPage: React.FC = () => {
       <ConfirmDialog
         isOpen={deleteDeviceId !== null}
         title="Desvincular Dispositivo"
-        description="¿Estás seguro de que deseas desvincular este dispositivo? Si la sesión sigue activa en él, requerirá autenticación nuevamente."
+        description="¿Estás seguro de que deseas desvincular este dispositivo? La sesión actual no se cerrará, pero las transacciones futuras dejarán de asociarse a este registro."
         confirmText="Desvincular"
         variant="danger"
         onConfirm={handleDeleteConfirm}

@@ -21,7 +21,7 @@ export interface CreateSavingsGoalPayload {
 export interface UpdateSavingsGoalPayload {
   nombre?: string;
   monto_objetivo?: number;
-  fecha_limite?: string;
+  fecha_limite?: string | null;
   estado?: EstadoMeta;
 }
 

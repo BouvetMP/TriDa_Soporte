@@ -31,7 +31,7 @@ export const RiskBadge: React.FC<RiskBadgeProps> = ({
       </span>
       {typeof score === "number" && (
         <span className="text-xs text-[var(--color-text-muted)] font-mono">
-          ({Math.round(score * 100)}%)
+          ({Math.round(score)}%)
         </span>
       )}
     </div>

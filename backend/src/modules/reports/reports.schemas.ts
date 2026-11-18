@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 export const reportQuerySchema = z.object({
+  id_cuenta: z.coerce.number().int().positive().optional(),
   fecha_inicio: z.iso.datetime().or(z.iso.date()).optional(),
   fecha_fin: z.iso.datetime().or(z.iso.date()).optional(),
   tipo_movimiento: z.enum(["INGRESO", "GASTO", "AHORRO"]).optional(),
