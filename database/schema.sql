@@ -1,0 +1,1156 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE SCHEMA IF NOT EXISTS trida;
+SET search_path TO trida, public;
+
+CREATE TABLE trida.usuarios (
+    id_usuario       SERIAL PRIMARY KEY,
+    nombre_completo  VARCHAR(150) NOT NULL,
+    email            VARCHAR(254) NOT NULL UNIQUE,
+    password_hash    TEXT NOT NULL,
+    telefono         VARCHAR(20),
+    pais             VARCHAR(100),
+    ciudad           VARCHAR(100),
+    rol              VARCHAR(20) NOT NULL DEFAULT 'USER',
+    estado           BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_registro   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ultimo_acceso    TIMESTAMPTZ,
+    CONSTRAINT chk_usuarios_email CHECK (email ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$'),
+    CONSTRAINT chk_usuarios_rol   CHECK (rol IN ('USER'))
+);
+
+-- ----------------------------------------------------------------------------
+-- perfil_financiero
+-- Datos financieros clave del usuario (1:1).
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.perfil_financiero (
+    id_perfil            SERIAL PRIMARY KEY,
+    id_usuario           INTEGER NOT NULL UNIQUE
+                         REFERENCES trida.usuarios (id_usuario)
+                         ON UPDATE CASCADE ON DELETE CASCADE,
+    ingreso_mensual      NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    moneda_preferida     CHAR(3) NOT NULL DEFAULT 'COP',
+    tolerancia_riesgo    VARCHAR(10) NOT NULL DEFAULT 'MEDIA',
+    meta_ahorro_mensual  NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    fecha_actualizacion  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_perfil_ingreso CHECK (ingreso_mensual >= 0),
+    CONSTRAINT chk_perfil_moneda  CHECK (moneda_preferida ~ '^[A-Z]{3}$'),
+    CONSTRAINT chk_perfil_riesgo  CHECK (tolerancia_riesgo IN ('BAJA', 'MEDIA', 'ALTA')),
+    CONSTRAINT chk_perfil_meta    CHECK (meta_ahorro_mensual >= 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- cuentas
+-- Cada cuenta financiera del usuario (banco, tarjeta, billetera, efectivo).
+-- NUEVA en v2 — reemplaza al antiguo concepto de "banco global".
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.cuentas (
+    id_cuenta          SERIAL PRIMARY KEY,
+    id_usuario         INTEGER NOT NULL
+                       REFERENCES trida.usuarios (id_usuario)
+                       ON UPDATE CASCADE ON DELETE CASCADE,
+    nombre             VARCHAR(100) NOT NULL,
+    entidad            VARCHAR(100),
+    tipo               VARCHAR(20) NOT NULL,
+    numero_enmascarado VARCHAR(20),
+    color              VARCHAR(20) NOT NULL DEFAULT '#6366F1',
+    saldo_inicial      NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    estado             BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_cuenta_tipo CHECK (tipo IN ('BANCO', 'TARJETA', 'BILLETERA', 'EFECTIVO'))
+);
+
+-- ----------------------------------------------------------------------------
+-- categorias
+-- Catálogo de gasto/ingreso. es_default = TRUE son del sistema.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.categorias (
+    id_categoria   SERIAL PRIMARY KEY,
+    id_usuario     INTEGER REFERENCES trida.usuarios (id_usuario)
+                   ON UPDATE CASCADE ON DELETE CASCADE,
+    nombre         VARCHAR(80) NOT NULL,
+    tipo           VARCHAR(10) NOT NULL,
+    icono          VARCHAR(50),
+    color          VARCHAR(20) NOT NULL DEFAULT '#6366F1',
+    es_default     BOOLEAN NOT NULL DEFAULT FALSE,
+    estado         BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_categoria_tipo CHECK (tipo IN ('INGRESO', 'GASTO', 'AHORRO')),
+    CONSTRAINT uq_categoria_user  UNIQUE (id_usuario, nombre)
+);
+
+-- ----------------------------------------------------------------------------
+-- dispositivos
+-- Dispositivos del usuario para detección de accesos inusuales.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.dispositivos (
+    id_dispositivo      SERIAL PRIMARY KEY,
+    id_usuario          INTEGER NOT NULL
+                        REFERENCES trida.usuarios (id_usuario)
+                        ON UPDATE CASCADE ON DELETE CASCADE,
+    tipo_dispositivo    VARCHAR(50) NOT NULL,
+    identificador_unico VARCHAR(255) NOT NULL UNIQUE,
+    sistema_operativo   VARCHAR(100),
+    navegador           VARCHAR(100),
+    confiable           BOOLEAN NOT NULL DEFAULT FALSE,
+    fecha_primer_uso    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fecha_ultimo_uso    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_fechas_disp CHECK (fecha_ultimo_uso >= fecha_primer_uso)
+);
+
+-- ----------------------------------------------------------------------------
+-- ubicaciones
+-- Histórico de ubicaciones asociadas a transacciones.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.ubicaciones (
+    id_ubicacion   SERIAL PRIMARY KEY,
+    id_dispositivo INTEGER REFERENCES trida.dispositivos (id_dispositivo)
+                   ON UPDATE CASCADE ON DELETE SET NULL,
+    direccion_ip   INET,
+    pais           VARCHAR(100),
+    ciudad         VARCHAR(100),
+    latitud        NUMERIC(9, 6),
+    longitud       NUMERIC(9, 6),
+    fecha_registro TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_lat CHECK (latitud BETWEEN -90 AND 90),
+    CONSTRAINT chk_lng CHECK (longitud BETWEEN -180 AND 180)
+);
+
+-- ----------------------------------------------------------------------------
+-- transacciones
+-- Núcleo del sistema. tipo_movimiento: INGRESO | GASTO | AHORRO.
+-- monto siempre positivo (RF-004 adaptado: el tipo indica la dirección).
+-- NUEVO: id_cuenta vincula cada movimiento a una cuenta del usuario.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.transacciones (
+    id_transaccion    SERIAL PRIMARY KEY,
+    id_usuario        INTEGER NOT NULL
+                      REFERENCES trida.usuarios (id_usuario)
+                      ON UPDATE CASCADE ON DELETE CASCADE,
+    id_cuenta         INTEGER REFERENCES trida.cuentas (id_cuenta)
+                      ON UPDATE CASCADE ON DELETE SET NULL,
+    id_categoria      INTEGER REFERENCES trida.categorias (id_categoria)
+                      ON UPDATE CASCADE ON DELETE SET NULL,
+    id_dispositivo    INTEGER REFERENCES trida.dispositivos (id_dispositivo)
+                      ON UPDATE CASCADE ON DELETE SET NULL,
+    id_ubicacion      INTEGER REFERENCES trida.ubicaciones (id_ubicacion)
+                      ON UPDATE CASCADE ON DELETE SET NULL,
+    tipo_movimiento   VARCHAR(10) NOT NULL,
+    monto             NUMERIC(15, 2) NOT NULL,
+    moneda            CHAR(3) NOT NULL DEFAULT 'COP',
+    descripcion       VARCHAR(255),
+    comercio          VARCHAR(150),
+    canal             VARCHAR(20) NOT NULL DEFAULT 'web',
+    es_recurrente     BOOLEAN NOT NULL DEFAULT FALSE,
+    score_anomalia    NUMERIC(5, 2),
+    estado            VARCHAR(20) NOT NULL DEFAULT 'CONFIRMADA',
+    fecha_transaccion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_monto_positivo  CHECK (monto > 0),
+    CONSTRAINT chk_moneda_tx       CHECK (moneda ~ '^[A-Z]{3}$'),
+    CONSTRAINT chk_tipo_movimiento CHECK (tipo_movimiento IN ('INGRESO', 'GASTO', 'AHORRO')),
+    CONSTRAINT chk_canal_tx        CHECK (canal IN ('mobile','web','pos','atm','transferencia','efectivo','manual')),
+    CONSTRAINT chk_estado_tx       CHECK (estado IN ('PENDIENTE','CONFIRMADA','APROBADA','SOSPECHOSA','RECHAZADA')),
+    CONSTRAINT chk_score_rango     CHECK (score_anomalia BETWEEN 0 AND 100)
+);
+
+-- ----------------------------------------------------------------------------
+-- patron_comportamiento
+-- Snapshot 1:1 del perfil conductual del usuario (simple).
+-- El backend recalcula periódicamente; el trigger solo marca la fecha.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.patron_comportamiento (
+    id_patron              SERIAL PRIMARY KEY,
+    id_usuario             INTEGER NOT NULL UNIQUE
+                           REFERENCES trida.usuarios (id_usuario)
+                           ON UPDATE CASCADE ON DELETE CASCADE,
+    gasto_diario_promedio  NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    gasto_diario_desv      NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    categorias_top         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ubicaciones_frecuentes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    horarios_habituales    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    comercios_frecuentes   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    fecha_actualizacion    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ----------------------------------------------------------------------------
+-- presupuestos
+-- Límites de gasto por categoría y mes. NUEVA en v2.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.presupuestos (
+    id_presupuesto SERIAL PRIMARY KEY,
+    id_usuario     INTEGER NOT NULL
+                   REFERENCES trida.usuarios (id_usuario)
+                   ON UPDATE CASCADE ON DELETE CASCADE,
+    id_categoria   INTEGER REFERENCES trida.categorias (id_categoria)
+                   ON UPDATE CASCADE ON DELETE SET NULL,
+    limite_mensual NUMERIC(15, 2) NOT NULL,
+    mes            SMALLINT NOT NULL,
+    anio           SMALLINT NOT NULL,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_presup_limite CHECK (limite_mensual > 0),
+    CONSTRAINT chk_presup_mes    CHECK (mes BETWEEN 1 AND 12),
+    CONSTRAINT chk_presup_anio   CHECK (anio BETWEEN 2020 AND 2100),
+    CONSTRAINT uq_presup         UNIQUE (id_usuario, id_categoria, mes, anio)
+);
+
+-- ----------------------------------------------------------------------------
+-- metas_ahorro
+-- Objetivos financieros del usuario.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.metas_ahorro (
+    id_meta          SERIAL PRIMARY KEY,
+    id_usuario       INTEGER NOT NULL
+                     REFERENCES trida.usuarios (id_usuario)
+                     ON UPDATE CASCADE ON DELETE CASCADE,
+    nombre           VARCHAR(120) NOT NULL,
+    descripcion      TEXT,
+    monto_objetivo   NUMERIC(15, 2) NOT NULL,
+    monto_actual     NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    fecha_limite     DATE,
+    estado           VARCHAR(15) NOT NULL DEFAULT 'ACTIVA',
+    fecha_creacion   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fecha_completada TIMESTAMPTZ,
+    CONSTRAINT chk_meta_obj CHECK (monto_objetivo > 0),
+    CONSTRAINT chk_meta_act CHECK (monto_actual >= 0),
+    CONSTRAINT chk_meta_est CHECK (estado IN ('ACTIVA','PAUSADA','COMPLETADA','CANCELADA'))
+);
+
+-- ----------------------------------------------------------------------------
+-- aportes_meta
+-- Movimientos hacia una meta de ahorro. NUEVA en v2.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.aportes_meta (
+    id_aporte    SERIAL PRIMARY KEY,
+    id_meta      INTEGER NOT NULL
+                 REFERENCES trida.metas_ahorro (id_meta)
+                 ON UPDATE CASCADE ON DELETE CASCADE,
+    monto        NUMERIC(15, 2) NOT NULL,
+    fecha_aporte TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_aporte_monto CHECK (monto > 0)
+);
+
+-- ----------------------------------------------------------------------------
+-- consejos_financieros
+-- Recomendaciones de la IA basadas en hábitos del usuario.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.consejos_financieros (
+    id_consejo     SERIAL PRIMARY KEY,
+    id_usuario     INTEGER NOT NULL
+                   REFERENCES trida.usuarios (id_usuario)
+                   ON UPDATE CASCADE ON DELETE CASCADE,
+    tipo           VARCHAR(20) NOT NULL,
+    titulo         VARCHAR(150) NOT NULL,
+    descripcion    TEXT NOT NULL,
+    prioridad      VARCHAR(10) NOT NULL DEFAULT 'MEDIA',
+    leido          BOOLEAN NOT NULL DEFAULT FALSE,
+    fecha_generado TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fecha_leido    TIMESTAMPTZ,
+    CONSTRAINT chk_consejo_tipo CHECK (tipo IN ('AHORRO','GASTO','INVERSION','ALERTA','METAS')),
+    CONSTRAINT chk_consejo_prio CHECK (prioridad IN ('BAJA','MEDIA','ALTA'))
+);
+
+-- ----------------------------------------------------------------------------
+-- alertas_fraude
+-- Alertas que el propio usuario confirma o descarta.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.alertas_fraude (
+    id_alerta       SERIAL PRIMARY KEY,
+    id_usuario      INTEGER NOT NULL
+                    REFERENCES trida.usuarios (id_usuario)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+    id_transaccion  INTEGER NOT NULL
+                    REFERENCES trida.transacciones (id_transaccion)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+    severidad       VARCHAR(10) NOT NULL,
+    motivo          TEXT NOT NULL,
+    estado          VARCHAR(15) NOT NULL DEFAULT 'PENDIENTE',
+    fecha_detectada TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fecha_resuelta  TIMESTAMPTZ,
+    accion_usuario  VARCHAR(20),
+    CONSTRAINT chk_alerta_sev    CHECK (severidad IN ('BAJA','MEDIA','ALTA','CRITICA')),
+    CONSTRAINT chk_alerta_estado CHECK (estado IN ('PENDIENTE','CONFIRMADA','DESCARTADA')),
+    CONSTRAINT chk_alerta_accion CHECK (accion_usuario IS NULL
+        OR accion_usuario IN ('FUI_YO','NO_FUI_YO','BLOQUEAR_TARJETA'))
+);
+
+-- ----------------------------------------------------------------------------
+-- analisis_gastos
+-- Snapshots precalculados por período.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.analisis_gastos (
+    id_analisis          SERIAL PRIMARY KEY,
+    id_usuario           INTEGER NOT NULL
+                         REFERENCES trida.usuarios (id_usuario)
+                         ON UPDATE CASCADE ON DELETE CASCADE,
+    periodo              VARCHAR(10) NOT NULL,
+    fecha_inicio         DATE NOT NULL,
+    fecha_fin            DATE NOT NULL,
+    total_ingresos       NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    total_gastos         NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    total_ahorro         NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    desglose_categorias  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    comparativa_anterior JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fecha_generado       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_analisis_per   CHECK (periodo IN ('SEMANAL','MENSUAL','ANUAL')),
+    CONSTRAINT chk_analisis_fecha CHECK (fecha_fin >= fecha_inicio),
+    CONSTRAINT uq_analisis        UNIQUE (id_usuario, periodo, fecha_inicio)
+);
+
+-- ----------------------------------------------------------------------------
+-- reportes_mensuales
+-- Reportes consolidados con score de salud financiera.
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.reportes_mensuales (
+    id_reporte     SERIAL PRIMARY KEY,
+    id_usuario     INTEGER NOT NULL
+                   REFERENCES trida.usuarios (id_usuario)
+                   ON UPDATE CASCADE ON DELETE CASCADE,
+    anio           SMALLINT NOT NULL,
+    mes            SMALLINT NOT NULL,
+    score_salud    NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    resumen        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ruta_archivo   TEXT,
+    fecha_generado TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_rep_anio  CHECK (anio BETWEEN 2000 AND 2100),
+    CONSTRAINT chk_rep_mes   CHECK (mes BETWEEN 1 AND 12),
+    CONSTRAINT chk_rep_score CHECK (score_salud BETWEEN 0 AND 100),
+    CONSTRAINT uq_rep_mes    UNIQUE (id_usuario, anio, mes)
+);
+
+-- ----------------------------------------------------------------------------
+-- logs_auditoria
+-- Bitácora inmutable (append-only).
+-- ----------------------------------------------------------------------------
+CREATE TABLE trida.logs_auditoria (
+    id_log           SERIAL PRIMARY KEY,
+    id_usuario       INTEGER REFERENCES trida.usuarios (id_usuario)
+                     ON UPDATE CASCADE ON DELETE SET NULL,
+    tipo_accion      VARCHAR(50) NOT NULL,
+    entidad_afectada VARCHAR(50) NOT NULL,
+    id_entidad       INTEGER,
+    descripcion      TEXT,
+    direccion_ip     INET,
+    fecha_accion     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 2. REGLAS (logs inmutables)
+-- ============================================================================
+
+CREATE RULE logs_no_update AS ON UPDATE TO trida.logs_auditoria DO INSTEAD NOTHING;
+CREATE RULE logs_no_delete AS ON DELETE TO trida.logs_auditoria DO INSTEAD NOTHING;
+
+-- ============================================================================
+-- 3. ÍNDICES
+-- ============================================================================
+
+CREATE INDEX idx_usuarios_estado      ON trida.usuarios (estado);
+CREATE INDEX idx_usuarios_nombre_trgm ON trida.usuarios USING gin (nombre_completo gin_trgm_ops);
+
+CREATE INDEX idx_cuentas_usuario      ON trida.cuentas (id_usuario);
+
+CREATE INDEX idx_categorias_usuario   ON trida.categorias (id_usuario);
+CREATE INDEX idx_categorias_tipo      ON trida.categorias (tipo);
+
+CREATE INDEX idx_dispositivos_usuario ON trida.dispositivos (id_usuario);
+CREATE INDEX idx_dispositivos_conf    ON trida.dispositivos (confiable);
+
+CREATE INDEX idx_ubicaciones_disp     ON trida.ubicaciones (id_dispositivo);
+CREATE INDEX idx_ubicaciones_ciudad   ON trida.ubicaciones (ciudad);
+
+CREATE INDEX idx_tx_usuario           ON trida.transacciones (id_usuario);
+CREATE INDEX idx_tx_cuenta            ON trida.transacciones (id_cuenta);
+CREATE INDEX idx_tx_categoria         ON trida.transacciones (id_categoria);
+CREATE INDEX idx_tx_fecha             ON trida.transacciones (fecha_transaccion DESC);
+CREATE INDEX idx_tx_usuario_fecha     ON trida.transacciones (id_usuario, fecha_transaccion DESC);
+CREATE INDEX idx_tx_tipo              ON trida.transacciones (tipo_movimiento);
+CREATE INDEX idx_tx_estado            ON trida.transacciones (estado);
+CREATE INDEX idx_tx_score             ON trida.transacciones (score_anomalia DESC)
+                                       WHERE score_anomalia IS NOT NULL;
+CREATE INDEX idx_tx_recurrente        ON trida.transacciones (id_usuario, es_recurrente)
+                                       WHERE es_recurrente = TRUE;
+
+CREATE INDEX idx_presup_usuario       ON trida.presupuestos (id_usuario, anio, mes);
+
+CREATE INDEX idx_metas_usuario        ON trida.metas_ahorro (id_usuario);
+CREATE INDEX idx_metas_estado         ON trida.metas_ahorro (estado);
+
+CREATE INDEX idx_aportes_meta         ON trida.aportes_meta (id_meta);
+
+CREATE INDEX idx_consejos_usuario     ON trida.consejos_financieros (id_usuario);
+CREATE INDEX idx_consejos_no_leidos   ON trida.consejos_financieros (id_usuario, leido)
+                                       WHERE leido = FALSE;
+
+CREATE INDEX idx_alertas_usuario      ON trida.alertas_fraude (id_usuario);
+CREATE INDEX idx_alertas_estado       ON trida.alertas_fraude (estado);
+CREATE INDEX idx_alertas_severidad    ON trida.alertas_fraude (severidad);
+
+CREATE INDEX idx_analisis_user_per    ON trida.analisis_gastos (id_usuario, periodo, fecha_inicio DESC);
+
+CREATE INDEX idx_reportes_usuario     ON trida.reportes_mensuales (id_usuario, anio DESC, mes DESC);
+
+CREATE INDEX idx_logs_usuario         ON trida.logs_auditoria (id_usuario);
+CREATE INDEX idx_logs_fecha           ON trida.logs_auditoria (fecha_accion DESC);
+CREATE INDEX idx_logs_tipo            ON trida.logs_auditoria (tipo_accion);
+
+-- ============================================================================
+-- 4. TRIGGERS
+-- ============================================================================
+
+-- 4.1 Actualizar fechas del dispositivo al insertar transacción
+CREATE OR REPLACE FUNCTION trida.fn_trg_actualizar_dispositivo()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id_dispositivo IS NOT NULL THEN
+        UPDATE trida.dispositivos
+        SET fecha_primer_uso = LEAST(fecha_primer_uso, NEW.fecha_transaccion),
+            fecha_ultimo_uso = GREATEST(fecha_ultimo_uso, NEW.fecha_transaccion)
+        WHERE id_dispositivo = NEW.id_dispositivo;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_actualizar_dispositivo
+AFTER INSERT ON trida.transacciones
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_actualizar_dispositivo();
+
+-- 4.2 Meta completada automáticamente
+CREATE OR REPLACE FUNCTION trida.fn_trg_meta_completada()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.monto_actual >= NEW.monto_objetivo AND NEW.estado = 'ACTIVA' THEN
+        NEW.estado := 'COMPLETADA';
+        NEW.fecha_completada := NOW();
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_meta_completada
+BEFORE UPDATE OF monto_actual ON trida.metas_ahorro
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_meta_completada();
+
+-- 4.3 Fecha de lectura del consejo
+CREATE OR REPLACE FUNCTION trida.fn_trg_consejo_leido()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.leido = TRUE AND OLD.leido = FALSE THEN
+        NEW.fecha_leido := NOW();
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_consejo_leido
+BEFORE UPDATE OF leido ON trida.consejos_financieros
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_consejo_leido();
+
+-- 4.4 Auditoría de cambios críticos del usuario
+CREATE OR REPLACE FUNCTION trida.fn_trg_auditar_usuarios()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.estado IS DISTINCT FROM NEW.estado THEN
+        INSERT INTO trida.logs_auditoria (id_usuario, tipo_accion, entidad_afectada, id_entidad, descripcion)
+        VALUES (NEW.id_usuario, 'CAMBIO_ESTADO', 'usuarios', NEW.id_usuario,
+                FORMAT('Estado: %s → %s', OLD.estado, NEW.estado));
+    END IF;
+    IF OLD.email IS DISTINCT FROM NEW.email THEN
+        INSERT INTO trida.logs_auditoria (id_usuario, tipo_accion, entidad_afectada, id_entidad, descripcion)
+        VALUES (NEW.id_usuario, 'CAMBIO_EMAIL', 'usuarios', NEW.id_usuario, 'Email actualizado');
+    END IF;
+    IF OLD.password_hash IS DISTINCT FROM NEW.password_hash THEN
+        INSERT INTO trida.logs_auditoria (id_usuario, tipo_accion, entidad_afectada, id_entidad, descripcion)
+        VALUES (NEW.id_usuario, 'CAMBIO_PASSWORD', 'usuarios', NEW.id_usuario, 'Contraseña actualizada');
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_auditar_usuarios
+AFTER UPDATE ON trida.usuarios
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_auditar_usuarios();
+
+-- 4.5 Marcar patrón para recálculo (el cálculo pesado lo hace el backend)
+CREATE OR REPLACE FUNCTION trida.fn_trg_marcar_patron()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.estado IN ('APROBADA', 'CONFIRMADA') THEN
+        INSERT INTO trida.patron_comportamiento (id_usuario)
+        VALUES (NEW.id_usuario)
+        ON CONFLICT (id_usuario) DO UPDATE
+        SET fecha_actualizacion = NOW();
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_marcar_patron
+AFTER INSERT ON trida.transacciones
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_marcar_patron();
+
+-- 4.6 Alerta de presupuesto al 80% / 100%
+CREATE OR REPLACE FUNCTION trida.fn_trg_presupuesto_umbral()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_gastado          NUMERIC(15, 2);
+    v_gastado_anterior NUMERIC(15, 2);
+    v_limite           NUMERIC(15, 2);
+    v_inicio_mes       TIMESTAMPTZ;
+    v_nombre_categoria TEXT;
+BEGIN
+    IF NEW.tipo_movimiento NOT IN ('GASTO', 'AHORRO')
+       OR NEW.estado NOT IN ('CONFIRMADA', 'APROBADA') THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'UPDATE' THEN
+        IF OLD.estado IN ('CONFIRMADA', 'APROBADA') THEN
+            RETURN NEW;
+        END IF;
+    END IF;
+
+    v_inicio_mes := DATE_TRUNC('month', NEW.fecha_transaccion);
+
+    SELECT p.limite_mensual
+    INTO v_limite
+    FROM trida.presupuestos AS p
+    WHERE p.id_usuario = NEW.id_usuario
+      AND p.id_categoria = NEW.id_categoria
+      AND p.mes = EXTRACT(MONTH FROM NEW.fecha_transaccion)::SMALLINT
+      AND p.anio = EXTRACT(YEAR FROM NEW.fecha_transaccion)::SMALLINT
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT COALESCE(SUM(t.monto), 0)
+    INTO v_gastado
+    FROM trida.transacciones AS t
+    WHERE t.id_usuario = NEW.id_usuario
+      AND t.id_categoria = NEW.id_categoria
+      AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
+      AND t.estado IN ('CONFIRMADA', 'APROBADA')
+      AND t.fecha_transaccion >= v_inicio_mes
+      AND t.fecha_transaccion < v_inicio_mes + INTERVAL '1 month';
+
+    v_gastado_anterior := v_gastado - NEW.monto;
+
+    SELECT c.nombre
+    INTO v_nombre_categoria
+    FROM trida.categorias AS c
+    WHERE c.id_categoria = NEW.id_categoria;
+
+    IF v_gastado >= v_limite
+       AND v_gastado_anterior < v_limite THEN
+        INSERT INTO trida.consejos_financieros
+            (id_usuario, tipo, titulo, descripcion, prioridad)
+        VALUES (
+            NEW.id_usuario,
+            'GASTO',
+            'Presupuesto excedido',
+            FORMAT(
+                'Has gastado %s de %s en %s durante este periodo.',
+                v_gastado,
+                v_limite,
+                COALESCE(v_nombre_categoria, 'esta categoría')
+            ),
+            'ALTA'
+        );
+    ELSIF v_gastado >= v_limite * 0.8
+       AND v_gastado_anterior < v_limite * 0.8 THEN
+        INSERT INTO trida.consejos_financieros
+            (id_usuario, tipo, titulo, descripcion, prioridad)
+        VALUES (
+            NEW.id_usuario,
+            'GASTO',
+            'Presupuesto al 80%',
+            FORMAT(
+                'Has gastado %s de %s en %s durante este periodo.',
+                v_gastado,
+                v_limite,
+                COALESCE(v_nombre_categoria, 'esta categoría')
+            ),
+            'MEDIA'
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_presupuesto_umbral ON trida.transacciones;
+
+CREATE TRIGGER trg_presupuesto_umbral
+AFTER INSERT OR UPDATE OF estado ON trida.transacciones
+FOR EACH ROW
+EXECUTE FUNCTION trida.fn_trg_presupuesto_umbral();
+
+-- 4.7 Actualizar monto de meta al insertar aporte
+CREATE OR REPLACE FUNCTION trida.fn_trg_aporte_meta()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE trida.metas_ahorro
+    SET monto_actual = monto_actual + NEW.monto
+    WHERE id_meta = NEW.id_meta;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_aporte_meta
+AFTER INSERT ON trida.aportes_meta
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_aporte_meta();
+
+-- 4.8 Feedback de alerta → actualizar estado de transacción
+CREATE OR REPLACE FUNCTION trida.fn_trg_alerta_feedback()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.accion_usuario = 'FUI_YO' AND NEW.estado = 'CONFIRMADA' THEN
+        UPDATE trida.transacciones SET estado = 'APROBADA'
+        WHERE id_transaccion = NEW.id_transaccion;
+    ELSIF NEW.accion_usuario = 'NO_FUI_YO' THEN
+        UPDATE trida.transacciones SET estado = 'RECHAZADA'
+        WHERE id_transaccion = NEW.id_transaccion;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_alerta_feedback
+AFTER UPDATE OF accion_usuario ON trida.alertas_fraude
+FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_alerta_feedback();
+
+
+-- ============================================================================
+-- TriDa v2 — Funciones.sql
+-- Todas reciben p_id_usuario como primer parámetro (RS-001).
+-- Las que soportan filtro por cuenta usan p_id_cuenta DEFAULT NULL.
+-- ============================================================================
+
+SET search_path TO trida, public;
+
+-- ============================================================================
+-- AUTENTICACIÓN
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_login(p_email TEXT)
+RETURNS TABLE (
+    id_usuario      INTEGER,
+    nombre_completo VARCHAR(150),
+    email           VARCHAR(254),
+    password_hash   TEXT,
+    rol             VARCHAR(20),
+    estado          BOOLEAN,
+    fecha_registro  TIMESTAMPTZ,
+    ultimo_acceso   TIMESTAMPTZ
+)
+LANGUAGE sql STABLE AS $$
+    SELECT u.id_usuario, u.nombre_completo, u.email, u.password_hash,
+           u.rol, u.estado, u.fecha_registro, u.ultimo_acceso
+    FROM trida.usuarios u
+    WHERE LOWER(u.email) = LOWER(p_email)
+    LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_register(
+    p_nombre_completo TEXT,
+    p_email           TEXT,
+    p_password_hash   TEXT,
+    p_telefono        TEXT DEFAULT NULL,
+    p_pais            TEXT DEFAULT NULL,
+    p_ciudad          TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    id_usuario      INTEGER,
+    nombre_completo VARCHAR(150),
+    email           VARCHAR(254),
+    rol             VARCHAR(20),
+    estado          BOOLEAN,
+    fecha_registro  TIMESTAMPTZ
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_id INTEGER;
+BEGIN
+    INSERT INTO trida.usuarios (nombre_completo, email, password_hash, telefono, pais, ciudad)
+    VALUES (p_nombre_completo, LOWER(p_email), p_password_hash, p_telefono, p_pais, p_ciudad)
+    RETURNING id_usuario INTO v_id;
+
+    INSERT INTO trida.perfil_financiero (id_usuario) VALUES (v_id);
+
+    RETURN QUERY
+    SELECT u.id_usuario, u.nombre_completo, u.email, u.rol, u.estado, u.fecha_registro
+    FROM trida.usuarios u WHERE u.id_usuario = v_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_usuario_actual(p_id_usuario INTEGER)
+RETURNS TABLE (
+    id_usuario      INTEGER,
+    nombre_completo VARCHAR(150),
+    email           VARCHAR(254),
+    telefono        VARCHAR(20),
+    pais            VARCHAR(100),
+    ciudad          VARCHAR(100),
+    rol             VARCHAR(20),
+    estado          BOOLEAN,
+    fecha_registro  TIMESTAMPTZ,
+    ultimo_acceso   TIMESTAMPTZ
+)
+LANGUAGE sql STABLE AS $$
+    SELECT id_usuario, nombre_completo, email, telefono, pais, ciudad,
+           rol, estado, fecha_registro, ultimo_acceso
+    FROM trida.usuarios WHERE id_usuario = p_id_usuario LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_actualizar_ultimo_acceso(p_id_usuario INTEGER)
+RETURNS VOID LANGUAGE sql AS $$
+    UPDATE trida.usuarios SET ultimo_acceso = NOW() WHERE id_usuario = p_id_usuario;
+$$;
+
+-- CORREGIDO: usa p_id_usuario en vez de p_email (RS-002)
+CREATE OR REPLACE FUNCTION trida.fn_cambiar_contrasena(
+    p_id_usuario INTEGER,
+    p_nuevo_hash TEXT
+)
+RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE
+    v_count INTEGER;
+BEGIN
+    UPDATE trida.usuarios SET password_hash = p_nuevo_hash
+    WHERE id_usuario = p_id_usuario AND estado = TRUE;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count > 0;
+END;
+$$;
+
+-- ============================================================================
+-- PERFIL Y CATEGORÍAS
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_perfil_financiero(p_id_usuario INTEGER)
+RETURNS TABLE (
+    id_perfil           INTEGER,
+    ingreso_mensual     NUMERIC(15,2),
+    moneda_preferida    CHAR(3),
+    tolerancia_riesgo   VARCHAR(10),
+    meta_ahorro_mensual NUMERIC(15,2),
+    fecha_actualizacion TIMESTAMPTZ
+)
+LANGUAGE sql STABLE AS $$
+    SELECT id_perfil, ingreso_mensual, moneda_preferida,
+           tolerancia_riesgo, meta_ahorro_mensual, fecha_actualizacion
+    FROM trida.perfil_financiero WHERE id_usuario = p_id_usuario;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_actualizar_perfil_financiero(
+    p_id_usuario          INTEGER,
+    p_ingreso_mensual     NUMERIC,
+    p_moneda_preferida    CHAR(3),
+    p_tolerancia_riesgo   VARCHAR,
+    p_meta_ahorro_mensual NUMERIC
+)
+RETURNS VOID LANGUAGE sql AS $$
+    UPDATE trida.perfil_financiero
+    SET ingreso_mensual = p_ingreso_mensual, moneda_preferida = p_moneda_preferida,
+        tolerancia_riesgo = p_tolerancia_riesgo, meta_ahorro_mensual = p_meta_ahorro_mensual,
+        fecha_actualizacion = NOW()
+    WHERE id_usuario = p_id_usuario;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_categorias(p_id_usuario INTEGER)
+RETURNS TABLE (
+    id_categoria INTEGER, nombre VARCHAR(80), tipo VARCHAR(10),
+    icono VARCHAR(50), color VARCHAR(20), es_default BOOLEAN
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT id_categoria, nombre, tipo, icono, color, es_default
+    FROM trida.categorias
+    WHERE estado = TRUE AND (es_default = TRUE OR id_usuario = p_id_usuario)
+    ORDER BY tipo, nombre;
+$$;
+
+-- ============================================================================
+-- CUENTAS (NUEVAS)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_cuentas(p_id_usuario INTEGER)
+RETURNS TABLE (
+    id_cuenta INTEGER, nombre VARCHAR(100), entidad VARCHAR(100),
+    tipo VARCHAR(20), numero_enmascarado VARCHAR(20), color VARCHAR(20),
+    saldo_inicial NUMERIC(15,2), estado BOOLEAN
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT id_cuenta, nombre, entidad, tipo, numero_enmascarado,
+           color, saldo_inicial, estado
+    FROM trida.cuentas
+    WHERE id_usuario = p_id_usuario AND estado = TRUE
+    ORDER BY nombre;
+$$;
+
+-- ============================================================================
+-- TRANSACCIONES
+-- ============================================================================
+
+-- CORREGIDO: agrega p_id_cuenta opcional y paginación real
+CREATE OR REPLACE FUNCTION trida.fn_transacciones(
+    p_id_usuario      INTEGER,
+    p_id_cuenta       INTEGER DEFAULT NULL,
+    p_tipo_movimiento VARCHAR DEFAULT NULL,
+    p_fecha_desde     TIMESTAMPTZ DEFAULT NULL,
+    p_fecha_hasta     TIMESTAMPTZ DEFAULT NULL,
+    p_limit           INTEGER DEFAULT 50,
+    p_offset          INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+    id_transaccion INTEGER, fecha_transaccion TIMESTAMPTZ,
+    tipo_movimiento VARCHAR(10), monto NUMERIC(15,2), moneda CHAR(3),
+    descripcion VARCHAR(255), comercio VARCHAR(150), canal VARCHAR(20),
+    es_recurrente BOOLEAN, score_anomalia NUMERIC(5,2), estado VARCHAR(20),
+    categoria VARCHAR(80), categoria_color VARCHAR(20), categoria_icono VARCHAR(50),
+    cuenta_nombre VARCHAR(100), ciudad VARCHAR(100), pais VARCHAR(100)
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT t.id_transaccion, t.fecha_transaccion, t.tipo_movimiento, t.monto, t.moneda,
+           t.descripcion, t.comercio, t.canal, t.es_recurrente, t.score_anomalia, t.estado,
+           c.nombre, c.color, c.icono,
+           cu.nombre AS cuenta_nombre, u.ciudad, u.pais
+    FROM trida.transacciones t
+    LEFT JOIN trida.categorias c   ON c.id_categoria  = t.id_categoria
+    LEFT JOIN trida.cuentas cu     ON cu.id_cuenta     = t.id_cuenta
+    LEFT JOIN trida.ubicaciones u  ON u.id_ubicacion   = t.id_ubicacion
+    WHERE t.id_usuario = p_id_usuario
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_tipo_movimiento IS NULL OR t.tipo_movimiento = p_tipo_movimiento)
+      AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
+      AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
+    ORDER BY t.fecha_transaccion DESC
+    LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 500))
+    OFFSET GREATEST(0, COALESCE(p_offset, 0));
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_transacciones_count(
+    p_id_usuario      INTEGER,
+    p_id_cuenta       INTEGER DEFAULT NULL,
+    p_tipo_movimiento VARCHAR DEFAULT NULL,
+    p_fecha_desde     TIMESTAMPTZ DEFAULT NULL,
+    p_fecha_hasta     TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS BIGINT LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT COUNT(*)::BIGINT FROM trida.transacciones t
+    WHERE t.id_usuario = p_id_usuario
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_tipo_movimiento IS NULL OR t.tipo_movimiento = p_tipo_movimiento)
+      AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
+      AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta);
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_transacciones_mapa(
+    p_id_usuario  INTEGER,
+    p_id_cuenta   INTEGER DEFAULT NULL,
+    p_fecha_desde TIMESTAMPTZ DEFAULT NULL,
+    p_fecha_hasta TIMESTAMPTZ DEFAULT NULL,
+    p_limit       INTEGER DEFAULT 500
+)
+RETURNS TABLE (
+    id_transaccion INTEGER, latitud NUMERIC(9,6), longitud NUMERIC(9,6),
+    ciudad VARCHAR(100), pais VARCHAR(100), monto NUMERIC(15,2),
+    tipo_movimiento VARCHAR(10), score_anomalia NUMERIC(5,2),
+    estado VARCHAR(20), comercio VARCHAR(150),
+    fecha_transaccion TIMESTAMPTZ, categoria VARCHAR(80), categoria_color VARCHAR(20)
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT t.id_transaccion, u.latitud, u.longitud, u.ciudad, u.pais,
+           t.monto, t.tipo_movimiento, t.score_anomalia, t.estado, t.comercio,
+           t.fecha_transaccion, c.nombre, c.color
+    FROM trida.transacciones t
+    JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
+    LEFT JOIN trida.categorias c ON c.id_categoria = t.id_categoria
+    WHERE t.id_usuario = p_id_usuario
+      AND u.latitud IS NOT NULL AND u.longitud IS NOT NULL
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
+      AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
+    ORDER BY t.fecha_transaccion DESC
+    LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 500), 2000));
+$$;
+
+-- ============================================================================
+-- DASHBOARD Y ANÁLISIS
+-- ============================================================================
+
+-- CORREGIDO: agrega p_id_cuenta y p_mes
+CREATE OR REPLACE FUNCTION trida.fn_dashboard_resumen(
+    p_id_usuario INTEGER,
+    p_id_cuenta  INTEGER DEFAULT NULL,
+    p_mes        DATE DEFAULT NULL
+)
+RETURNS TABLE (
+    total_ingresos NUMERIC(15,2), total_gastos NUMERIC(15,2),
+    total_ahorro NUMERIC(15,2), balance NUMERIC(15,2),
+    num_transacciones BIGINT, num_alertas_activas BIGINT, num_consejos_nuevos BIGINT
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    WITH periodo AS (
+        SELECT COALESCE(p_mes, DATE_TRUNC('month', NOW())::DATE) AS inicio
+    )
+    SELECT
+        COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'INGRESO'), 0),
+        COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'GASTO'), 0),
+        COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'AHORRO'), 0),
+        COALESCE(SUM(CASE WHEN t.tipo_movimiento = 'INGRESO' THEN t.monto
+                          WHEN t.tipo_movimiento = 'GASTO'   THEN -t.monto
+                          ELSE 0 END), 0),
+        COUNT(*)::BIGINT,
+        (SELECT COUNT(*)::BIGINT FROM trida.alertas_fraude
+         WHERE id_usuario = p_id_usuario AND estado = 'PENDIENTE'),
+        (SELECT COUNT(*)::BIGINT FROM trida.consejos_financieros
+         WHERE id_usuario = p_id_usuario AND leido = FALSE)
+    FROM trida.transacciones t, periodo p
+    WHERE t.id_usuario = p_id_usuario
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND t.fecha_transaccion >= p.inicio
+      AND t.fecha_transaccion <  p.inicio + INTERVAL '1 month';
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_gastos_por_categoria(
+    p_id_usuario  INTEGER,
+    p_id_cuenta   INTEGER DEFAULT NULL,
+    p_fecha_desde TIMESTAMPTZ DEFAULT NULL,
+    p_fecha_hasta TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS TABLE (
+    id_categoria INTEGER, categoria VARCHAR(80), color VARCHAR(20),
+    icono VARCHAR(50), total NUMERIC(15,2), cantidad BIGINT
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT c.id_categoria, c.nombre, c.color, c.icono,
+           SUM(t.monto) AS total, COUNT(*)::BIGINT AS cantidad
+    FROM trida.transacciones t
+    LEFT JOIN trida.categorias c ON c.id_categoria = t.id_categoria
+    WHERE t.id_usuario = p_id_usuario
+      AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
+      AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
+    GROUP BY c.id_categoria, c.nombre, c.color, c.icono
+    ORDER BY total DESC;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_tendencia_mensual(
+    p_id_usuario INTEGER,
+    p_id_cuenta  INTEGER DEFAULT NULL,
+    p_meses      INTEGER DEFAULT 6
+)
+RETURNS TABLE (
+    anio SMALLINT, mes SMALLINT,
+    ingresos NUMERIC(15,2), gastos NUMERIC(15,2), ahorro NUMERIC(15,2)
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT
+        EXTRACT(YEAR FROM t.fecha_transaccion)::SMALLINT,
+        EXTRACT(MONTH FROM t.fecha_transaccion)::SMALLINT,
+        COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'INGRESO'), 0),
+        COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'GASTO'), 0),
+        COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'AHORRO'), 0)
+    FROM trida.transacciones t
+    WHERE t.id_usuario = p_id_usuario
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND t.fecha_transaccion >= DATE_TRUNC('month', NOW())
+          - (COALESCE(p_meses, 6) || ' months')::INTERVAL
+    GROUP BY 1, 2 ORDER BY 1, 2;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_top_comercios(
+    p_id_usuario  INTEGER,
+    p_id_cuenta   INTEGER DEFAULT NULL,
+    p_fecha_desde TIMESTAMPTZ DEFAULT NULL,
+    p_fecha_hasta TIMESTAMPTZ DEFAULT NULL,
+    p_limit       INTEGER DEFAULT 10
+)
+RETURNS TABLE (comercio VARCHAR(150), total NUMERIC(15,2), cantidad BIGINT)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT t.comercio, SUM(t.monto) AS total, COUNT(*)::BIGINT AS cantidad
+    FROM trida.transacciones t
+    WHERE t.id_usuario = p_id_usuario
+      AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
+      AND t.comercio IS NOT NULL
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
+      AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
+    GROUP BY t.comercio 
+    ORDER BY total DESC
+    LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 10), 50));
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_patron_comportamiento(p_id_usuario INTEGER)
+RETURNS TABLE (
+    gasto_diario_promedio NUMERIC(15,2), gasto_diario_desv NUMERIC(15,2),
+    categorias_top JSONB, ubicaciones_frecuentes JSONB,
+    horarios_habituales JSONB, comercios_frecuentes JSONB,
+    fecha_actualizacion TIMESTAMPTZ
+)
+LANGUAGE sql STABLE AS $$
+    SELECT gasto_diario_promedio, gasto_diario_desv, categorias_top,
+           ubicaciones_frecuentes, horarios_habituales, comercios_frecuentes,
+           fecha_actualizacion
+    FROM trida.patron_comportamiento WHERE id_usuario = p_id_usuario;
+$$;
+
+-- ============================================================================
+-- PRESUPUESTOS (NUEVOS)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_presupuestos(
+    p_id_usuario INTEGER,
+    p_mes        INTEGER DEFAULT NULL,
+    p_anio       INTEGER DEFAULT NULL
+)
+RETURNS TABLE (
+    id_presupuesto INTEGER, id_categoria INTEGER, categoria VARCHAR(80),
+    limite_mensual NUMERIC(15,2), mes SMALLINT, anio SMALLINT,
+    gastado NUMERIC(15,2), porcentaje NUMERIC(5,2)
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT p.id_presupuesto, p.id_categoria, c.nombre,
+           p.limite_mensual, p.mes, p.anio,
+           COALESCE((SELECT SUM(t.monto) FROM trida.transacciones t
+                     WHERE t.id_usuario = p.id_usuario
+                       AND t.id_categoria = p.id_categoria
+                       AND t.tipo_movimiento IN ('GASTO','AHORRO')
+                       AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
+                       AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio), 0) AS gastado,
+           ROUND(COALESCE((SELECT SUM(t.monto) FROM trida.transacciones t
+                     WHERE t.id_usuario = p.id_usuario
+                       AND t.id_categoria = p.id_categoria
+                       AND t.tipo_movimiento IN ('GASTO','AHORRO')
+                       AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
+                       AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio), 0)
+                 / NULLIF(p.limite_mensual, 0) * 100, 2) AS porcentaje
+    FROM trida.presupuestos p
+    LEFT JOIN trida.categorias c ON c.id_categoria = p.id_categoria
+    WHERE p.id_usuario = p_id_usuario
+      AND (p_mes IS NULL OR p.mes = p_mes)
+      AND (p_anio IS NULL OR p.anio = p_anio)
+    ORDER BY p.mes DESC, c.nombre;
+$$;
+
+-- ============================================================================
+-- METAS Y APORTES
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_metas(p_id_usuario INTEGER, p_estado VARCHAR DEFAULT NULL)
+RETURNS TABLE (
+    id_meta INTEGER, nombre VARCHAR(120), descripcion TEXT,
+    monto_objetivo NUMERIC(15,2), monto_actual NUMERIC(15,2),
+    porcentaje NUMERIC(5,2), fecha_limite DATE, estado VARCHAR(15),
+    fecha_creacion TIMESTAMPTZ, fecha_completada TIMESTAMPTZ
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT id_meta, nombre, descripcion, monto_objetivo, monto_actual,
+           ROUND((monto_actual / NULLIF(monto_objetivo, 0)) * 100, 2),
+           fecha_limite, estado, fecha_creacion, fecha_completada
+    FROM trida.metas_ahorro
+    WHERE id_usuario = p_id_usuario
+      AND (p_estado IS NULL OR estado = p_estado)
+    ORDER BY fecha_creacion DESC;
+$$;
+
+-- ============================================================================
+-- CONSEJOS Y ALERTAS
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_consejos(
+    p_id_usuario INTEGER, p_solo_no_leidos BOOLEAN DEFAULT FALSE
+)
+RETURNS TABLE (
+    id_consejo INTEGER, tipo VARCHAR(20), titulo VARCHAR(150),
+    descripcion TEXT, prioridad VARCHAR(10), leido BOOLEAN,
+    fecha_generado TIMESTAMPTZ, fecha_leido TIMESTAMPTZ
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT id_consejo, tipo, titulo, descripcion, prioridad, leido, fecha_generado, fecha_leido
+    FROM trida.consejos_financieros
+    WHERE id_usuario = p_id_usuario
+      AND (p_solo_no_leidos = FALSE OR leido = FALSE)
+    ORDER BY CASE prioridad WHEN 'ALTA' THEN 1 WHEN 'MEDIA' THEN 2 ELSE 3 END,
+             fecha_generado DESC;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_alertas_fraude(
+    p_id_usuario INTEGER, p_estado VARCHAR DEFAULT NULL
+)
+RETURNS TABLE (
+    id_alerta INTEGER, severidad VARCHAR(10), motivo TEXT,
+    estado VARCHAR(15), fecha_detectada TIMESTAMPTZ, fecha_resuelta TIMESTAMPTZ,
+    accion_usuario VARCHAR(20), id_transaccion INTEGER,
+    monto NUMERIC(15,2), comercio VARCHAR(150),
+    fecha_transaccion TIMESTAMPTZ, ciudad VARCHAR(100)
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT a.id_alerta, a.severidad, a.motivo, a.estado, a.fecha_detectada,
+           a.fecha_resuelta, a.accion_usuario, t.id_transaccion, t.monto,
+           t.comercio, t.fecha_transaccion, u.ciudad
+    FROM trida.alertas_fraude a
+    JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
+    LEFT JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
+    WHERE a.id_usuario = p_id_usuario
+      AND (p_estado IS NULL OR a.estado = p_estado)
+    ORDER BY a.fecha_detectada DESC;
+$$;
+
+-- CORREGIDO: agrega p_id_usuario (RS-001)
+CREATE OR REPLACE FUNCTION trida.fn_resolver_alerta_fraude(
+    p_id_usuario     INTEGER,
+    p_id_alerta      INTEGER,
+    p_nuevo_estado   VARCHAR,
+    p_accion_usuario VARCHAR
+)
+RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE
+    v_count INTEGER;
+BEGIN
+    UPDATE trida.alertas_fraude
+    SET estado = p_nuevo_estado, accion_usuario = p_accion_usuario, fecha_resuelta = NOW()
+    WHERE id_alerta = p_id_alerta AND id_usuario = p_id_usuario;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count > 0;
+END;
+$$;
+
+-- ============================================================================
+-- REPORTES
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION trida.fn_reportes_mensuales(p_id_usuario INTEGER)
+RETURNS TABLE (
+    id_reporte INTEGER, anio SMALLINT, mes SMALLINT,
+    score_salud NUMERIC(5,2), resumen JSONB,
+    ruta_archivo TEXT, fecha_generado TIMESTAMPTZ
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT id_reporte, anio, mes, score_salud, resumen, ruta_archivo, fecha_generado
+    FROM trida.reportes_mensuales
+    WHERE id_usuario = p_id_usuario ORDER BY anio DESC, mes DESC;
+$$;
+
+CREATE OR REPLACE FUNCTION trida.fn_analisis_gastos(
+    p_id_usuario INTEGER, p_periodo VARCHAR DEFAULT 'MENSUAL', p_limit INTEGER DEFAULT 12
+)
+RETURNS TABLE (
+    id_analisis INTEGER, periodo VARCHAR(10), fecha_inicio DATE, fecha_fin DATE,
+    total_ingresos NUMERIC(15,2), total_gastos NUMERIC(15,2), total_ahorro NUMERIC(15,2),
+    desglose_categorias JSONB, comparativa_anterior JSONB, fecha_generado TIMESTAMPTZ
+)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT id_analisis, periodo, fecha_inicio, fecha_fin, total_ingresos,
+           total_gastos, total_ahorro, desglose_categorias, comparativa_anterior, fecha_generado
+    FROM trida.analisis_gastos
+    WHERE id_usuario = p_id_usuario AND periodo = COALESCE(p_periodo, 'MENSUAL')
+    ORDER BY fecha_inicio DESC
+    LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 12), 60));
+$$;

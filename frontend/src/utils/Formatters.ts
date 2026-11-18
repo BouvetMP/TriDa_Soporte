@@ -1,0 +1,87 @@
+/**
+ * RF-001: Formatea montos de dinero de acuerdo a la moneda especificada.
+ */
+export function formatCurrency(
+  amount: number | string,
+  currency = "COP",
+  locale = "es-CO",
+): string {
+  const numericAmount =
+    typeof amount === "string" ? parseFloat(amount) : amount;
+
+  if (isNaN(numericAmount)) {
+    return "$ 0,00";
+  }
+
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(numericAmount);
+}
+
+/**
+ * RF-002: Formatea fechas UTC (TIMESTAMPTZ) a la zona horaria local (America/Bogota por defecto).
+ */
+export function formatDate(
+  dateInput: string | Date,
+  formatStyle: "full" | "short" | "time" | "relative" = "short",
+): string {
+  if (!dateInput) return "-";
+
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+
+  if (isNaN(date.getTime())) return "-";
+
+  const timeZone = "America/Bogota";
+
+  if (formatStyle === "time") {
+    return new Intl.DateTimeFormat("es-CO", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date);
+  }
+
+  if (formatStyle === "full") {
+    return new Intl.DateTimeFormat("es-CO", {
+      timeZone,
+      dateStyle: "long",
+      timeStyle: "short",
+    }).format(date);
+  }
+
+  // FormatStyle === 'short'
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+/**
+ * DF-002: Mascaras de privacidad para datos sensibles.
+ */
+export function maskEmail(email: string): string {
+  if (!email || !email.includes("@")) return "***@***.com";
+  const [local, domain] = email.split("@");
+  if (local.length <= 2) return `${local}***@${domain}`;
+  return `${local.substring(0, 2)}***@${domain}`;
+}
+
+export function maskPhone(phone?: string | null): string {
+  if (!phone) return "***";
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length < 4) return "***";
+  return `*** *** ${cleaned.slice(-4)}`;
+}
+
+export function maskCardNumber(cardNumber?: string | null): string {
+  if (!cardNumber) return "•••• ••••";
+  const digits = cardNumber.replace(/\D/g, "");
+  if (digits.length < 4) return "••••";
+  return `•••• ${digits.slice(-4)}`;
+}

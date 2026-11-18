@@ -1,0 +1,222 @@
+// ¿Qué? Servicio de reportes financieros.
+// ¿Para qué? Generar resúmenes por periodo, desglose por categoría y detalle exportable aislado por usuario (RS-001).
+
+import { queryRaw } from "../../db/queryRaw.js";
+import { ReportQueryInput } from "./reports.schemas.js";
+
+function resolveDateRange(query: ReportQueryInput) {
+  const end = query.fecha_fin ? new Date(query.fecha_fin) : new Date();
+  if (query.fecha_fin && /^\d{4}-\d{2}-\d{2}$/.test(query.fecha_fin)) {
+    end.setUTCHours(23, 59, 59, 999);
+  }
+  const start = query.fecha_inicio
+    ? new Date(query.fecha_inicio)
+    : new Date(end.getFullYear(), end.getMonth(), 1); // por defecto: inicio del mes actual
+
+  return { start, end };
+}
+
+export const reportsService = {
+  async getSummary(userId: number, query: ReportQueryInput) {
+    const { start, end } = resolveDateRange(query);
+
+    const rows = await queryRaw<
+      {
+        ingresos: string | number;
+        gastos: string | number;
+        ahorros: string | number;
+        total_tx: string | number;
+        aprobadas: string | number;
+        alertadas: string | number;
+        bloqueadas: string | number;
+      }[]
+    >(
+      `
+      SELECT
+        COALESCE(SUM(CASE WHEN estado IN ('CONFIRMADA', 'APROBADA') AND tipo_movimiento = 'INGRESO' THEN monto ELSE 0 END), 0)::numeric AS ingresos,
+        COALESCE(SUM(CASE WHEN estado IN ('CONFIRMADA', 'APROBADA') AND tipo_movimiento = 'GASTO' THEN monto ELSE 0 END), 0)::numeric AS gastos,
+        COALESCE(SUM(CASE WHEN estado IN ('CONFIRMADA', 'APROBADA') AND tipo_movimiento = 'AHORRO' THEN monto ELSE 0 END), 0)::numeric AS ahorros,
+        COUNT(*)::bigint AS total_tx,
+        COUNT(*) FILTER (WHERE estado IN ('CONFIRMADA', 'APROBADA'))::bigint AS aprobadas,
+        COUNT(*) FILTER (
+          WHERE estado = 'SOSPECHOSA'
+            OR EXISTS (
+              SELECT 1
+              FROM trida.alertas_fraude a
+              WHERE a.id_transaccion = transacciones.id_transaccion
+            )
+        )::bigint AS alertadas,
+        COUNT(*) FILTER (WHERE estado = 'RECHAZADA')::bigint AS bloqueadas
+      FROM trida.transacciones
+      WHERE id_usuario = $1
+        AND fecha_transaccion >= $2
+        AND fecha_transaccion <= $3
+      `,
+      userId,
+      start,
+      end,
+    );
+
+    const r = rows[0] ?? {
+      ingresos: 0,
+      gastos: 0,
+      ahorros: 0,
+      total_tx: 0,
+      aprobadas: 0,
+      alertadas: 0,
+      bloqueadas: 0,
+    };
+
+    const ingresos = Number(r.ingresos);
+    const gastos = Number(r.gastos);
+    const ahorros = Number(r.ahorros);
+
+    return {
+      periodo: {
+        fecha_inicio: start,
+        fecha_fin: end,
+      },
+      totales: {
+        ingresos,
+        gastos,
+        ahorros,
+        balance: ingresos - gastos,
+      },
+      transacciones: {
+        total: Number(r.total_tx),
+        aprobadas: Number(r.aprobadas),
+        alertadas: Number(r.alertadas),
+        bloqueadas: Number(r.bloqueadas),
+      },
+    };
+  },
+
+  async getByCategory(userId: number, query: ReportQueryInput) {
+    const { start, end } = resolveDateRange(query);
+    const tipo = query.tipo_movimiento ?? "GASTO";
+
+    const rows = await queryRaw<
+      Array<{
+        id_categoria: number;
+        nombre: string;
+        icono: string | null;
+        color: string | null;
+        total: string | number;
+        cantidad: bigint | number;
+      }>
+    >(
+      `
+      SELECT
+        c.id_categoria,
+        c.nombre,
+        c.icono,
+        c.color,
+        COALESCE(SUM(t.monto), 0)::numeric AS total,
+        COUNT(*)::bigint AS cantidad
+      FROM trida.transacciones t
+      JOIN trida.categorias c ON c.id_categoria = t.id_categoria
+      WHERE t.id_usuario = $1
+        AND t.tipo_movimiento = $2
+        AND t.fecha_transaccion >= $3
+        AND t.fecha_transaccion <= $4
+        AND t.estado IN ('CONFIRMADA', 'APROBADA')
+      GROUP BY c.id_categoria, c.nombre, c.icono, c.color
+      ORDER BY total DESC
+      `,
+      userId,
+      tipo,
+      start,
+      end,
+    );
+
+    return {
+      periodo: { fecha_inicio: start, fecha_fin: end },
+      tipo_movimiento: tipo,
+      categorias: rows.map((r) => ({
+        id_categoria: Number(r.id_categoria),
+        nombre: r.nombre,
+        icono: r.icono ?? null,
+        color: r.color ?? null,
+        total: Number(r.total),
+        cantidad: Number(r.cantidad),
+      })),
+    };
+  },
+
+  async getTransactionsReport(userId: number, query: ReportQueryInput) {
+    const { start, end } = resolveDateRange(query);
+    const safeLimit = query.limit ?? 500;
+
+    const conditions = [
+      "t.id_usuario = $1",
+      "t.fecha_transaccion >= $2",
+      "t.fecha_transaccion <= $3",
+      "t.estado IN ('CONFIRMADA', 'APROBADA')",
+    ];
+    const params: unknown[] = [userId, start, end];
+    let i = 4;
+
+    if (query.tipo_movimiento) {
+      params.push(query.tipo_movimiento);
+      conditions.push(`t.tipo_movimiento = $${i++}`);
+    }
+
+    const rows = await queryRaw<
+      Array<{
+        id_transaccion: number;
+        fecha_transaccion: Date;
+        tipo_movimiento: string;
+        monto: string | number;
+        comercio: string | null;
+        descripcion: string | null;
+        estado: string;
+        score_anomalia: string | number | null;
+        ciudad: string | null;
+        nombre_cuenta: string | null;
+        nombre_categoria: string | null;
+      }>
+    >(
+      `
+      SELECT
+        t.id_transaccion,
+        t.fecha_transaccion,
+        t.tipo_movimiento,
+        t.monto,
+        t.comercio,
+        t.descripcion,
+        t.estado,
+        t.score_anomalia,
+        u.ciudad,
+        ct.nombre AS nombre_cuenta,
+        cat.nombre AS nombre_categoria
+      FROM trida.transacciones t
+      LEFT JOIN trida.cuentas ct ON ct.id_cuenta = t.id_cuenta
+      LEFT JOIN trida.categorias cat ON cat.id_categoria = t.id_categoria
+      LEFT JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY t.fecha_transaccion DESC
+      LIMIT $${i}
+      `,
+      ...params,
+      safeLimit,
+    );
+
+    return {
+      periodo: { fecha_inicio: start, fecha_fin: end },
+      total: rows.length,
+      items: rows.map((r) => ({
+        id_transaccion: Number(r.id_transaccion),
+        fecha_transaccion: r.fecha_transaccion,
+        tipo_movimiento: r.tipo_movimiento,
+        monto: Number(r.monto),
+        comercio: r.comercio ?? null,
+        descripcion: r.descripcion ?? null,
+        estado: r.estado,
+        score_anomalia: r.score_anomalia !== null ? Number(r.score_anomalia) : 0,
+        ciudad: r.ciudad ?? null,
+        nombre_cuenta: r.nombre_cuenta ?? null,
+        nombre_categoria: r.nombre_categoria ?? null,
+      })),
+    };
+  },
+};

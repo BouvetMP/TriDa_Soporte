@@ -1,0 +1,55 @@
+// ¿Qué? Configuración centralizada y validada con Zod para el backend.
+// ¿Para qué? Cargar variables de entorno y validar tipos/formatos antes de arrancar el servidor.
+// ¿Impacto? Evita que la app funcione con secretos inseguros o URLs faltantes (RS-003, RS-004).
+
+import dotenv from "dotenv";
+import { z } from "zod";
+
+dotenv.config();
+
+const envSchema = z.object({
+  // Servidor
+  PORT: z
+    .string()
+    .default("3000")
+    .transform((val) => parseInt(val, 10)),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  FRONTEND_URL: z.string().url().default("http://localhost:5173"),
+
+  // Base de datos
+  DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
+
+  // Correo SMTP
+  SMTP_HOST: z.string().optional().default(""),
+  SMTP_PORT: z.preprocess(
+    (value) => (value === undefined || value === "" ? "587" : value),
+    z.coerce.number().int().min(1).max(65535),
+  ),
+  SMTP_SECURE: z.preprocess(
+    (value) => (value === undefined || value === "" ? "false" : value),
+    z.enum(["true", "false"]).transform((value) => value === "true"),
+  ),
+
+  // Autenticación (RS-003)
+  JWT_SECRET: z.string().min(32, "JWT_SECRET debe tener al menos 32 caracteres"),
+  JWT_EXPIRES_IN: z.string().default("8h"),
+
+  // Correo SMTP (opcionales en desarrollo)
+  EMAIL_USER: z.string().optional().default(""),
+  EMAIL_PASS: z.string().optional().default(""),
+  EMAIL_FROM: z.string().optional().default('"TriDa App" <no-reply@trida.app>'),
+});
+
+const parseEnv = () => {
+  const result = envSchema.safeParse(process.env);
+
+  if (!result.success) {
+    console.error("❌ Error grave en las variables de entorno:");
+    console.error(JSON.stringify(result.error.format(), null, 2));
+    process.exit(1);
+  }
+
+  return result.data;
+};
+
+export const config = parseEnv();

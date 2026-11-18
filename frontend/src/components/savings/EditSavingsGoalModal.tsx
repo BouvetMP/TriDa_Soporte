@@ -1,0 +1,138 @@
+import React, { useState, useEffect } from "react";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import type {
+  SavingsGoal,
+  UpdateSavingsGoalPayload,
+  EstadoMeta,
+} from "@/types";
+
+interface EditSavingsGoalModalProps {
+  goal: SavingsGoal | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (id: number, payload: UpdateSavingsGoalPayload) => Promise<boolean>;
+}
+
+export function EditSavingsGoalModal({
+  goal,
+  isOpen,
+  onClose,
+  onSubmit,
+}: EditSavingsGoalModalProps) {
+  const [nombre, setNombre] = useState<string>("");
+  const [montoObjetivo, setMontoObjetivo] = useState<string>("");
+  const [fechaLimite, setFechaLimite] = useState<string>("");
+  const [estado, setEstado] = useState<EstadoMeta>("ACTIVA");
+  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (goal) {
+      setNombre(goal.nombre);
+      setMontoObjetivo(goal.monto_objetivo.toString());
+      setFechaLimite(goal.fecha_limite ? goal.fecha_limite.split("T")[0] : "");
+      setEstado(goal.estado);
+    }
+  }, [goal]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!goal || !nombre.trim() || !montoObjetivo) return;
+
+    setSubmitting(true);
+    const success = await onSubmit(goal.id_meta, {
+      nombre: nombre.trim(),
+      monto_objetivo: Number(montoObjetivo),
+      fecha_limite: fechaLimite || undefined,
+      estado,
+    });
+    setSubmitting(false);
+
+    if (success) {
+      onClose();
+    }
+  };
+
+  const estadoOptions = [
+    { value: "ACTIVA", label: "Activa" },
+    { value: "COMPLETADA", label: "Completada" },
+    { value: "PAUSADA", label: "Pausada" },
+    { value: "CANCELADA", label: "Cancelada" },
+  ];
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`Editar Meta: ${goal?.nombre || ""}`}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
+            Nombre de la Meta *
+          </label>
+          <Input
+            type="text"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
+              Monto Objetivo (COP) *
+            </label>
+            <Input
+              type="number"
+              min="1"
+              step="1000"
+              value={montoObjetivo}
+              onChange={(e) => setMontoObjetivo(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
+              Estado
+            </label>
+            <Select
+              value={estado}
+              onChange={(e) => setEstado(e.target.value as EstadoMeta)}
+              options={estadoOptions}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
+            Fecha Límite
+          </label>
+          <Input
+            type="date"
+            value={fechaLimite}
+            onChange={(e) => setFechaLimite(e.target.value)}
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border)]">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={submitting}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" variant="primary" disabled={submitting}>
+            {submitting ? "Guardando..." : "Guardar Cambios"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
