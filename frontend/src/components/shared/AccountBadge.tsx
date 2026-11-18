@@ -45,7 +45,7 @@ export const AccountBadge: React.FC<AccountBadgeProps> = ({
         return {
           label: nombre || "Efectivo",
           icon: Wallet,
-          classes: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+          classes: "bg-budget-warn/10 text-budget-warn border-budget-warn/20",
         };
     }
   };

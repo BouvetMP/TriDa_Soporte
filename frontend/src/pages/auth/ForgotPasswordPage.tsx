@@ -56,7 +56,7 @@ export const ForgotPasswordPage: React.FC = () => {
   return (
     <AuthLayout
       title="Recuperar contraseña"
-      subtitle="Te enviaremos un enlace de verificación a tu correo registrado"
+      subtitle="Solicita un enlace de recuperación por correo cuando el servicio esté disponible."
     >
       {isSent ? (
         <div className="space-y-4 text-center py-2">

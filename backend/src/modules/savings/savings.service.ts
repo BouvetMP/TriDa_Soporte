@@ -1,5 +1,6 @@
 import { prisma } from "../../db/prisma.js";
 import type { AddFundsInput, CreateSavingsInput, UpdateSavingsInput } from "./savings.schemas.js";
+import { AppError } from "../../utils/AppError.js";
 
 type SavingRecord = {
   id_meta: number;
@@ -28,15 +29,7 @@ function formatSaving(item: SavingRecord) {
   };
 }
 
-class SavingsError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 400,
-  ) {
-    super(message);
-    this.name = "SavingsError";
-  }
-}
+class SavingsError extends AppError {}
 
 export const savingsService = {
   async list(userId: number) {
@@ -51,15 +44,34 @@ export const savingsService = {
   },
 
   async create(userId: number, data: CreateSavingsInput) {
-    const meta = await prisma.meta_ahorro.create({
-      data: {
-        id_usuario: userId,
-        nombre: data.nombre,
-        monto_objetivo: data.monto_objetivo,
-        monto_actual: data.monto_actual,
-        fecha_limite: data.fecha_limite ? new Date(data.fecha_limite) : null,
-        estado: "ACTIVA",
-      },
+    const meta = await prisma.$transaction(async (transaction) => {
+      const created = await transaction.meta_ahorro.create({
+        data: {
+          id_usuario: userId,
+          nombre: data.nombre,
+          monto_objetivo: data.monto_objetivo,
+          monto_actual: 0,
+          fecha_limite: data.fecha_limite ? new Date(data.fecha_limite) : null,
+          estado: "ACTIVA",
+        },
+      });
+
+      if (data.monto_actual > 0) {
+        await transaction.aporte_meta.create({
+          data: { id_meta: created.id_meta, monto: data.monto_actual },
+        });
+      }
+
+      const updated = await transaction.meta_ahorro.findUniqueOrThrow({
+        where: { id_meta: created.id_meta },
+      });
+      if (Number(updated.monto_actual) >= Number(updated.monto_objetivo)) {
+        return transaction.meta_ahorro.update({
+          where: { id_meta: created.id_meta },
+          data: { estado: "COMPLETADA", fecha_completada: new Date() },
+        });
+      }
+      return updated;
     });
 
     return formatSaving(meta);
@@ -71,7 +83,12 @@ export const savingsService = {
         id_meta: metaId,
         id_usuario: userId,
       },
-      select: { id_meta: true },
+      select: {
+        id_meta: true,
+        monto_actual: true,
+        estado: true,
+        fecha_completada: true,
+      },
     });
 
     if (!existing) {
@@ -83,8 +100,29 @@ export const savingsService = {
       data: {
         nombre: data.nombre,
         monto_objetivo: data.monto_objetivo,
-        fecha_limite: data.fecha_limite ? new Date(data.fecha_limite) : undefined,
-        estado: data.estado,
+        fecha_limite:
+          data.fecha_limite === null
+            ? null
+            : data.fecha_limite
+              ? new Date(data.fecha_limite)
+              : undefined,
+        estado:
+          data.estado ??
+          (data.monto_objetivo !== undefined
+            ? Number(existing.monto_actual) >= data.monto_objetivo
+              ? "COMPLETADA"
+              : "ACTIVA"
+            : undefined),
+        fecha_completada:
+          data.estado === "COMPLETADA" ||
+          (data.estado === undefined &&
+            data.monto_objetivo !== undefined &&
+            Number(existing.monto_actual) >= data.monto_objetivo)
+            ? new Date()
+            : data.estado !== undefined ||
+                (data.monto_objetivo !== undefined && existing.estado === "COMPLETADA")
+              ? null
+              : undefined,
       },
     });
 
@@ -130,7 +168,10 @@ export const savingsService = {
           ? updated
           : await transaction.meta_ahorro.update({
               where: { id_meta: existing.id_meta },
-              data: { estado },
+              data: {
+                estado,
+                fecha_completada: estado === "COMPLETADA" ? new Date() : null,
+              },
             });
 
       return formatSaving(meta);

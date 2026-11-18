@@ -45,7 +45,7 @@ export function EditSavingsGoalModal({
     const success = await onSubmit(goal.id_meta, {
       nombre: nombre.trim(),
       monto_objetivo: Number(montoObjetivo),
-      fecha_limite: fechaLimite || undefined,
+      fecha_limite: fechaLimite || null,
       estado,
     });
     setSubmitting(false);
@@ -66,6 +66,7 @@ export function EditSavingsGoalModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      isSubmitting={submitting}
       title={`Editar Meta: ${goal?.nombre || ""}`}
     >
       <form onSubmit={handleSubmit} className="space-y-4">

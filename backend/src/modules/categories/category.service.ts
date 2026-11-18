@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma.js";
+import { AppError } from "../../utils/AppError.js";
 
 type CategoryData = {
   nombre?: string;
@@ -8,15 +9,7 @@ type CategoryData = {
   estado?: boolean;
 };
 
-export class CategoryError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode: number = 400) {
-    super(message);
-    this.name = "CategoryError";
-    this.statusCode = statusCode;
-  }
-}
+export class CategoryError extends AppError {}
 
 function withOwnership(category: Awaited<ReturnType<typeof prisma.categoria.findFirst>>) {
   if (!category) {
@@ -33,6 +26,7 @@ export class CategoriesService {
   async getCategories(userId: number) {
     const categories = await prisma.categoria.findMany({
       where: {
+        estado: true,
         OR: [{ id_usuario: userId }, { id_usuario: null }],
       },
     });
@@ -51,6 +45,7 @@ export class CategoriesService {
     const category = await prisma.categoria.findFirst({
       where: {
         id_categoria: categoryId,
+        estado: true,
         OR: [{ id_usuario: userId }, { id_usuario: null }],
       },
     });
@@ -65,6 +60,18 @@ export class CategoriesService {
   async createCategory(userId: number, data: CategoryData) {
     if (!data.nombre?.trim()) {
       throw new CategoryError("El nombre de la categoría es requerido", 400);
+    }
+
+    const duplicate = await prisma.categoria.findFirst({
+      where: {
+        estado: true,
+        nombre: { equals: data.nombre.trim(), mode: "insensitive" },
+        OR: [{ id_usuario: userId }, { id_usuario: null }],
+      },
+      select: { id_categoria: true },
+    });
+    if (duplicate) {
+      throw new CategoryError("Ya existe una categoría con ese nombre", 409);
     }
 
     const category = await prisma.categoria.create({
@@ -100,6 +107,21 @@ export class CategoriesService {
     if (data.color !== undefined) updateData.color = data.color;
     if (data.estado !== undefined) updateData.estado = data.estado;
 
+    if (data.nombre !== undefined && data.nombre.trim().toLocaleLowerCase() !== existing.nombre.toLocaleLowerCase()) {
+      const duplicate = await prisma.categoria.findFirst({
+        where: {
+          id_categoria: { not: categoryId },
+          estado: true,
+          nombre: { equals: data.nombre.trim(), mode: "insensitive" },
+          OR: [{ id_usuario: userId }, { id_usuario: null }],
+        },
+        select: { id_categoria: true },
+      });
+      if (duplicate) {
+        throw new CategoryError("Ya existe una categoría con ese nombre", 409);
+      }
+    }
+
     const category = await prisma.categoria.update({
       where: { id_categoria: categoryId },
       data: updateData,
@@ -121,8 +143,9 @@ export class CategoriesService {
       throw new CategoryError("No se pueden eliminar las categorías por sistema", 403);
     }
 
-    return prisma.categoria.delete({
+    return prisma.categoria.update({
       where: { id_categoria: categoryId },
+      data: { estado: false },
     });
   }
 

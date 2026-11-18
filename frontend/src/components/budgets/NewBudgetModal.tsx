@@ -57,7 +57,7 @@ export function NewBudgetModal({
   ];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Nuevo Presupuesto">
+    <Modal isOpen={isOpen} onClose={onClose} title="Nuevo Presupuesto" isSubmitting={submitting}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">

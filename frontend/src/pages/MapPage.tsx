@@ -1,10 +1,16 @@
+import { lazy, Suspense } from "react";
 import { MapPin } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useMapTransactions } from "@/hooks/useMapTransactions";
 import { MapSummaryCards } from "@/components/map/MapSummaryCards";
 import { MapFiltersBar } from "@/components/map/MapFiltersBar";
-import { InteractiveExpenseMap } from "@/components/map/InteractiveExpenseMap";
 import { GeoTransactionsList } from "@/components/map/GeoTransactionsList";
+
+const InteractiveExpenseMap = lazy(() =>
+  import("@/components/map/InteractiveExpenseMap").then((module) => ({
+    default: module.InteractiveExpenseMap,
+  })),
+);
 
 export function MapPage() {
   const {
@@ -64,9 +70,19 @@ export function MapPage() {
             </p>
           )}
           <div className="lg:col-span-8">
-            <InteractiveExpenseMap
-              selectedTransaction={selectedTransaction}
-            />
+            <Suspense
+              fallback={
+                <div className="flex h-[560px] items-center justify-center">
+                  <Spinner size="lg" />
+                </div>
+              }
+            >
+              <InteractiveExpenseMap
+                transactions={transactions}
+                selectedTransaction={selectedTransaction}
+                onSelectTransaction={setSelectedTransaction}
+              />
+            </Suspense>
           </div>
 
           <div className="lg:col-span-4">

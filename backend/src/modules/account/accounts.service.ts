@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma.js";
+import { AppError } from "../../utils/AppError.js";
 import type { CreateAccountInput, UpdateAccountInput } from "./accounts.schemas.js";
 
 type AccountRecord = NonNullable<Awaited<ReturnType<typeof prisma.cuenta.findFirst>>>;
@@ -10,20 +11,12 @@ function formatAccount(account: AccountRecord) {
   };
 }
 
-export class AccountError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode: number = 400) {
-    super(message);
-    this.name = "AccountError";
-    this.statusCode = statusCode;
-  }
-}
+export class AccountError extends AppError {}
 
 export class AccountsService {
   async getAccounts(userId: number) {
     const accounts = await prisma.cuenta.findMany({
-      where: { id_usuario: userId },
+      where: { id_usuario: userId, estado: true },
     });
     return accounts.map(formatAccount);
   }

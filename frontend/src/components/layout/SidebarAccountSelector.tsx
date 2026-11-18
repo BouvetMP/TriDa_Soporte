@@ -42,7 +42,7 @@ export const SidebarAccountSelector: React.FC = () => {
       case "BILLETERA":
         return <Building2 className="w-4 h-4 text-income" />;
       default:
-        return <Wallet className="w-4 h-4 text-amber-500" />;
+        return <Wallet className="w-4 h-4 text-budget-warn" />;
     }
   };
 

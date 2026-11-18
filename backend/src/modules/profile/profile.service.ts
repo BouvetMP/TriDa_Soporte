@@ -1,16 +1,9 @@
 import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
-import type { UpdateProfileInput } from "./profile.schemas.js";
+import type { UpdateProfileInput } from "../auth/auth.schemas.js";
+import { AppError } from "../../utils/AppError.js";
 
-export class ProfileError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 400,
-  ) {
-    super(message);
-    this.name = "ProfileError";
-  }
-}
+export class ProfileError extends AppError {}
 
 const profileSelect = {
   id_usuario: true,
@@ -66,7 +59,7 @@ export class ProfileService {
             COALESCE(AVG(t.monto), 0)::float AS monto_promedio,
             COALESCE(MAX(t.monto), 0)::float AS monto_maximo,
             COUNT(*) FILTER (
-              WHERE t.score_anomalia >= 50
+              WHERE t.score_anomalia >= 70
                 OR EXISTS (
                   SELECT 1
                   FROM trida.alertas_fraude a

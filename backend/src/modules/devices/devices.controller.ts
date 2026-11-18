@@ -3,9 +3,10 @@
 // ¿Impacto? Conecta la vista de dispositivos con la BD personal.
 
 import { Request, Response, NextFunction } from "express";
-import { sendError, sendSuccess } from "../../utils/apiResponse.js";
+import { sendSuccess } from "../../utils/apiResponse.js";
 import { devicesService } from "./devices.service.js";
 import { registerDeviceSchema, updateTrustSchema } from "./devices.schemas.js";
+import { parseId } from "../../utils/params.js";
 
 export const devicesController = {
   async list(req: Request, res: Response, next: NextFunction) {
@@ -21,19 +22,9 @@ export const devicesController = {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const deviceId = Number(req.params.id);
-
-      if (Number.isNaN(deviceId)) {
-        sendError(res, "ID de dispositivo inválido", 400);
-        return;
-      }
+      const deviceId = parseId(req.params.id);
 
       const device = await devicesService.getById(userId, deviceId);
-
-      if (!device) {
-        sendError(res, "Dispositivo no encontrado", 404);
-        return;
-      }
 
       sendSuccess(res, device);
     } catch (error) {
@@ -55,12 +46,7 @@ export const devicesController = {
   async updateTrustStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const deviceId = Number(req.params.id);
-
-      if (Number.isNaN(deviceId)) {
-        sendError(res, "ID de dispositivo inválido", 400);
-        return;
-      }
+      const deviceId = parseId(req.params.id);
 
       const { confiable } = updateTrustSchema.parse(req.body);
       const updated = await devicesService.updateTrustStatus(userId, deviceId, confiable);
@@ -73,12 +59,7 @@ export const devicesController = {
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const deviceId = Number(req.params.id);
-
-      if (Number.isNaN(deviceId)) {
-        sendError(res, "ID de dispositivo inválido", 400);
-        return;
-      }
+      const deviceId = parseId(req.params.id);
 
       const result = await devicesService.delete(userId, deviceId);
       sendSuccess(res, result);

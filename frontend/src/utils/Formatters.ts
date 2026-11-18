@@ -62,6 +62,25 @@ export function formatDate(
   }).format(date);
 }
 
+export function formatDateOnly(dateInput: string | Date): string {
+  const value =
+    dateInput instanceof Date
+      ? `${dateInput.getUTCFullYear()}-${String(dateInput.getUTCMonth() + 1).padStart(2, "0")}-${String(dateInput.getUTCDate()).padStart(2, "0")}`
+      : dateInput.slice(0, 10);
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  if (isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
 /**
  * DF-002: Mascaras de privacidad para datos sensibles.
  */

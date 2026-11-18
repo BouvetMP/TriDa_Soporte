@@ -4,6 +4,8 @@
 
 import { queryRaw } from "../../db/queryRaw.js";
 import type { MapQueryInput } from "./maps.schemas.js";
+import { config } from "../../config.js";
+import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
 
 type RawLocation = {
   id_transaccion: number;
@@ -40,7 +42,7 @@ function formatRawLocation(item: RawLocation) {
 }
 
 export const mapService = {
-  async getStats(userId: number) {
+  async getStats(userId: number, accountId?: number) {
     const rows = await queryRaw<
       {
         total_geolocalizadas: string | number;
@@ -55,15 +57,17 @@ export const mapService = {
         COUNT(*)::bigint AS total_geolocalizadas,
         COUNT(DISTINCT ciudad)::bigint AS ciudades_distintas,
         COUNT(DISTINCT pais)::bigint AS paises_distintos,
-        COUNT(*) FILTER (WHERE t.score_anomalia >= 50)::bigint AS transacciones_riesgo_alto,
+        COUNT(*) FILTER (WHERE t.score_anomalia >= 70)::bigint AS transacciones_riesgo_alto,
         COALESCE(AVG(t.score_anomalia), 0)::numeric AS score_promedio
       FROM trida.transacciones t
       JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
       WHERE t.id_usuario = $1
         AND u.latitud IS NOT NULL
         AND u.longitud IS NOT NULL
+        AND ($2::int IS NULL OR t.id_cuenta = $2)
       `,
       userId,
+      accountId ?? null,
     );
 
     const r = rows[0] ?? {
@@ -88,6 +92,11 @@ export const mapService = {
     const conditions = ["t.id_usuario = $1", "u.latitud IS NOT NULL", "u.longitud IS NOT NULL"];
     const params: unknown[] = [userId];
 
+    if (filters.id_cuenta !== undefined) {
+      params.push(filters.id_cuenta);
+      conditions.push(`t.id_cuenta = $${params.length}`);
+    }
+
     if (filters.nivel_riesgo && filters.nivel_riesgo !== "ALL") {
       params.push(filters.nivel_riesgo);
       conditions.push(`CASE
@@ -104,20 +113,13 @@ export const mapService = {
     }
 
     if (filters.fecha_inicio) {
-      params.push(new Date(filters.fecha_inicio));
+      params.push(parseDateStart(filters.fecha_inicio, config.APP_TIMEZONE));
       conditions.push(`t.fecha_transaccion >= $${params.length}`);
     }
 
     if (filters.fecha_fin) {
-      const fecha_fin = new Date(filters.fecha_fin);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.fecha_fin)) {
-        fecha_fin.setUTCDate(fecha_fin.getUTCDate() + 1);
-        params.push(fecha_fin);
-        conditions.push(`t.fecha_transaccion < $${params.length}`);
-      } else {
-        params.push(fecha_fin);
-        conditions.push(`t.fecha_transaccion <= $${params.length}`);
-      }
+      params.push(parseDateEnd(filters.fecha_fin, config.APP_TIMEZONE));
+      conditions.push(`t.fecha_transaccion <= $${params.length}`);
     }
 
     const whereClause = conditions.join(" AND ");

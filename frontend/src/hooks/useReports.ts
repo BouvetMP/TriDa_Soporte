@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { reportsApi } from "@/api/Reports";
 import { useToast } from "@/components/ui/Toast";
 import type {
@@ -6,6 +6,7 @@ import type {
   ReportFilters,
   TipoPeriodoReporte,
 } from "@/types";
+import { useAccount } from "@/hooks/useAccount";
 
 function dateOnly(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -14,11 +15,14 @@ function dateOnly(date: Date) {
 }
 
 function getDateRange(filters: ReportFilters) {
-  if (
-    filters.tipo_periodo === "PERSONALIZADO" &&
-    filters.fecha_inicio &&
-    filters.fecha_fin
-  ) {
+  if (filters.tipo_periodo === "PERSONALIZADO") {
+    if (
+      !filters.fecha_inicio ||
+      !filters.fecha_fin ||
+      filters.fecha_inicio > filters.fecha_fin
+    ) {
+      return null;
+    }
     return {
       fecha_inicio: filters.fecha_inicio,
       fecha_fin: filters.fecha_fin,
@@ -43,11 +47,13 @@ function getDateRange(filters: ReportFilters) {
 
 export function useReports(initialFilters?: ReportFilters) {
   const { showToast } = useToast();
+  const { selectedAccount } = useAccount();
   const [reportData, setReportData] = useState<FinancialReportData | null>(
     null,
   );
   const [loading, setLoading] = useState<boolean>(true);
   const [exporting, setExporting] = useState<boolean>(false);
+  const requestId = useRef(0);
 
   const [filters, setFilters] = useState<ReportFilters>({
     tipo_periodo: initialFilters?.tipo_periodo ?? "MES_ACTUAL",
@@ -55,11 +61,23 @@ export function useReports(initialFilters?: ReportFilters) {
   });
 
   const fetchReport = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
+    const dateRange = getDateRange(filters);
+    if (!dateRange) {
+      setReportData(null);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const data = await reportsApi.getFinancialReport(getDateRange(filters));
+      const data = await reportsApi.getFinancialReport({
+        ...dateRange,
+        id_cuenta: selectedAccount?.id_cuenta,
+      });
+      if (currentRequestId !== requestId.current) return;
       setReportData(data);
     } catch (err) {
+      if (currentRequestId !== requestId.current) return;
       const msg =
         err instanceof Error
           ? err.message
@@ -70,22 +88,38 @@ export function useReports(initialFilters?: ReportFilters) {
         message: msg,
       });
     } finally {
-      setLoading(false);
+      if (currentRequestId === requestId.current) setLoading(false);
     }
-  }, [filters, showToast]);
+  }, [filters, selectedAccount?.id_cuenta, showToast]);
 
   useEffect(() => {
     fetchReport();
+    return () => {
+      requestId.current += 1;
+    };
   }, [fetchReport]);
 
   const setPeriodType = (tipo: TipoPeriodoReporte) => {
-    setFilters((prev) => ({
-      ...prev,
-      tipo_periodo: tipo,
-      // Si cambia a no personalizado, limpiamos fechas manuales
-      fecha_inicio: tipo === "PERSONALIZADO" ? prev.fecha_inicio : undefined,
-      fecha_fin: tipo === "PERSONALIZADO" ? prev.fecha_fin : undefined,
-    }));
+    setFilters((prev) => {
+      if (tipo === "PERSONALIZADO") {
+        const today = new Date();
+        return {
+          ...prev,
+          tipo_periodo: tipo,
+          fecha_inicio:
+            prev.fecha_inicio ??
+            dateOnly(new Date(today.getFullYear(), today.getMonth(), 1)),
+          fecha_fin: prev.fecha_fin ?? dateOnly(today),
+        };
+      }
+
+      return {
+        ...prev,
+        tipo_periodo: tipo,
+        fecha_inicio: undefined,
+        fecha_fin: undefined,
+      };
+    });
   };
 
   const setCustomDateRange = (fecha_inicio: string, fecha_fin: string) => {
@@ -113,8 +147,13 @@ export function useReports(initialFilters?: ReportFilters) {
         "nombre_cuenta",
         "nombre_categoria",
       ] as const;
-      const escapeCsv = (value: string | number | null) =>
-        `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const escapeCsv = (value: string | number | null) => {
+        let text = String(value ?? "");
+        if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) {
+          text = `'${text}`;
+        }
+        return `"${text.replace(/"/g, '""')}"`;
+      };
       const csv = [
         columns.join(","),
         ...reportData.transacciones.map((transaction) =>

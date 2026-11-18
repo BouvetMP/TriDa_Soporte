@@ -19,6 +19,9 @@ interface ApiCategoryReport {
 
 interface ApiTransactionReport {
   items: FinancialReportData["transacciones"];
+  top_comercios: FinancialReportData["top_comercios"];
+  total: number;
+  truncated: boolean;
 }
 
 export const reportsApi = {
@@ -28,6 +31,7 @@ export const reportsApi = {
     const params = {
       fecha_inicio: filters.fecha_inicio,
       fecha_fin: filters.fecha_fin,
+      id_cuenta: filters.id_cuenta,
     };
     const [summaryResponse, expenseResponse, incomeResponse, transactionResponse] =
       await Promise.all([
@@ -49,16 +53,6 @@ export const reportsApi = {
     const transacciones = transactionResponse.data.data.items;
     const gastoTotal = summary.totales.gastos;
     const ingresoTotal = summary.totales.ingresos;
-    const merchantTotals = new Map<string, { total: number; count: number }>();
-
-    for (const transaction of transacciones) {
-      if (transaction.tipo_movimiento !== "GASTO") continue;
-      const merchant = transaction.comercio || "Sin comercio";
-      const current = merchantTotals.get(merchant) ?? { total: 0, count: 0 };
-      current.total += transaction.monto;
-      current.count += 1;
-      merchantTotals.set(merchant, current);
-    }
 
     const mapCategories = (
       categories: ApiCategoryReport["categorias"],
@@ -85,16 +79,15 @@ export const reportsApi = {
       },
       gastos_por_categoria: mapCategories(gastos, gastoTotal, "GASTO"),
       ingresos_por_categoria: mapCategories(ingresos, ingresoTotal, "INGRESO"),
-      top_comercios: [...merchantTotals.entries()]
-        .map(([comercio, values]) => ({
-          comercio,
-          total: values.total,
-          numero_transacciones: values.count,
-          porcentaje: gastoTotal > 0 ? (values.total / gastoTotal) * 100 : 0,
-        }))
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5),
+      top_comercios: transactionResponse.data.data.top_comercios.map(
+        (merchant) => ({
+          ...merchant,
+          porcentaje: gastoTotal > 0 ? (merchant.total / gastoTotal) * 100 : 0,
+        }),
+      ),
       transacciones,
+      total_transacciones: transactionResponse.data.data.total,
+      transacciones_truncadas: transactionResponse.data.data.truncated,
       periodo: summary.periodo,
     };
   },

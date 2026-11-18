@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { z } from "zod";
+import { positiveMoney } from "../../utils/money.js";
 
 const transactionType = z.enum(["INGRESO", "GASTO", "AHORRO"], {
   message: "El tipo de movimiento debe ser INGRESO, GASTO o AHORRO",
@@ -14,7 +15,7 @@ export const createTransactionSchema = z
     id_cuenta: z.coerce.number().int().positive(),
     id_categoria: z.coerce.number().int().positive().optional(),
     id_dispositivo: z.coerce.number().int().positive().optional(),
-    monto: z.coerce.number().positive("El monto debe ser mayor a 0"),
+    monto: positiveMoney,
     tipo_movimiento: transactionType,
     comercio: z.string().trim().max(150).optional(),
     descripcion: z.string().trim().max(255).optional(),
@@ -42,7 +43,7 @@ export const listTransactionsQuerySchema = z.object({
   min_monto: transactionQueryAmount,
   max_monto: transactionQueryAmount,
   search: z.string().trim().min(1).max(255).optional(),
-  limit: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   sort_by: z.string().trim().min(1).max(30).optional(),
   sort_order: z.enum(["asc", "desc"]).optional(),

@@ -90,6 +90,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      isSubmitting={isSubmitting}
       title="Agregar Nueva Cuenta"
       description="Registra un banco, tarjeta, billetera digital o dinero en efectivo"
     >

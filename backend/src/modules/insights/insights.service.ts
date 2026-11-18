@@ -146,7 +146,7 @@ export const insightsService = {
       );
     }
 
-    if (scorePromedio >= 50) {
+    if (scorePromedio >= 70) {
       consejos.push(
         "Tu score de riesgo promedio es elevado. Verifica dispositivos desconocidos y transacciones marcadas.",
       );
@@ -161,7 +161,7 @@ export const insightsService = {
     if (topCategorias.length > 0) {
       const top = topCategorias[0];
       consejos.push(
-        `Tu mayor gasto está en "${top.nombre}" ($${Number(top.total).toFixed(2)}). Evalúa si puedes optimizar esa categoría.`,
+        `Tu mayor gasto está en "${top.nombre}" (${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(Number(top.total))}). Evalúa si puedes optimizar esa categoría.`,
       );
     }
 

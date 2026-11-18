@@ -34,7 +34,7 @@ export function BudgetSummaryCards({ summary }: BudgetSummaryCardsProps) {
       {/* Total Gastado */}
       <Card className="p-4 flex items-center justify-between border-[var(--color-border)] bg-[var(--color-bg-card)]">
         <div>
-          <p className="text-xs font-medium text-[var(--color-text-secondary)]">Total Gastado</p>
+          <p className="text-xs font-medium text-[var(--color-text-secondary)]">Total consumido (gastos + ahorro)</p>
           <p className="text-xl font-bold text-[var(--color-text-primary)] mt-1">
             {formatCurrency(totalGastado)}
           </p>

@@ -46,6 +46,7 @@ export function ContributeSavingsModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      isSubmitting={submitting}
       title={`Aportar a: ${goal.nombre}`}
     >
       <form onSubmit={handleSubmit} className="space-y-4">

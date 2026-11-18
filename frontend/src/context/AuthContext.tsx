@@ -1,10 +1,12 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { TOKEN_KEY } from '@/constants/Api';
-import { AuthApi } from '@/api/Auth';
+import React, { createContext, useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { AUTH_EXPIRED_EVENT, TOKEN_KEY } from "@/constants/Api";
+import { AuthApi } from "@/api/Auth";
 import {
   SessionUser,
   LoginCredentials,
   RegisterCredentials,
+  RegisterResponseData,
   UpdateProfilePayload,
 } from "@/types";
 
@@ -14,18 +16,42 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
-  register: (credentials: RegisterCredentials) => Promise<void>;
+  register: (credentials: RegisterCredentials) => Promise<RegisterResponseData>;
   logout: () => void;
   updateProfile: (payload: UpdateProfilePayload) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(
+  undefined,
+);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const navigate = useNavigate();
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() =>
+    localStorage.getItem(TOKEN_KEY),
+  );
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const handleAuthExpired = (event: Event) => {
+      const returnTo = (event as CustomEvent<{ returnTo?: string }>).detail
+        ?.returnTo;
+      setUser(null);
+      setToken(null);
+      navigate("/login?expired=true", {
+        replace: true,
+        state: returnTo ? { from: returnTo } : undefined,
+      });
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () =>
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, [navigate]);
 
   // Al montar la app, si hay token guardado, recupera los datos del usuario con GET /auth/me
   useEffect(() => {
@@ -45,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setToken(storedToken);
         }
       } catch (error) {
-        console.error('Error al verificar sesión inicial:', error);
+        console.error("Error al verificar sesión inicial:", error);
         localStorage.removeItem(TOKEN_KEY);
         if (isMounted) {
           setUser(null);
@@ -85,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (credentials: RegisterCredentials) => {
     setIsLoading(true);
     try {
-      await AuthApi.register(credentials);
+      return await AuthApi.register(credentials);
     } finally {
       setIsLoading(false);
     }
@@ -95,15 +121,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
-    window.location.href = '/login';
-  }, []);
+    navigate("/login", { replace: true });
+  }, [navigate]);
 
   const refreshUser = async () => {
     try {
       const userData = await AuthApi.getMe();
       setUser(userData);
     } catch (error) {
-      console.error('Error al refrescar usuario:', error);
+      console.error("Error al refrescar usuario:", error);
     }
   };
 

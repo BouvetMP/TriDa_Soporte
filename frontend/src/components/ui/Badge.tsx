@@ -29,7 +29,7 @@ export const Badge: React.FC<BadgeProps> = ({
     primary: "bg-primary/10 text-primary border-primary/20",
     success: "bg-income/10 text-income border-income/20",
     danger: "bg-expense/10 text-expense border-expense/20",
-    warning: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    warning: "bg-budget-warn/10 text-budget-warn border-budget-warn/20",
     info: "bg-saving/10 text-saving border-saving/20",
     outline: "border-border text-text-primary bg-transparent",
   };

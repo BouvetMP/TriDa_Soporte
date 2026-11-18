@@ -22,7 +22,8 @@ export const ProfilePage: React.FC = () => {
         </h1>
         <p className="text-sm text-[var(--color-text-subtle)] mt-1">
           Gestiona tu información personal de contacto y actualiza tu credencial
-          de acceso.
+          de acceso. Al cambiar la contraseña, se cerrará tu sesión y tendrás
+          que iniciar sesión de nuevo.
         </p>
       </div>
 

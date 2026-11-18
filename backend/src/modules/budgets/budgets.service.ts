@@ -1,6 +1,11 @@
 import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
-import type { CreateBudgetInput, UpdateBudgetInput } from "./budgets.schemas.js";
+import type {
+  BudgetQueryInput,
+  CreateBudgetInput,
+  UpdateBudgetInput,
+} from "./budgets.schemas.js";
+import { AppError } from "../../utils/AppError.js";
 
 type NumericValue = number | string | { toString(): string };
 
@@ -17,13 +22,9 @@ type BudgetRow = {
   gastado: NumericValue;
 };
 
-class BudgetError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 404,
-  ) {
-    super(message);
-    this.name = "BudgetError";
+class BudgetError extends AppError {
+  constructor(message: string, statusCode = 400) {
+    super(message, statusCode);
   }
 }
 
@@ -45,7 +46,10 @@ function formatBudget(item: BudgetRow) {
 }
 
 export const budgetsService = {
-  async list(userId: number) {
+  async list(
+    userId: number,
+    filters: BudgetQueryInput = {},
+  ) {
     const rows = await queryRaw<BudgetRow[]>(
       `
         SELECT
@@ -67,13 +71,19 @@ export const budgetsService = {
               AND t.fecha_transaccion >= make_date(p.anio, p.mes, 1)
               AND t.fecha_transaccion < make_date(p.anio, p.mes, 1) + INTERVAL '1 month'
               AND t.estado IN ('CONFIRMADA', 'APROBADA')
+              AND ($2::int IS NULL OR t.id_cuenta = $2)
           ), 0)::numeric AS gastado
         FROM trida.presupuestos p
         LEFT JOIN trida.categorias c ON c.id_categoria = p.id_categoria
         WHERE p.id_usuario = $1
+          AND ($3::int IS NULL OR p.mes = $3)
+          AND ($4::int IS NULL OR p.anio = $4)
         ORDER BY p.anio DESC, p.mes DESC, p.id_presupuesto
       `,
       userId,
+      filters.id_cuenta ?? null,
+      filters.mes ?? null,
+      filters.anio ?? null,
     );
 
     return rows.map(formatBudget);
@@ -83,6 +93,8 @@ export const budgetsService = {
     const category = await prisma.categoria.findFirst({
       where: {
         id_categoria: data.id_categoria,
+        estado: true,
+        tipo: "GASTO",
         OR: [{ id_usuario: null }, { id_usuario: userId }],
       },
       select: { id_categoria: true },
@@ -122,7 +134,7 @@ export const budgetsService = {
     });
 
     if (!budget) {
-      throw new BudgetError("Presupuesto no encontrado");
+      throw new BudgetError("Presupuesto no encontrado", 404);
     }
 
     const updatedBudget = await prisma.presupuesto.update({
@@ -148,7 +160,7 @@ export const budgetsService = {
     });
 
     if (!budget) {
-      throw new BudgetError("Presupuesto no encontrado");
+      throw new BudgetError("Presupuesto no encontrado", 404);
     }
 
     await prisma.presupuesto.delete({

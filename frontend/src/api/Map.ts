@@ -49,9 +49,11 @@ export const mapApi = {
     };
   },
 
-  getMapSummary: async (): Promise<MapSummary> => {
+  getMapSummary: async (id_cuenta?: number): Promise<MapSummary> => {
     const response =
-      await apiClient.get<ApiSuccess<MapSummary>>("/map/stats");
+      await apiClient.get<ApiSuccess<MapSummary>>("/map/stats", {
+        params: id_cuenta ? { id_cuenta } : undefined,
+      });
     return response.data.data;
   },
 };

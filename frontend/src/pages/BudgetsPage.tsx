@@ -25,6 +25,8 @@ const MONTH_NAMES = [
   "Noviembre",
   "Diciembre",
 ];
+const MIN_BUDGET_YEAR = 2020;
+const MAX_BUDGET_YEAR = 2100;
 
 export function BudgetsPage() {
   const currentDate = new Date();
@@ -51,17 +53,14 @@ export function BudgetsPage() {
     label: name,
   }));
 
-  const yearOptions = [
-    {
-      value: (currentYear - 1).toString(),
-      label: (currentYear - 1).toString(),
-    },
-    { value: currentYear.toString(), label: currentYear.toString() },
-    {
-      value: (currentYear + 1).toString(),
-      label: (currentYear + 1).toString(),
-    },
-  ];
+  const lastBudgetYear = Math.min(
+    MAX_BUDGET_YEAR,
+    Math.max(currentYear + 1, MIN_BUDGET_YEAR),
+  );
+  const yearOptions = Array.from(
+    { length: lastBudgetYear - MIN_BUDGET_YEAR + 1 },
+    (_, index) => MIN_BUDGET_YEAR + index,
+  ).map((year) => ({ value: year.toString(), label: year.toString() }));
 
   const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFilters((prev) => ({ ...prev, mes: Number(e.target.value) }));

@@ -32,24 +32,6 @@ export function MapSummaryCards({ summary }: MapSummaryCardsProps) {
         </div>
       </Card>
 
-      {/* Transacciones Ubicadas */}
-      <Card className="p-4 flex items-center justify-between border-[var(--color-border)] bg-[var(--color-bg-card)]">
-        <div>
-          <p className="text-xs font-medium text-[var(--color-text-secondary)]">
-            Puntos Registrados
-          </p>
-          <p className="text-xl font-bold text-[var(--color-primary)] mt-1">
-            {totalGeolocalizadas}
-          </p>
-          <span className="text-2xs text-[var(--color-text-muted)]">
-            Movimientos con GPS
-          </span>
-        </div>
-        <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-light)] text-[var(--color-primary)] flex items-center justify-center">
-          <MapPin className="w-5 h-5" />
-        </div>
-      </Card>
-
       {/* Ciudades */}
       <Card className="p-4 flex items-center justify-between border-[var(--color-border)] bg-[var(--color-bg-card)]">
         <div>

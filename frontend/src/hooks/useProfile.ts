@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/Toast";
 
 export const useProfile = () => {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const [isUpdatingProfile, setIsUpdatingProfile] = useState<boolean>(false);
   const [isChangingPassword, setIsChangingPassword] = useState<boolean>(false);
   const { showToast } = useToast();
@@ -48,11 +48,7 @@ export const useProfile = () => {
     try {
       const response = await ProfileApi.changePassword(payload);
       if (response.success) {
-        showToast({
-          type: "success",
-          title: "Contraseña cambiada",
-          message: "Tu contraseña de acceso ha sido actualizada exitosamente.",
-        });
+        logout();
         return true;
       }
     } catch (error) {

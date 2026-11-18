@@ -3,15 +3,16 @@
 
 import { queryRaw } from "../../db/queryRaw.js";
 import { ReportQueryInput } from "./reports.schemas.js";
+import { config } from "../../config.js";
+import { parseDateEnd, parseDateStart, startOfMonth } from "../../utils/dateRange.js";
 
 function resolveDateRange(query: ReportQueryInput) {
-  const end = query.fecha_fin ? new Date(query.fecha_fin) : new Date();
-  if (query.fecha_fin && /^\d{4}-\d{2}-\d{2}$/.test(query.fecha_fin)) {
-    end.setUTCHours(23, 59, 59, 999);
-  }
+  const end = query.fecha_fin
+    ? parseDateEnd(query.fecha_fin, config.APP_TIMEZONE)
+    : new Date();
   const start = query.fecha_inicio
-    ? new Date(query.fecha_inicio)
-    : new Date(end.getFullYear(), end.getMonth(), 1); // por defecto: inicio del mes actual
+    ? parseDateStart(query.fecha_inicio, config.APP_TIMEZONE)
+    : startOfMonth(end, config.APP_TIMEZONE);
 
   return { start, end };
 }
@@ -51,10 +52,12 @@ export const reportsService = {
       WHERE id_usuario = $1
         AND fecha_transaccion >= $2
         AND fecha_transaccion <= $3
+        AND ($4::int IS NULL OR id_cuenta = $4)
       `,
       userId,
       start,
       end,
+      query.id_cuenta ?? null,
     );
 
     const r = rows[0] ?? {
@@ -104,7 +107,7 @@ export const reportsService = {
         total: string | number;
         cantidad: bigint | number;
       }>
-    >(
+      >(
       `
       SELECT
         c.id_categoria,
@@ -120,6 +123,7 @@ export const reportsService = {
         AND t.fecha_transaccion >= $3
         AND t.fecha_transaccion <= $4
         AND t.estado IN ('CONFIRMADA', 'APROBADA')
+        AND ($5::int IS NULL OR t.id_cuenta = $5)
       GROUP BY c.id_categoria, c.nombre, c.icono, c.color
       ORDER BY total DESC
       `,
@@ -127,6 +131,7 @@ export const reportsService = {
       tipo,
       start,
       end,
+      query.id_cuenta ?? null,
     );
 
     return {
@@ -152,16 +157,18 @@ export const reportsService = {
       "t.fecha_transaccion >= $2",
       "t.fecha_transaccion <= $3",
       "t.estado IN ('CONFIRMADA', 'APROBADA')",
+      "($4::int IS NULL OR t.id_cuenta = $4)",
     ];
-    const params: unknown[] = [userId, start, end];
-    let i = 4;
+    const params: unknown[] = [userId, start, end, query.id_cuenta ?? null];
+    let i = 5;
 
     if (query.tipo_movimiento) {
       params.push(query.tipo_movimiento);
       conditions.push(`t.tipo_movimiento = $${i++}`);
     }
 
-    const rows = await queryRaw<
+    const [rows, countRows, merchantRows] = await Promise.all([
+      queryRaw<
       Array<{
         id_transaccion: number;
         fecha_transaccion: Date;
@@ -199,11 +206,45 @@ export const reportsService = {
       `,
       ...params,
       safeLimit,
-    );
+      ),
+      queryRaw<{ total: string | number }[]>(
+        `
+        SELECT COUNT(*)::bigint AS total
+        FROM trida.transacciones t
+        WHERE ${conditions.join(" AND ")}
+        `,
+        ...params,
+      ),
+      queryRaw<
+        Array<{ comercio: string; total: string | number; cantidad: string | number }>
+      >(
+        `
+        SELECT
+          COALESCE(NULLIF(BTRIM(t.comercio), ''), 'Sin comercio') AS comercio,
+          SUM(t.monto)::numeric AS total,
+          COUNT(*)::bigint AS cantidad
+        FROM trida.transacciones t
+        WHERE ${conditions.join(" AND ")}
+          AND t.tipo_movimiento = 'GASTO'
+        GROUP BY COALESCE(NULLIF(BTRIM(t.comercio), ''), 'Sin comercio')
+        ORDER BY total DESC
+        LIMIT 5
+        `,
+        ...params,
+      ),
+    ]);
+
+    const total = Number(countRows[0]?.total ?? 0);
 
     return {
       periodo: { fecha_inicio: start, fecha_fin: end },
-      total: rows.length,
+      total,
+      truncated: total > rows.length,
+      top_comercios: merchantRows.map((row) => ({
+        comercio: row.comercio,
+        total: Number(row.total),
+        numero_transacciones: Number(row.cantidad),
+      })),
       items: rows.map((r) => ({
         id_transaccion: Number(r.id_transaccion),
         fecha_transaccion: r.fecha_transaccion,

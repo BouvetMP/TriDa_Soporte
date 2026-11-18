@@ -9,8 +9,15 @@ import {
 } from "../modules/transactions/transactions.schemas.js";
 import { getTransactionBalanceDelta } from "../modules/transactions/transaction-balance.js";
 import { queryRaw } from "../db/queryRaw.js";
-import { loginSchema, registerSchema } from "../modules/auth/auth.schemas.js";
-import { createBudgetSchema } from "../modules/budgets/budgets.schemas.js";
+import {
+  loginSchema,
+  registerSchema,
+  updateProfileSchema,
+} from "../modules/auth/auth.schemas.js";
+import {
+  budgetQuerySchema,
+  createBudgetSchema,
+} from "../modules/budgets/budgets.schemas.js";
 import {
   alertIdSchema,
   listAlertsQuerySchema,
@@ -19,13 +26,32 @@ import {
 import { getAlertTransactionDecision } from "../modules/alerts/alerts.service.js";
 import { registerDeviceSchema, updateTrustSchema } from "../modules/devices/devices.schemas.js";
 import { isPrismaKnownRequestError } from "../middlewares/error.middleware.js";
-import { addFundsSchema, savingsIdSchema } from "../modules/savings/savings.schemas.js";
+import {
+  addFundsSchema,
+  createSavingsSchema,
+  savingsIdSchema,
+  updateSavingsSchema,
+} from "../modules/savings/savings.schemas.js";
+import { parseId } from "../utils/params.js";
+import { reportQuerySchema } from "../modules/reports/reports.schemas.js";
+import { mapQuerySchema } from "../modules/maps/maps.schemas.js";
+import {
+  parseDateEnd,
+  parseDateStart,
+  startOfMonth,
+  startOfNextMonth,
+} from "../utils/dateRange.js";
 import {
   createPasswordResetToken,
   getUnverifiedPasswordResetUserId,
   PASSWORD_RESET_TOKEN_TTL_SECONDS,
   verifyPasswordResetToken,
 } from "../modules/auth/reset-token.js";
+import {
+  createEmailVerificationToken,
+  getUnverifiedEmailVerificationUserId,
+  verifyEmailVerificationToken,
+} from "../modules/auth/email-verification.js";
 import jwt from "jsonwebtoken";
 
 test("account schema accepts the documented snake_case contract only", () => {
@@ -61,12 +87,21 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
 
   assert.equal(transaction.id_cuenta, 5);
   assert.equal(transaction.monto, 30.5);
+  assert.equal(createTransactionSchema.parse({
+    id_cuenta: 5,
+    monto: "1.239",
+    tipo_movimiento: "GASTO",
+  }).monto, 1.24);
   assert.equal(
     createTransactionSchema.safeParse({
       accountId: "5",
       monto: "30.5",
       tipo_movimiento: "GASTO",
     }).success,
+    false,
+  );
+  assert.equal(
+    listTransactionsQuerySchema.safeParse({ limit: "101" }).success,
     false,
   );
   assert.equal(
@@ -97,6 +132,51 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
   );
 });
 
+test("route IDs and monetary values are bounded and normalized", () => {
+  assert.equal(parseId("12"), 12);
+  assert.throws(() => parseId("abc"));
+  assert.throws(() => parseId("0"));
+  assert.equal(addFundsSchema.safeParse({ monto: "2.345" }).data?.monto, 2.35);
+  assert.equal(addFundsSchema.safeParse({ monto: "10000000000000" }).success, false);
+  assert.equal(
+    createBudgetSchema.safeParse({
+      id_categoria: 1,
+      limite_mensual: "10000000000000",
+      mes: 1,
+      anio: 2026,
+    }).success,
+    false,
+  );
+  assert.equal(
+    createSavingsSchema.safeParse({
+      nombre: "Ahorro",
+      monto_objetivo: 100,
+      monto_actual: 100,
+    }).success,
+    true,
+  );
+  assert.equal(updateSavingsSchema.safeParse({ fecha_limite: null }).success, true);
+});
+
+test("calendar date filters use the configured timezone boundaries", () => {
+  const timeZone = "America/Bogota";
+  assert.equal(
+    parseDateStart("2026-11-01", timeZone).toISOString(),
+    "2026-11-01T05:00:00.000Z",
+  );
+  assert.equal(
+    parseDateEnd("2026-11-01", timeZone).toISOString(),
+    "2026-11-02T04:59:59.999Z",
+  );
+  const date = new Date("2026-11-18T12:00:00.000Z");
+  assert.equal(startOfMonth(date, timeZone).toISOString(), "2026-11-01T05:00:00.000Z");
+  assert.equal(
+    startOfNextMonth(date, timeZone).toISOString(),
+    "2026-12-01T05:00:00.000Z",
+  );
+  assert.throws(() => parseDateStart("2026-02-30", timeZone), /Fecha de calendario inválida/);
+});
+
 test("documented transaction query parameters map to service filters", () => {
   const query = listTransactionsQuerySchema.parse({
     id_cuenta: "5",
@@ -114,6 +194,30 @@ test("documented transaction query parameters map to service filters", () => {
   assert.equal(query.sort_by, "monto");
   assert.equal(query.sort_order, "asc");
   assert.equal(query.estado, "CONFIRMADA");
+  assert.deepEqual(
+    budgetQuerySchema.parse({ id_cuenta: "5", mes: "2", anio: "2026" }),
+    { id_cuenta: 5, mes: 2, anio: 2026 },
+  );
+  assert.equal(reportQuerySchema.parse({ id_cuenta: "5" }).id_cuenta, 5);
+  assert.equal(mapQuerySchema.parse({ id_cuenta: "5" }).id_cuenta, 5);
+});
+
+test("global account filters are documented for dashboard, reports, budgets and map", () => {
+  const spec = swaggerSpec as {
+    paths?: Record<string, { get?: { parameters?: Array<{ name: string }> } }>;
+  };
+  for (const path of [
+    "/api/v2/dashboard/stats",
+    "/api/v2/reports/summary",
+    "/api/v2/reports/by-category",
+    "/api/v2/reports/transactions",
+    "/api/v2/budgets",
+    "/api/v2/map/stats",
+    "/api/v2/map/locations",
+  ]) {
+    const parameters = spec.paths?.[path]?.get?.parameters ?? [];
+    assert.ok(parameters.some(({ name }) => name === "id_cuenta"), `${path} must expose id_cuenta`);
+  }
 });
 
 test("pending transactions can only be resolved to a balance-affecting final state", () => {
@@ -140,9 +244,21 @@ test("auth schemas align with the snake_case OpenAPI fields", () => {
     true,
   );
   assert.equal(
+    registerSchema.parse({
+      nombre_completo: "Ana Pérez",
+      email: "  Ana@EMAIL.COM ",
+      password: "ClaveSegura1",
+    }).email,
+    "ana@email.com",
+  );
+  assert.equal(
     loginSchema.safeParse({ correo: "ana@email.com", password: "ClaveSegura1" }).success,
     false,
   );
+  assert.deepEqual(updateProfileSchema.parse({ telefono: null }), {
+    telefono: null,
+  });
+  assert.equal(updateProfileSchema.safeParse({ telefono: "" }).success, true);
 
   const spec = swaggerSpec as {
     components?: {
@@ -234,13 +350,52 @@ test("budget, alert and device payloads use database-aligned snake_case fields",
 });
 
 test("OpenAPI includes all previously undocumented auth and dashboard routes", () => {
-  const paths = (swaggerSpec as { paths?: Record<string, { patch?: unknown }> }).paths ?? {};
+  const paths = (
+    swaggerSpec as {
+      paths?: Record<string, { get?: unknown; patch?: unknown }>;
+    }
+  ).paths ?? {};
 
   assert.ok(paths["/api/v2/auth/forgot-password"]);
+  assert.ok(paths["/api/v2/auth/verify-email"]);
   assert.ok(paths["/api/v2/auth/verify-reset-token"]);
   assert.ok(paths["/api/v2/auth/reset-password"]);
   assert.ok(paths["/api/v2/dashboard/estadisticas"]);
+  assert.ok(paths["/api/v2/dashboard/advice"]?.get);
+  assert.ok(paths["/api/v2/dashboard/advice/{id}/read"]?.patch);
   assert.ok(paths["/api/v2/auth/me"]?.patch);
+});
+
+test("OpenAPI only references existing local components", () => {
+  const resolvePointer = (pointer: string) =>
+    pointer
+      .slice(2)
+      .split("/")
+      .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))
+      .reduce<unknown>((current, part) => {
+        assert.ok(
+          typeof current === "object" && current !== null && part in current,
+          `OpenAPI reference not found: ${pointer}`,
+        );
+        return (current as Record<string, unknown>)[part];
+      }, swaggerSpec);
+
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    for (const [key, nested] of Object.entries(value)) {
+      if (key === "$ref" && typeof nested === "string" && nested.startsWith("#/")) {
+        resolvePointer(nested);
+      } else {
+        visit(nested);
+      }
+    }
+  };
+
+  visit(swaggerSpec);
 });
 
 test("Prisma known errors are recognized across duplicated runtime instances", () => {
@@ -260,6 +415,7 @@ test("password reset tokens are short-lived, purpose-bound and invalidated by pa
   const passwordHash = "$2b$10$old-password-hash";
   const token = createPasswordResetToken(42, passwordHash, serverSecret);
   const claims = jwt.decode(token);
+  assert.equal(jwt.decode(token, { complete: true })?.header.alg, "HS256");
 
   assert.equal(getUnverifiedPasswordResetUserId(token), 42);
   assert.equal(
@@ -273,6 +429,27 @@ test("password reset tokens are short-lived, purpose-bound and invalidated by pa
   );
   assert.equal(verifyPasswordResetToken(token, 42, passwordHash, `${serverSecret}-changed`), false);
   assert.equal(getUnverifiedPasswordResetUserId("not-a-jwt"), null);
+});
+
+test("email verification tokens bind the user and normalized email", () => {
+  const serverSecret = "a-secure-test-secret-that-is-at-least-32-characters";
+  const token = createEmailVerificationToken(42, "ana@email.com", serverSecret);
+
+  assert.equal(getUnverifiedEmailVerificationUserId(token), 42);
+  assert.equal(jwt.decode(token, { complete: true })?.header.alg, "HS256");
+  assert.equal(
+    verifyEmailVerificationToken(token, 42, "ana@email.com", serverSecret),
+    true,
+  );
+  assert.equal(
+    verifyEmailVerificationToken(token, 42, "other@email.com", serverSecret),
+    false,
+  );
+  assert.equal(
+    verifyEmailVerificationToken(token, 42, "ana@email.com", `${serverSecret}-changed`),
+    false,
+  );
+  assert.equal(getUnverifiedEmailVerificationUserId("not-a-jwt"), null);
 });
 
 test("password reset token verification is documented as a POST body, not a query string", () => {

@@ -16,12 +16,14 @@ interface TransactionsTableProps {
   transactions: Transaction[];
   isLoading: boolean;
   onDelete: (id: number) => void;
+  onResolve: (id: number, estado: "CONFIRMADA" | "RECHAZADA") => void;
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   transactions,
   isLoading,
   onDelete,
+  onResolve,
 }) => {
   if (isLoading) {
     return (
@@ -45,11 +47,11 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const renderTypeIcon = (tipo: string) => {
     switch (tipo) {
       case "INGRESO":
-        return <ArrowDownLeft className="w-4 h-4 text-emerald-500" />;
+        return <ArrowDownLeft className="w-4 h-4 text-income" />;
       case "GASTO":
-        return <ArrowUpRight className="w-4 h-4 text-red-500" />;
+        return <ArrowUpRight className="w-4 h-4 text-expense" />;
       case "AHORRO":
-        return <PiggyBank className="w-4 h-4 text-amber-500" />;
+        return <PiggyBank className="w-4 h-4 text-saving" />;
       default:
         return null;
     }
@@ -66,6 +68,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             <th className="py-3 px-4">Tipo</th>
             <th className="py-3 px-4 text-right">Monto</th>
             <th className="py-3 px-4">Riesgo</th>
+            <th className="py-3 px-4">Estado</th>
             <th className="py-3 px-4 text-center">Acciones</th>
           </tr>
         </thead>
@@ -103,10 +106,10 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 <span
                   className={
                     tx.tipo_movimiento === "INGRESO"
-                      ? "text-emerald-500"
+                      ? "text-income"
                       : tx.tipo_movimiento === "GASTO"
-                        ? "text-red-500"
-                        : "text-amber-500"
+                        ? "text-expense"
+                        : "text-saving"
                   }
                 >
                   {tx.tipo_movimiento === "INGRESO" ? "+" : "-"}{" "}
@@ -120,12 +123,40 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                   esSospechosa={tx.es_sospechosa}
                 />
               </td>
+              <td className="py-3.5 px-4 whitespace-nowrap">
+                <span className="rounded-full bg-surface-hover px-2 py-1 text-xs">
+                  {tx.estado ?? "Sin estado"}
+                </span>
+              </td>
               <td className="py-3.5 px-4 whitespace-nowrap text-center">
+                {tx.estado === "PENDIENTE" && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onResolve(tx.id_transaccion, "CONFIRMADA")}
+                      className="mr-1"
+                      aria-label="Confirmar transacción pendiente"
+                    >
+                      Confirmar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onResolve(tx.id_transaccion, "RECHAZADA")}
+                      className="mr-1"
+                      aria-label="Rechazar transacción pendiente"
+                    >
+                      Rechazar
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => onDelete(tx.id_transaccion)}
-                  className="text-[var(--color-text-muted)] hover:text-red-500 p-1.5"
+                  className="text-[var(--color-text-muted)] hover:text-expense p-1.5"
+                  aria-label="Eliminar transacción"
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

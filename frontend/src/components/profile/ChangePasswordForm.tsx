@@ -69,7 +69,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
       </div>
 
       {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-lg text-sm">
+        <div className="p-3 bg-risk-critical/10 border border-risk-critical/20 text-risk-critical rounded-lg text-sm">
           {error}
         </div>
       )}
@@ -99,14 +99,14 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
         </span>
         <div className="flex items-center gap-2">
           {isMinLength ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500" />
+            <Check className="w-3.5 h-3.5 text-income" />
           ) : (
             <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
           )}
           <span
             className={
               isMinLength
-                ? "text-emerald-500"
+                ? "text-income"
                 : "text-[var(--color-text-subtle)]"
             }
           >
@@ -115,13 +115,13 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {hasUpper ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500" />
+            <Check className="w-3.5 h-3.5 text-income" />
           ) : (
             <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
           )}
           <span
             className={
-              hasUpper ? "text-emerald-500" : "text-[var(--color-text-subtle)]"
+              hasUpper ? "text-income" : "text-[var(--color-text-subtle)]"
             }
           >
             Al menos una letra mayúscula
@@ -129,13 +129,13 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {hasLower ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500" />
+            <Check className="w-3.5 h-3.5 text-income" />
           ) : (
             <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
           )}
           <span
             className={
-              hasLower ? "text-emerald-500" : "text-[var(--color-text-subtle)]"
+              hasLower ? "text-income" : "text-[var(--color-text-subtle)]"
             }
           >
             Al menos una letra minúscula
@@ -143,13 +143,13 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {hasNumber ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500" />
+            <Check className="w-3.5 h-3.5 text-income" />
           ) : (
             <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
           )}
           <span
             className={
-              hasNumber ? "text-emerald-500" : "text-[var(--color-text-subtle)]"
+              hasNumber ? "text-income" : "text-[var(--color-text-subtle)]"
             }
           >
             Al menos un número

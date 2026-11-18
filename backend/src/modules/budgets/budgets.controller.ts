@@ -2,15 +2,21 @@
 // ¿Para qué? Gestionar la creación, consulta, actualización y eliminación de límites de gasto por categoría.
 
 import { Request, Response, NextFunction } from "express";
-import { sendError, sendSuccess } from "../../utils/apiResponse.js";
+import { sendSuccess } from "../../utils/apiResponse.js";
 import { budgetsService } from "./budgets.service.js";
-import { createBudgetSchema, updateBudgetSchema } from "./budgets.schemas.js";
+import {
+  budgetQuerySchema,
+  createBudgetSchema,
+  updateBudgetSchema,
+} from "./budgets.schemas.js";
+import { parseId } from "../../utils/params.js";
 
 export const budgetsController = {
   async list(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const data = await budgetsService.list(userId);
+      const filters = budgetQuerySchema.parse(req.query);
+      const data = await budgetsService.list(userId, filters);
       sendSuccess(res, data);
     } catch (error) {
       next(error);
@@ -31,12 +37,7 @@ export const budgetsController = {
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const budgetId = Number(req.params.id);
-
-      if (Number.isNaN(budgetId)) {
-        sendError(res, "ID de presupuesto inválido", 400);
-        return;
-      }
+      const budgetId = parseId(req.params.id);
 
       const validatedData = updateBudgetSchema.parse(req.body);
       const updated = await budgetsService.update(userId, budgetId, validatedData);
@@ -49,12 +50,7 @@ export const budgetsController = {
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const budgetId = Number(req.params.id);
-
-      if (Number.isNaN(budgetId)) {
-        sendError(res, "ID de presupuesto inválido", 400);
-        return;
-      }
+      const budgetId = parseId(req.params.id);
 
       const result = await budgetsService.delete(userId, budgetId);
       sendSuccess(res, result);

@@ -12,6 +12,7 @@ import {
   UpdateProfilePayload,
   ForgotPasswordPayload,
   VerifyResetTokenPayload,
+  VerifyEmailPayload,
   ResetPasswordPayload,
 } from "@/types";
 
@@ -44,6 +45,13 @@ export const AuthApi = {
       credentials,
     );
     return response.data.data;
+  },
+
+  async verifyEmail(payload: VerifyEmailPayload): Promise<void> {
+    await apiClient.post<ApiSuccess<{ message: string }>>(
+      API_ENDPOINTS.AUTH.VERIFY_EMAIL,
+      payload,
+    );
   },
 
   /**

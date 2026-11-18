@@ -36,15 +36,15 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
 
   const getStrengthColor = () => {
     if (passedCount <= 1) return "bg-expense";
-    if (passedCount <= 3) return "bg-amber-500";
+    if (passedCount <= 3) return "bg-budget-warn";
     return "bg-income";
   };
 
   const getStrengthText = () => {
     if (passedCount === 0) return "Vacía";
     if (passedCount <= 2) return "Débil";
-    if (passedCount === 3) return "Aceptable";
-    return "Fuerte";
+    if (passedCount === 3) return "Casi lista";
+    return "Válida";
   };
 
   if (!password) return null;

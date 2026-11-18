@@ -27,7 +27,7 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
   };
 
   return (
-    <Card className="p-5 border-[var(--color-border)] bg-[var(--color-bg-card)] flex flex-col justify-between hover:border-[var(--color-primary)]/40 transition-colors">
+    <Card className="p-5 border-[var(--color-border)] bg-[var(--color-bg-card)] flex flex-col justify-between hover:border-primary/40 transition-colors">
       <div>
         {/* Cabecera de la tarjeta */}
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -99,7 +99,7 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
         <div className="flex justify-between items-baseline mb-2">
           <div>
             <span className="text-xs text-[var(--color-text-muted)]">
-              Gastado
+              Consumido (gastos + ahorro)
             </span>
             <p className="text-lg font-bold text-[var(--color-text-primary)]">
               {formatCurrency(montoGastado)}

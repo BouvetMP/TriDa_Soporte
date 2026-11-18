@@ -15,11 +15,30 @@ const envSchema = z.object({
     .transform((val) => parseInt(val, 10)),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),
+  TRUST_PROXY: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  APP_TIMEZONE: z
+    .string()
+    .default("America/Bogota")
+    .refine((timeZone) => {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone });
+        return true;
+      } catch {
+        return false;
+      }
+    }, "APP_TIMEZONE debe ser una zona horaria IANA válida"),
 
   // Base de datos
   DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
 
   // Correo SMTP
+  SMTP_ENABLED: z.preprocess(
+    (value) => (value === undefined || value === "" ? "false" : value),
+    z.enum(["true", "false"]).transform((value) => value === "true"),
+  ),
   SMTP_HOST: z.string().optional().default(""),
   SMTP_PORT: z.preprocess(
     (value) => (value === undefined || value === "" ? "587" : value),

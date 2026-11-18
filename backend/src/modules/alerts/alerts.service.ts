@@ -1,16 +1,10 @@
 import { prisma } from "../../db/prisma.js";
+import { queryRaw } from "../../db/queryRaw.js";
 import { getTransactionBalanceDelta } from "../transactions/transaction-balance.js";
+import { AppError } from "../../utils/AppError.js";
 import type { ListAlertsQueryInput, UpdateAlertStatusInput } from "./alerts.schemas.js";
 
-export class AlertError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 400,
-  ) {
-    super(message);
-    this.name = "AlertError";
-  }
-}
+export class AlertError extends AppError {}
 
 export const getAlertTransactionDecision = (
   data: Pick<UpdateAlertStatusInput, "estado" | "accion_usuario">,
@@ -23,6 +17,17 @@ export const getAlertTransactionDecision = (
     data.estado === "CONFIRMADA",
 });
 
+function serializeAlert<T extends { transaccion: { monto: unknown } | null }>(alert: T) {
+  if (!alert.transaccion) return alert;
+  return {
+    ...alert,
+    transaccion: {
+      ...alert.transaccion,
+      monto: Number(alert.transaccion.monto),
+    },
+  };
+}
+
 export class AlertsService {
   async getAlerts(userId: number, options: ListAlertsQueryInput) {
     const where = {
@@ -30,44 +35,91 @@ export class AlertsService {
       estado: options.estado,
       severidad: options.severidad,
     };
-    const orderBy =
-      options.sort_by === "severidad"
-        ? { severidad: options.sort_order }
-        : options.sort_by === "estado"
-          ? { estado: options.sort_order }
-          : { fecha_detectada: options.sort_order };
-
     const [alerts, total] = await Promise.all([
-      prisma.alerta_fraude.findMany({
-        where,
-        orderBy,
-        skip: options.offset,
-        take: options.limit,
-        include: {
-          transaccion: {
-            select: {
-              id_transaccion: true,
-              monto: true,
-              tipo_movimiento: true,
-              descripcion: true,
-              comercio: true,
-              fecha_transaccion: true,
-              ubicacion: {
-                select: { ciudad: true },
+      options.sort_by === "severidad"
+        ? this.getAlertsBySeverity(userId, options)
+        : prisma.alerta_fraude.findMany({
+            where,
+            orderBy:
+              options.sort_by === "estado"
+                ? { estado: options.sort_order }
+                : { fecha_detectada: options.sort_order },
+            skip: options.offset,
+            take: options.limit,
+            include: {
+              transaccion: {
+                select: {
+                  id_transaccion: true,
+                  monto: true,
+                  tipo_movimiento: true,
+                  descripcion: true,
+                  comercio: true,
+                  fecha_transaccion: true,
+                  ubicacion: { select: { ciudad: true } },
+                },
               },
             },
-          },
-        },
-      }),
+          }),
       prisma.alerta_fraude.count({ where }),
     ]);
 
     return {
-      alerts,
+      alerts: alerts.map(serializeAlert),
       total,
       limit: options.limit,
       offset: options.offset,
     };
+  }
+
+  private async getAlertsBySeverity(userId: number, options: ListAlertsQueryInput) {
+    const sortOrder = options.sort_order === "asc" ? "ASC" : "DESC";
+    const rows = await queryRaw<Array<{ id_alerta: number }>>(
+      `SELECT id_alerta
+       FROM trida.alertas_fraude
+       WHERE id_usuario = $1
+         AND ($2::text IS NULL OR estado = $2)
+         AND ($3::text IS NULL OR severidad = $3)
+       ORDER BY CASE severidad
+         WHEN 'CRITICA' THEN 4
+         WHEN 'ALTA' THEN 3
+         WHEN 'MEDIA' THEN 2
+         WHEN 'BAJA' THEN 1
+         ELSE 0
+       END ${sortOrder}, fecha_detectada DESC
+       LIMIT $4 OFFSET $5`,
+      userId,
+      options.estado ?? null,
+      options.severidad ?? null,
+      options.limit,
+      options.offset,
+    );
+    if (rows.length === 0) return [];
+
+    const order = new Map(rows.map((row, index) => [row.id_alerta, index]));
+    const alerts = await prisma.alerta_fraude.findMany({
+      where: {
+        id_usuario: userId,
+        id_alerta: { in: rows.map((row) => row.id_alerta) },
+      },
+      include: {
+        transaccion: {
+          select: {
+            id_transaccion: true,
+            monto: true,
+            tipo_movimiento: true,
+            descripcion: true,
+            comercio: true,
+            fecha_transaccion: true,
+            ubicacion: { select: { ciudad: true } },
+          },
+        },
+      },
+    });
+
+    return alerts.sort(
+      (left, right) =>
+        (order.get(left.id_alerta) ?? 0) - (order.get(right.id_alerta) ?? 0),
+    );
   }
 
   async list(userId: number, options: ListAlertsQueryInput) {
@@ -87,7 +139,7 @@ export class AlertsService {
       throw new AlertError("Alerta no encontrada", 404);
     }
 
-    return alert;
+    return serializeAlert(alert);
   }
 
   async getById(userId: number, id_alerta: number) {
@@ -105,11 +157,23 @@ export class AlertsService {
         throw new AlertError("Alerta no encontrada", 404);
       }
 
+      if (alert.estado !== "PENDIENTE") {
+        if (alert.estado === data.estado && alert.accion_usuario === data.accion_usuario) {
+          return alert;
+        }
+        throw new AlertError("La alerta ya fue resuelta y no puede modificarse", 409);
+      }
+
       const currentTransaction = alert.transaccion;
       const { confirmsTransaction, rejectsTransaction } =
         getAlertTransactionDecision(data);
 
-      if (confirmsTransaction && currentTransaction.estado === "RECHAZADA") {
+      const systemBlocked =
+        currentTransaction.estado === "RECHAZADA" &&
+        alert.estado === "PENDIENTE" &&
+        alert.accion_usuario === null;
+
+      if (confirmsTransaction && currentTransaction.estado === "RECHAZADA" && !systemBlocked) {
         throw new AlertError("Una transacción rechazada no puede aprobarse desde la alerta", 409);
       }
 
@@ -125,7 +189,11 @@ export class AlertsService {
           where: {
             id_transaccion: currentTransaction.id_transaccion,
             id_usuario: userId,
-            estado: { in: ["PENDIENTE", "CONFIRMADA", "APROBADA"] },
+            estado: {
+              in: systemBlocked
+                ? ["PENDIENTE", "CONFIRMADA", "APROBADA", "RECHAZADA"]
+                : ["PENDIENTE", "CONFIRMADA", "APROBADA"],
+            },
           },
           data: { estado: "CONFIRMADA" },
         });
@@ -133,7 +201,10 @@ export class AlertsService {
           throw new AlertError("La transacción ya fue resuelta", 409);
         }
 
-        if (currentTransaction.estado === "PENDIENTE" && currentTransaction.id_cuenta !== null) {
+        if (
+          (currentTransaction.estado === "PENDIENTE" || systemBlocked) &&
+          currentTransaction.id_cuenta !== null
+        ) {
           await transaction.cuenta.update({
             where: { id_cuenta: currentTransaction.id_cuenta },
             data: {

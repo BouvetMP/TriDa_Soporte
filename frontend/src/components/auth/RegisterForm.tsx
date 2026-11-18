@@ -59,7 +59,7 @@ export const RegisterForm: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      await register({
+      const result = await register({
         nombre_completo: nombreCompleto.trim(),
         email: email.trim().toLowerCase(),
         password,
@@ -67,9 +67,9 @@ export const RegisterForm: React.FC = () => {
       });
 
       showToast({
-        type: "success",
-        title: "¡Registro exitoso!",
-        message: "Tu cuenta ha sido creada correctamente.",
+        type: result.emailVerificationRequired ? "info" : "success",
+        title: result.emailVerificationRequired ? "Revisa tu correo" : "Registro recibido",
+        message: result.message,
       });
       navigate("/login", { replace: true });
     } catch (error) {

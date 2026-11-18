@@ -1,5 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { API_BASE_URL, API_ENDPOINTS, TOKEN_KEY } from "@/constants/Api";
+import {
+  API_BASE_URL,
+  API_ENDPOINTS,
+  AUTH_EXPIRED_EVENT,
+  TOKEN_KEY,
+} from "@/constants/Api";
 import { ApiErrorResponse } from "@/types";
 
 /**
@@ -39,6 +44,7 @@ apiClient.interceptors.response.use(
     const publicAuthEndpoints = [
       API_ENDPOINTS.AUTH.LOGIN,
       API_ENDPOINTS.AUTH.REGISTER,
+      API_ENDPOINTS.AUTH.VERIFY_EMAIL,
       API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
       API_ENDPOINTS.AUTH.VERIFY_RESET_TOKEN,
       API_ENDPOINTS.AUTH.RESET_PASSWORD,
@@ -48,12 +54,14 @@ apiClient.interceptors.response.use(
     );
 
     if (error.response?.status === 401 && !isPublicAuthRequest) {
-      // Token inválido o expirado
+      const hadToken = Boolean(localStorage.getItem(TOKEN_KEY));
       localStorage.removeItem(TOKEN_KEY);
 
-      // Evitar bucle infinito si ya se está en la pantalla de login
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?expired=true";
+      if (hadToken && !window.location.pathname.startsWith("/login")) {
+        const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.dispatchEvent(
+          new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { returnTo } }),
+        );
       }
     }
 

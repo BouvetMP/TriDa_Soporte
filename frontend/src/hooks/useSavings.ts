@@ -38,11 +38,12 @@ export function useSavings(initialEstado?: EstadoMeta) {
   const goals = selectedEstado
     ? allGoals.filter((goal) => goal.estado === selectedEstado)
     : allGoals;
-  const totalAhorrado = allGoals.reduce(
+  const consideredGoals = allGoals.filter((goal) => goal.estado !== "CANCELADA");
+  const totalAhorrado = consideredGoals.reduce(
     (total, goal) => total + goal.monto_actual,
     0,
   );
-  const totalObjetivo = allGoals.reduce(
+  const totalObjetivo = consideredGoals.reduce(
     (total, goal) => total + goal.monto_objetivo,
     0,
   );

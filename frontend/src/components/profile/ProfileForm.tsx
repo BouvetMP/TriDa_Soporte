@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { SessionUser, UpdateProfilePayload } from "@/types/Auth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -20,12 +20,17 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
   );
   const [telefono, setTelefono] = useState<string>(user?.telefono || "");
 
+  useEffect(() => {
+    setNombreCompleto(user?.nombre_completo || "");
+    setTelefono(user?.telefono || "");
+  }, [user]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const payload: UpdateProfilePayload = {
       nombre_completo: nombreCompleto.trim() || undefined,
-      telefono: telefono.trim() || undefined,
+      telefono: telefono.trim() || null,
     };
 
     await onSubmit(payload);

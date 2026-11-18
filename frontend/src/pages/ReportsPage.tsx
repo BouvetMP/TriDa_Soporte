@@ -1,9 +1,10 @@
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Store } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useReports } from "@/hooks/useReports";
 import { ReportFiltersBar } from "@/components/reports/ReportFiltersBar";
 import { ReportSummaryCards } from "@/components/reports/ReportSummaryCards";
 import { CategoryBreakdownTable } from "@/components/reports/CategoryBreakdownTable";
+import { formatCurrency } from "@/utils/Formatters";
 
 export function ReportsPage() {
   const {
@@ -12,6 +13,7 @@ export function ReportsPage() {
     exporting,
     filters,
     setPeriodType,
+    setCustomDateRange,
     exportReport,
   } = useReports({ tipo_periodo: "MES_ACTUAL" });
 
@@ -38,8 +40,20 @@ export function ReportsPage() {
       {/* Barra de Filtros */}
       <ReportFiltersBar
         currentPeriod={filters.tipo_periodo ?? "MES_ACTUAL"}
+        fechaInicio={filters.fecha_inicio}
+        fechaFin={filters.fecha_fin}
         exporting={exporting}
+        canExport={
+          Boolean(reportData) &&
+          (filters.tipo_periodo !== "PERSONALIZADO" ||
+            Boolean(
+              filters.fecha_inicio &&
+                filters.fecha_fin &&
+                filters.fecha_inicio <= filters.fecha_fin,
+            ))
+        }
         onPeriodChange={setPeriodType}
+        onCustomDateRangeChange={setCustomDateRange}
         onExport={exportReport}
       />
 
@@ -49,6 +63,17 @@ export function ReportsPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          {reportData?.transacciones_truncadas && (
+            <p
+              role="status"
+              className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-text-primary"
+            >
+              El reporte contiene las primeras 5,000 de{" "}
+              {reportData.total_transacciones.toLocaleString("es-CO")} transacciones
+              del período; la exportación está truncada.
+            </p>
+          )}
+
           {/* Tarjetas Ejecutivas */}
           <ReportSummaryCards summary={reportData?.resumen} />
 
@@ -60,7 +85,26 @@ export function ReportsPage() {
                 incomeCategories={reportData?.ingresos_por_categoria || []}
               />
             </div>
-
+            <section className="lg:col-span-5 rounded-xl border border-border bg-surface p-4">
+              <h2 className="mb-3 flex items-center gap-2 font-semibold text-text-primary">
+                <Store className="h-4 w-4" />
+                Comercios principales
+              </h2>
+              {reportData?.top_comercios.length ? (
+                <ul className="space-y-3">
+                  {reportData.top_comercios.map((merchant) => (
+                    <li key={merchant.comercio} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate text-text-secondary">{merchant.comercio}</span>
+                      <span className="shrink-0 text-right font-medium text-text-primary">
+                        {formatCurrency(merchant.total)} · {merchant.porcentaje.toFixed(1)}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-text-muted">No hay comercios para este período.</p>
+              )}
+            </section>
           </div>
         </div>
       )}

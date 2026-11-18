@@ -47,7 +47,7 @@ export function GeoTransactionsList({
                 className={`w-full text-left p-3 rounded-xl border transition-all ${
                   isSelected
                     ? "bg-[var(--color-bg-secondary)] border-[var(--color-primary)] shadow-sm"
-                    : "bg-[var(--color-bg-card)] border-[var(--color-border)] hover:border-[var(--color-primary)]/50"
+                    : "bg-[var(--color-bg-card)] border-[var(--color-border)] hover:border-primary/50"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">

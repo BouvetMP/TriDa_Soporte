@@ -14,10 +14,12 @@ CREATE TABLE trida.usuarios (
     ciudad           VARCHAR(100),
     rol              VARCHAR(20) NOT NULL DEFAULT 'USER',
     estado           BOOLEAN NOT NULL DEFAULT TRUE,
+    email_verificado_en TIMESTAMPTZ DEFAULT NOW(),
+    token_version    INTEGER NOT NULL DEFAULT 0,
     fecha_registro   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ultimo_acceso    TIMESTAMPTZ,
     CONSTRAINT chk_usuarios_email CHECK (email ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$'),
-    CONSTRAINT chk_usuarios_rol   CHECK (rol IN ('USER'))
+    CONSTRAINT chk_usuarios_rol   CHECK (rol IN ('USER', 'ADMIN'))
 );
 
 -- ----------------------------------------------------------------------------
@@ -90,13 +92,14 @@ CREATE TABLE trida.dispositivos (
                         REFERENCES trida.usuarios (id_usuario)
                         ON UPDATE CASCADE ON DELETE CASCADE,
     tipo_dispositivo    VARCHAR(50) NOT NULL,
-    identificador_unico VARCHAR(255) NOT NULL UNIQUE,
+    identificador_unico VARCHAR(255) NOT NULL,
     sistema_operativo   VARCHAR(100),
     navegador           VARCHAR(100),
     confiable           BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_primer_uso    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     fecha_ultimo_uso    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_fechas_disp CHECK (fecha_ultimo_uso >= fecha_primer_uso)
+    CONSTRAINT chk_fechas_disp CHECK (fecha_ultimo_uso >= fecha_primer_uso),
+    CONSTRAINT uq_dispositivo_user_identifier UNIQUE (id_usuario, identificador_unico)
 );
 
 -- ----------------------------------------------------------------------------
@@ -352,6 +355,11 @@ CREATE INDEX idx_cuentas_usuario      ON trida.cuentas (id_usuario);
 
 CREATE INDEX idx_categorias_usuario   ON trida.categorias (id_usuario);
 CREATE INDEX idx_categorias_tipo      ON trida.categorias (tipo);
+CREATE INDEX idx_categories_owner_state
+    ON trida.categorias (id_usuario, estado);
+CREATE UNIQUE INDEX uq_categories_system_name
+    ON trida.categorias (LOWER(nombre))
+    WHERE id_usuario IS NULL;
 
 CREATE INDEX idx_dispositivos_usuario ON trida.dispositivos (id_usuario);
 CREATE INDEX idx_dispositivos_conf    ON trida.dispositivos (confiable);
@@ -362,8 +370,11 @@ CREATE INDEX idx_ubicaciones_ciudad   ON trida.ubicaciones (ciudad);
 CREATE INDEX idx_tx_usuario           ON trida.transacciones (id_usuario);
 CREATE INDEX idx_tx_cuenta            ON trida.transacciones (id_cuenta);
 CREATE INDEX idx_tx_categoria         ON trida.transacciones (id_categoria);
+CREATE INDEX idx_tx_ubicacion         ON trida.transacciones (id_ubicacion);
+CREATE INDEX idx_tx_dispositivo       ON trida.transacciones (id_dispositivo);
 CREATE INDEX idx_tx_fecha             ON trida.transacciones (fecha_transaccion DESC);
 CREATE INDEX idx_tx_usuario_fecha     ON trida.transacciones (id_usuario, fecha_transaccion DESC);
+CREATE INDEX idx_tx_user_cat_fecha    ON trida.transacciones (id_usuario, id_categoria, fecha_transaccion);
 CREATE INDEX idx_tx_tipo              ON trida.transacciones (tipo_movimiento);
 CREATE INDEX idx_tx_estado            ON trida.transacciones (estado);
 CREATE INDEX idx_tx_score             ON trida.transacciones (score_anomalia DESC)
@@ -385,6 +396,7 @@ CREATE INDEX idx_consejos_no_leidos   ON trida.consejos_financieros (id_usuario,
 CREATE INDEX idx_alertas_usuario      ON trida.alertas_fraude (id_usuario);
 CREATE INDEX idx_alertas_estado       ON trida.alertas_fraude (estado);
 CREATE INDEX idx_alertas_severidad    ON trida.alertas_fraude (severidad);
+CREATE INDEX idx_alertas_tx_fecha     ON trida.alertas_fraude (id_transaccion, fecha_detectada DESC);
 
 CREATE INDEX idx_analisis_user_per    ON trida.analisis_gastos (id_usuario, periodo, fecha_inicio DESC);
 
@@ -415,22 +427,6 @@ $$;
 CREATE TRIGGER trg_actualizar_dispositivo
 AFTER INSERT ON trida.transacciones
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_actualizar_dispositivo();
-
--- 4.2 Meta completada automáticamente
-CREATE OR REPLACE FUNCTION trida.fn_trg_meta_completada()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-    IF NEW.monto_actual >= NEW.monto_objetivo AND NEW.estado = 'ACTIVA' THEN
-        NEW.estado := 'COMPLETADA';
-        NEW.fecha_completada := NOW();
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_meta_completada
-BEFORE UPDATE OF monto_actual ON trida.metas_ahorro
-FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_meta_completada();
 
 -- 4.3 Fecha de lectura del consejo
 CREATE OR REPLACE FUNCTION trida.fn_trg_consejo_leido()
@@ -604,26 +600,6 @@ $$;
 CREATE TRIGGER trg_aporte_meta
 AFTER INSERT ON trida.aportes_meta
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_aporte_meta();
-
--- 4.8 Feedback de alerta → actualizar estado de transacción
-CREATE OR REPLACE FUNCTION trida.fn_trg_alerta_feedback()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-    IF NEW.accion_usuario = 'FUI_YO' AND NEW.estado = 'CONFIRMADA' THEN
-        UPDATE trida.transacciones SET estado = 'APROBADA'
-        WHERE id_transaccion = NEW.id_transaccion;
-    ELSIF NEW.accion_usuario = 'NO_FUI_YO' THEN
-        UPDATE trida.transacciones SET estado = 'RECHAZADA'
-        WHERE id_transaccion = NEW.id_transaccion;
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_alerta_feedback
-AFTER UPDATE OF accion_usuario ON trida.alertas_fraude
-FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_alerta_feedback();
-
 
 -- ============================================================================
 -- TriDa v2 — Funciones.sql

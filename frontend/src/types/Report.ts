@@ -42,6 +42,8 @@ export interface FinancialReportData {
   ingresos_por_categoria: CategoryReportItem[];
   top_comercios: MerchantReportItem[];
   transacciones: ReportTransaction[];
+  total_transacciones: number;
+  transacciones_truncadas: boolean;
   periodo: {
     fecha_inicio: string;
     fecha_fin: string;
@@ -59,4 +61,5 @@ export interface ReportFilters {
   tipo_periodo?: TipoPeriodoReporte;
   fecha_inicio?: string;
   fecha_fin?: string;
+  id_cuenta?: number;
 }

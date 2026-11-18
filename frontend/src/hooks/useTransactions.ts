@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { TransactionsApi } from "@/api/Transactions";
 import {
   Transaction,
@@ -28,29 +28,22 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const requestId = useRef(0);
   const { showToast } = useToast();
 
   const fetchTransactions = useCallback(async () => {
-    if (!selectedAccount) {
-      setTransactions([]);
-      setPagination({
-        total: 0,
-        page: 1,
-        limit: filters.limit ?? 15,
-        total_pages: 1,
-      });
-      setIsLoading(false);
-      return;
-    }
-
+    const currentRequestId = ++requestId.current;
     setIsLoading(true);
     try {
-      const queryFilters: TransactionFilters = {
-        ...filters,
-        id_cuenta: selectedAccount.id_cuenta,
-      };
+      const queryFilters: TransactionFilters = { ...filters };
+      if (selectedAccount) {
+        queryFilters.id_cuenta = selectedAccount.id_cuenta;
+      } else {
+        delete queryFilters.id_cuenta;
+      }
 
       const response = await TransactionsApi.getAll(queryFilters);
+      if (currentRequestId !== requestId.current) return;
       if (response.success) {
         setTransactions(response.data.items);
         const metadata: PaginationMetadata = response.data.pagination;
@@ -67,6 +60,7 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
         });
       }
     } catch (error) {
+      if (currentRequestId !== requestId.current) return;
       const err = error as Error;
       showToast({
         type: "error",
@@ -74,12 +68,15 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
         message: err.message || "No se pudieron cargar las transacciones.",
       });
     } finally {
-      setIsLoading(false);
+      if (currentRequestId === requestId.current) setIsLoading(false);
     }
   }, [filters, selectedAccount, showToast]);
 
   useEffect(() => {
     fetchTransactions();
+    return () => {
+      requestId.current += 1;
+    };
   }, [fetchTransactions]);
 
   const updateFilters = (newFilters: Partial<TransactionFilters>) => {
@@ -146,6 +143,32 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     return false;
   };
 
+  const updateTransactionStatus = async (
+    id: number,
+    estado: "CONFIRMADA" | "RECHAZADA",
+  ): Promise<boolean> => {
+    try {
+      const response = await TransactionsApi.updateStatus(id, estado);
+      if (response.success) {
+        showToast({
+          type: "success",
+          title: "Transacción actualizada",
+          message: estado === "CONFIRMADA" ? "Transacción confirmada." : "Transacción rechazada.",
+        });
+        await Promise.all([fetchTransactions(), refreshAccounts()]);
+        return true;
+      }
+    } catch (error) {
+      const err = error as Error;
+      showToast({
+        type: "error",
+        title: "No se pudo resolver",
+        message: err.message || "No se pudo actualizar el estado.",
+      });
+    }
+    return false;
+  };
+
   return {
     transactions,
     pagination,
@@ -155,6 +178,7 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     changePage,
     createTransaction,
     deleteTransaction,
+    updateTransactionStatus,
     refresh: fetchTransactions,
   };
 };

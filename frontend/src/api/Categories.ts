@@ -33,10 +33,12 @@ export const CategoriesApi = {
     return response.data;
   },
 
-  delete: async (id: number): Promise<ApiSuccess<void>> => {
-    const response = await apiClient.delete<ApiSuccess<void>>(
-      `/categories/${id}`,
-    );
+  delete: async (
+    id: number,
+  ): Promise<ApiSuccess<{ id_categoria: number }>> => {
+    const response = await apiClient.delete<
+      ApiSuccess<{ id_categoria: number }>
+    >(`/categories/${id}`);
     return response.data;
   },
 };

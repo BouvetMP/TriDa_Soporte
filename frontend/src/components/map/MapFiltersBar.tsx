@@ -16,7 +16,6 @@ export function MapFiltersBar({
   onReset,
 }: MapFiltersBarProps) {
   const riskOptions = [
-    { value: "", label: "Todos los riesgos" },
     { value: "ALL", label: "Todos los riesgos" },
     { value: "BAJO", label: "Bajo" },
     { value: "MEDIO", label: "Medio" },
@@ -45,7 +44,7 @@ export function MapFiltersBar({
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-40">
           <Select
-            value={filters.nivel_riesgo || ""}
+            value={filters.nivel_riesgo || "ALL"}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
               onFilterChange({
                 nivel_riesgo: e.target.value

@@ -9,13 +9,13 @@ Antes de implementar o modificar una pantalla, consultar:
 1. **OpenAPI generado por el backend:** `GET http://localhost:3000/api/docs.json` o la interfaz `http://localhost:3000/api/docs`.
 2. **Validaciones de las peticiones:** archivos `*.schemas.ts` de cada módulo en `backend/src/modules/`.
 3. **Rutas realmente montadas:** `backend/src/app.ts` y `*.routes.ts`.
-4. **Esquema de la base de datos:** `database/schema.sql` (estructura SQL actual) y `backend/prisma/schema.prisma` (mapeo que usa el servidor).
+4. **Esquema de la base de datos:** `database/schema.sql` (instalación limpia) y `backend/prisma/schema.prisma` (mapeo que usa el servidor). Para una base existente, usar `database/update_existing.sql` después de hacer respaldo; no ejecutar ambos scripts sobre la misma base.
 
 Si una tabla de esta guía y la especificación servida difieren, prevalecen las rutas, validaciones y respuestas del backend actual. No inventar endpoints ni campos.
 
 ## Arquitectura existente
 
-- Frontend: React 18, TypeScript, Vite y React Router 6 (`frontend/package.json`). La aplicación ya cuenta con rutas, cliente HTTP, contexto de sesión y pantallas para cuentas, transacciones, alertas, perfil y dashboard. Las secciones de presupuestos, ahorro, insights, reportes, mapa y administración de categorías aún necesitan su UI.
+- Frontend: React 18, TypeScript, Vite y React Router 6 (`frontend/package.json`). La aplicación ya cuenta con rutas, cliente HTTP, contexto de sesión y pantallas para cuentas, transacciones, alertas, perfil, dashboard, presupuestos, ahorro, insights, reportes y mapa. La administración de categorías se realiza desde su API y no tiene una pantalla dedicada.
 - Backend: Express, API versionada en `/api/v2`, Prisma y PostgreSQL.
 - Base de datos: esquema PostgreSQL `trida`; las tablas tienen nombres snake_case, por ejemplo `trida.usuarios`, `trida.cuentas`, `trida.categorias`, `trida.transacciones`, `trida.alertas_fraude` y `trida.metas_ahorro`.
 - El backend es responsable de autenticación, permisos, validación, reglas de negocio, persistencia, relaciones, saldos y evaluación de riesgo.
@@ -81,15 +81,18 @@ Hay un límite general de 150 solicitudes por IP/minuto y, para rutas de autenti
 
 | Método y ruta | Uso | Cuerpo o parámetros |
 |---|---|---|
-| `POST /auth/register` | Crear usuario | `nombre_completo`, `email`, `password`; opcional `telefono` |
+| `POST /auth/register` | Solicitar registro | `nombre_completo`, `email`, `password`; opcional `telefono` |
+| `POST /auth/verify-email` | Confirmar el correo de registro | `{ "token": "..." }` |
 | `POST /auth/login` | Iniciar sesión | `email`, `password` |
 | `POST /auth/forgot-password` | Solicitar recuperación | `email` |
 | `POST /auth/verify-reset-token` | Verificar token de recuperación | `{ "token": "..." }` |
 | `POST /auth/reset-password` | Cambiar clave con token de recuperación | `token`, `password_nueva` |
 
-El registro valida una contraseña de al menos 10 caracteres, con mayúscula, minúscula y número. El login responde en el envoltorio usual de autenticación; los datos están en `data` y contienen `token` y `usuario`.
+El registro valida una contraseña de 10 a 72 caracteres, con mayúscula, minúscula y número. `SMTP_ENABLED` controla el correo en el backend y está desactivado por defecto temporalmente. Cuando está en `false`, el registro no envía correo, marca las cuentas nuevas como verificadas y permite iniciar sesión también a cuentas previamente no verificadas; la respuesta incluye `emailVerificationRequired: false`. La recuperación por correo responde `503` con un mensaje de indisponibilidad. Cuando se establece `SMTP_ENABLED=true`, deben configurarse `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `EMAIL_USER`, `EMAIL_PASS` y `EMAIL_FROM`; el registro envía un enlace y exige verificar el correo antes de iniciar sesión (`emailVerificationRequired: true`). `FRONTEND_URL` debe apuntar al frontend para construir los enlaces. Las respuestas de registro no revelan si el correo ya tenía una cuenta.
 
-**Particularidad a tener en cuenta:** `forgot-password` siempre devuelve el mismo mensaje y nunca incluye el token. Con SMTP configurado, el backend envía el enlace; en desarrollo, si falta SMTP o falla el envío, registra el enlace en la consola del servidor. El frontend nunca debe mostrar ni registrar el token.
+El login responde en el envoltorio usual de autenticación; los datos están en `data` y contienen `token` y `usuario`. Las credenciales de una cuenta sin verificar reciben el mismo error genérico que unas credenciales inválidas.
+
+**Particularidad a tener en cuenta:** con SMTP habilitado, `forgot-password` devuelve el mismo mensaje y nunca incluye el token; el envío no bloquea la respuesta HTTP. Si SMTP está deshabilitado o incompleto, responde `503`. En desarrollo, si falla el envío tras estar configurado, registra el enlace en la consola del servidor. El frontend nunca debe mostrar ni registrar el token.
 
 El enlace de recuperación coloca el token en el fragmento (`#token=...`) para que no se envíe en la solicitud al servidor web. El frontend debe leerlo del fragmento y enviarlo en el cuerpo JSON a `POST /auth/verify-reset-token` y `POST /auth/reset-password`; no ponerlo en una query string ni en logs.
 
@@ -97,8 +100,8 @@ El enlace de recuperación coloca el token en el fragmento (`#token=...`) para q
 
 | Método y ruta | Uso | Cuerpo |
 |---|---|---|
-| `GET /auth/me` | Usuario de la sesión | — |
-| `PATCH /auth/me` | Actualizar datos personales de sesión | `nombre_completo` y/o `telefono` |
+| `GET /auth/me` | Perfil de sesión con `pais`, `ciudad` y `ultimo_acceso` | — |
+| `PATCH /auth/me` | Actualizar datos personales de sesión | `nombre_completo` y/o `telefono`; enviar `null` para borrar el teléfono |
 | `POST /auth/change-password` | Cambiar contraseña | `password_actual`, `password_nueva` |
 
 ### Envío del JWT
@@ -131,7 +134,7 @@ Todas las rutas de las tablas siguientes son relativas a `/api/v2`, salvo `/heal
 | `POST /accounts` | Crear con `nombre`, `tipo`; opcionales `entidad`, `numero_enmascarado`, `color`, `saldo_inicial`, `estado` |
 | `GET /accounts/:id` | Obtener una cuenta |
 | `PATCH /accounts/:id` | Actualizar campos de cuenta; enviar solo los que cambian |
-| `DELETE /accounts/:id` | Desactivar/eliminar la cuenta según la lógica del backend |
+| `DELETE /accounts/:id` | Desactivar la cuenta; no la elimina físicamente |
 
 `tipo`: `BANCO`, `TARJETA`, `BILLETERA` o `EFECTIVO`. `saldo_inicial` no puede ser negativo.
 
@@ -142,9 +145,11 @@ Todas las rutas de las tablas siguientes son relativas a `/api/v2`, salvo `/heal
 | `GET /categories` | Listar categorías del sistema y del usuario |
 | `POST /categories` | Crear categoría propia: `nombre`, `tipo`; opcionales `icono`, `color` |
 | `PATCH /categories/:id` | Actualizar categoría propia |
-| `DELETE /categories/:id` | Desactivar/eliminar categoría propia |
+| `DELETE /categories/:id` | Desactivar categoría propia (baja lógica) |
 
-`tipo`: `INGRESO`, `GASTO` o `AHORRO`. Las categorías por defecto del sistema no se deben editar ni eliminar. No existe actualmente `GET /categories/:id`.
+`tipo`: `INGRESO`, `GASTO` o `AHORRO`. Las categorías inactivas no se listan ni se pueden asignar a nuevos movimientos. Las categorías por defecto del sistema no se deben editar ni eliminar. `GET /categories/:id` está disponible para categorías activas propias o del sistema.
+
+La pantalla de administración está disponible en `/categories`; distingue las categorías predeterminadas de las propias y permite crear, editar y desactivar estas últimas.
 
 ### Transacciones
 
@@ -177,7 +182,7 @@ En un listado, `data.items` contiene filas con nombres de cuenta/categoría, `es
 
 Solo una transacción `CONFIRMADA` afecta el saldo. `PENDIENTE` no lo modifica; resolverla como `CONFIRMADA` aplica el movimiento y resolverla como `RECHAZADA` no lo aplica. Eliminar una transacción revierte el saldo únicamente si estaba confirmada.
 
-Por compatibilidad, los resúmenes también consideran registros históricos `APROBADA` como confirmados. El trigger de presupuesto actualmente definido en `database/schema.sql` se ejecuta al insertar gastos/ahorros sin filtrar por estado; los endpoints de presupuestos sí filtran los movimientos, pero el trigger todavía puede generar consejos de umbral para movimientos pendientes o rechazados. Como el esquema se mantiene intacto, esa limitación requiere corregir el trigger en una migración futura.
+Por compatibilidad, los resúmenes también consideran registros históricos `APROBADA` como confirmados. El trigger de presupuesto definido en `database/schema.sql` solo genera avisos para movimientos `GASTO`/`AHORRO` confirmados (`CONFIRMADA` o histórica `APROBADA`); no genera avisos para movimientos pendientes o rechazados.
 
 Para validar flujos contra PostgreSQL, configura `TEST_DATABASE_URL` con una base separada cuyo nombre identifique que es de pruebas y ejecuta `pnpm --dir backend test:integration`. La prueba rechaza la misma base que `DATABASE_URL` y elimina exclusivamente el usuario temporal que crea.
 
@@ -213,8 +218,10 @@ Las rutas en español son alias de las rutas en inglés:
 | `GET /dashboard/stats` o `GET /dashboard/estadisticas` | Estadísticas financieras principales |
 | `GET /dashboard/recent-alerts?limit=5` o `GET /dashboard/alertas-recientes?limit=5` | Alertas recientes |
 | `GET /dashboard/recent-transactions?limit=5` o `GET /dashboard/transacciones-recientes?limit=5` | Transacciones recientes |
+| `GET /dashboard/advice` | Avisos de presupuesto no leídos |
+| `PATCH /dashboard/advice/:id/read` | Marcar un aviso como leído |
 
-El backend limita el `limit` de las rutas recientes al rango 1–50.
+El backend limita el `limit` de las rutas recientes al rango 1–50. Las estadísticas y listas recientes admiten `id_cuenta`; los avisos de presupuesto pertenecen al usuario y no a una cuenta específica.
 
 ### Presupuestos
 
@@ -226,6 +233,7 @@ El backend limita el `limit` de las rutas recientes al rango 1–50.
 | `DELETE /budgets/:id` | Eliminar presupuesto |
 
 `mes` está entre 1 y 12; `limite_mensual` debe ser mayor que cero. `id_categoria` debe provenir de `/categories`; no inventar el ID.
+El selector de periodos de la pantalla permite consultar desde 2020 hasta el próximo año; el API acepta años entre 2020 y 2100.
 
 ### Metas de ahorro
 
@@ -243,11 +251,11 @@ Estados: `ACTIVA`, `PAUSADA`, `COMPLETADA`, `CANCELADA`. El aporte debe ser posi
 
 | Método y ruta | Uso |
 |---|---|
-| `GET /profile` | Obtener perfil |
-| `PATCH /profile` | Actualizar `nombre_completo` y/o `telefono` |
+| `GET /profile` | Alias compatible de `GET /auth/me` |
+| `PATCH /profile` | Alias compatible de `PATCH /auth/me`; enviar `telefono: null` para borrarlo |
 | `GET /profile/behavior-pattern` | Obtener estadísticas y patrón de comportamiento; puede haber datos sin historial |
 
-`PATCH /auth/me` y `PATCH /profile` actualizan datos personales equivalentes, no el perfil financiero. La base de datos tiene un modelo `perfil_financiero`, pero no hay una ruta documentada para modificarlo; no inventar una.
+`/auth/me` es la ruta canónica para leer y actualizar los datos personales. `/profile` conserva compatibilidad y usa la misma lógica; no modifica el perfil financiero. El registro crea también el perfil financiero con sus valores iniciales predeterminados.
 
 ### Insights y reportes
 
@@ -258,17 +266,19 @@ Estados: `ACTIVA`, `PAUSADA`, `COMPLETADA`, `CANCELADA`. El aporte debe ser posi
 | `GET /reports/by-category` | Desglose; fechas opcionales y `tipo_movimiento` |
 | `GET /reports/transactions` | Detalle exportable; filtros de fecha/tipo y `limit` de 1 a 5000 (por defecto 500) |
 
-`tipo_movimiento`: `INGRESO`, `GASTO` o `AHORRO`. Enviar fechas ISO.
+`tipo_movimiento`: `INGRESO`, `GASTO` o `AHORRO`. Enviar fechas ISO; las fechas `YYYY-MM-DD` se interpretan en la zona configurada por `APP_TIMEZONE`. La pantalla de reportes permite elegir rangos personalizados.
 
 ### Mapa
 
 | Método y ruta | Uso / parámetros |
 |---|---|
 | `GET /map/stats` | Estadísticas geográficas |
-| `GET /map/locations` | Ubicaciones geolocalizadas |
+| `GET /map/locations` | Ubicaciones geolocalizadas que se muestran como marcadores seleccionables |
 | `GET /map/ubicaciones` | Alias en español de ubicaciones |
 
-Parámetros de ubicaciones: `limit` (1–2000, por defecto 500), `nivel_riesgo` (`BAJO`, `MEDIO`, `ALTO`, `CRITICO`, `ALL`), `estado` (`PENDIENTE`, `CONFIRMADA`, `APROBADA`, `SOSPECHOSA`, `RECHAZADA`, `ALL`), `fecha_inicio`, `fecha_fin`. La respuesta del mapa puede indicar `items`, `total` y `truncated`.
+Parámetros de ubicaciones: `limit` (1–2000, por defecto 500), `nivel_riesgo` (`BAJO`, `MEDIO`, `ALTO`, `CRITICO`, `ALL`), `estado` (`PENDIENTE`, `CONFIRMADA`, `APROBADA`, `SOSPECHOSA`, `RECHAZADA`, `ALL`), `fecha_inicio`, `fecha_fin`. El frontend solicita hasta 2.000 ubicaciones; la respuesta indica `items`, `total` y `truncated` cuando hay más resultados.
+
+El mapa carga mosaicos de OpenStreetMap desde el navegador; informa este uso de un proveedor externo en la política de privacidad.
 
 ## Flujo recomendado de integración
 

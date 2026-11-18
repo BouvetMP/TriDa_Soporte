@@ -3,7 +3,7 @@
 // ¿Impacto? Capa HTTP limpia y estandarizada con respuestas unificadas.
 
 import { Request, Response, NextFunction } from "express";
-import { authService, AuthError } from "./auth.service.js";
+import { authService } from "./auth.service.js";
 import {
   loginSchema,
   registerSchema,
@@ -12,16 +12,10 @@ import {
   updateProfileSchema,
   changePasswordSchema,
   verifyResetTokenSchema,
+  verifyEmailSchema,
 } from "./auth.schemas.js";
-import { sendSuccess, sendError } from "../../utils/apiResponse.js";
-
-const handleError = (error: unknown, res: Response, next: NextFunction) => {
-  if (error instanceof AuthError) {
-    sendError(res, error.message, error.statusCode);
-    return;
-  }
-  next(error);
-};
+import { sendError, sendSuccess } from "../../utils/apiResponse.js";
+import { profileService } from "../profile/profile.service.js";
 
 export const authController = {
   async login(req: Request, res: Response, next: NextFunction) {
@@ -30,7 +24,7 @@ export const authController = {
       const result = await authService.login(data.email, data.password);
       sendSuccess(res, result, "Inicio de sesión exitoso");
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 
@@ -40,7 +34,17 @@ export const authController = {
       const result = await authService.register(data);
       sendSuccess(res, result, "Registro completado con éxito", 201);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
+    }
+  },
+
+  async verifyEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token } = verifyEmailSchema.parse(req.body);
+      const result = await authService.verifyEmail(token);
+      sendSuccess(res, result);
+    } catch (error) {
+      next(error);
     }
   },
 
@@ -50,7 +54,7 @@ export const authController = {
       const result = await authService.forgotPassword(data.email);
       sendSuccess(res, result);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 
@@ -64,7 +68,7 @@ export const authController = {
       }
       sendSuccess(res, result);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 
@@ -74,26 +78,29 @@ export const authController = {
       const result = await authService.resetPassword(data.token, data.password_nueva);
       sendSuccess(res, result);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 
   async me(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await authService.getMe(req.user!.id_usuario);
+      const result = await profileService.getProfile(req.user!.id_usuario);
       sendSuccess(res, result);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 
   async updateProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const data = updateProfileSchema.parse(req.body);
-      const result = await authService.updateProfile(req.user!.id_usuario, data);
+      const result = await profileService.updateProfile(
+        req.user!.id_usuario,
+        data,
+      );
       sendSuccess(res, result);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 
@@ -103,7 +110,7 @@ export const authController = {
       const result = await authService.changePassword(req.user!.id_usuario, data);
       sendSuccess(res, result);
     } catch (error) {
-      handleError(error, res, next);
+      next(error);
     }
   },
 };

@@ -40,6 +40,7 @@ export interface MapLocationResult {
 }
 
 export interface MapFilters {
+  id_cuenta?: number;
   limit?: number;
   nivel_riesgo?: NivelRiesgo | "ALL";
   estado?:

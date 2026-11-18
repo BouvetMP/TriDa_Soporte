@@ -51,7 +51,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
 
         {/* Footer legal estandarizado */}
         <p className="text-center text-[11px] text-text-muted">
-          Protección de datos garantizada · TriDa Financial Guard ©{" "}
+          Administra tus finanzas con herramientas de análisis · TriDa ©{" "}
           {new Date().getFullYear()}
         </p>
       </div>

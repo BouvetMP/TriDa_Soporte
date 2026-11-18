@@ -1,31 +1,38 @@
 // ¿Qué? Servicio del dashboard de finanzas personales y monitoreo de riesgo.
 // ¿Para qué? Agregar saldos totales, resumen mensual de ingresos/gastos, alertas activas y transacciones recientes por usuario (RS-001).
 
+import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
+import { config } from "../../config.js";
+import { startOfMonth, startOfNextMonth } from "../../utils/dateRange.js";
+import { AppError } from "../../utils/AppError.js";
 
 export const dashboardService = {
-  async getStats(userId: number) {
+  async getStats(userId: number, accountId?: number) {
     const ahora = new Date();
-    const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    const inicioMes = startOfMonth(ahora, config.APP_TIMEZONE);
+    const inicioMesSiguiente = startOfNextMonth(ahora, config.APP_TIMEZONE);
 
     // 1. Saldo Total acumulado de las cuentas del usuario
-    const saldoRows = await queryRaw<{ saldo_total: string | number }[]>(
+    const [saldoRows, resumenMesRows, alertasRows] = await Promise.all([
+      queryRaw<{ saldo_total: string | number }[]>(
       `
       SELECT COALESCE(SUM(saldo_inicial), 0)::numeric AS saldo_total
       FROM trida.cuentas
       WHERE id_usuario = $1 AND estado = true
+        AND ($2::int IS NULL OR id_cuenta = $2)
       `,
       userId,
-    );
+      accountId ?? null,
+      ),
 
-    // 2. Resumen del mes actual (Ingresos, Gastos, Ahorros)
-    const resumenMesRows = await queryRaw<
+      queryRaw<
       {
         ingresos: string | number;
         gastos: string | number;
         ahorros: string | number;
       }[]
-    >(
+      >(
       `
       SELECT
         COALESCE(SUM(CASE WHEN tipo_movimiento = 'INGRESO' THEN monto ELSE 0 END), 0)::numeric AS ingresos,
@@ -34,19 +41,22 @@ export const dashboardService = {
       FROM trida.transacciones
       WHERE id_usuario = $1
         AND fecha_transaccion >= $2
+        AND fecha_transaccion < $3
         AND estado IN ('CONFIRMADA', 'APROBADA')
+        AND ($4::int IS NULL OR id_cuenta = $4)
       `,
       userId,
       inicioMes,
-    );
+      inicioMesSiguiente,
+      accountId ?? null,
+      ),
 
-    // 3. Conteo de Alertas de Riesgo/Fraude Activas y Críticas
-    const alertasRows = await queryRaw<
+      queryRaw<
       {
         alertas_activas: string | number;
         alertas_criticas: string | number;
       }[]
-    >(
+      >(
       `
       SELECT
         COUNT(*) FILTER (WHERE a.estado = 'PENDIENTE')::bigint AS alertas_activas,
@@ -54,10 +64,14 @@ export const dashboardService = {
           WHERE a.estado = 'PENDIENTE' AND a.severidad IN ('ALTA', 'CRITICA')
         )::bigint AS alertas_criticas
       FROM trida.alertas_fraude a
+      JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
+        AND ($2::int IS NULL OR t.id_cuenta = $2)
       `,
       userId,
-    );
+      accountId ?? null,
+      ),
+    ]);
 
     const saldoTotal = Number(saldoRows[0]?.saldo_total ?? 0);
     const rMes = resumenMesRows[0] ?? { ingresos: 0, gastos: 0, ahorros: 0 };
@@ -84,7 +98,7 @@ export const dashboardService = {
     };
   },
 
-  async getRecentAlerts(userId: number, limit = 5) {
+  async getRecentAlerts(userId: number, limit = 5, accountId?: number) {
     const safeLimit = Math.max(1, Math.min(limit, 50));
     const rows = await queryRaw<
       Array<{
@@ -115,11 +129,13 @@ export const dashboardService = {
       FROM trida.alertas_fraude a
       JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
+        AND ($3::int IS NULL OR t.id_cuenta = $3)
       ORDER BY a.fecha_detectada DESC
       LIMIT $2
       `,
       userId,
       safeLimit,
+      accountId ?? null,
     );
 
     return rows.map((r) => ({
@@ -136,7 +152,7 @@ export const dashboardService = {
     }));
   },
 
-  async getRecentTransactions(userId: number, limit = 5) {
+  async getRecentTransactions(userId: number, limit = 5, accountId?: number) {
     const safeLimit = Math.max(1, Math.min(limit, 50));
     const rows = await queryRaw<
       Array<{
@@ -167,11 +183,13 @@ export const dashboardService = {
       FROM trida.transacciones t
       LEFT JOIN trida.categorias cat ON cat.id_categoria = t.id_categoria
       WHERE t.id_usuario = $1
+        AND ($3::int IS NULL OR t.id_cuenta = $3)
       ORDER BY t.fecha_transaccion DESC
       LIMIT $2
       `,
       userId,
       safeLimit,
+      accountId ?? null,
     );
 
     return rows.map((r) => ({
@@ -188,5 +206,50 @@ export const dashboardService = {
         color: r.categoria_color ?? null,
       },
     }));
+  },
+
+  async getRecentAdvice(userId: number, limit = 5) {
+    const safeLimit = Math.max(1, Math.min(limit, 50));
+    const rows = await prisma.consejo_financiero.findMany({
+      where: {
+        id_usuario: userId,
+        leido: false,
+        titulo: { in: ["Presupuesto al 80%", "Presupuesto excedido"] },
+      },
+      orderBy: { fecha_generado: "desc" },
+      take: safeLimit,
+      select: {
+        id_consejo: true,
+        tipo: true,
+        titulo: true,
+        descripcion: true,
+        prioridad: true,
+        fecha_generado: true,
+      },
+    });
+
+    return rows;
+  },
+
+  async markAdviceRead(userId: number, adviceId: number) {
+    await prisma.consejo_financiero.updateMany({
+      where: {
+        id_consejo: adviceId,
+        id_usuario: userId,
+        leido: false,
+      },
+      data: { leido: true },
+    });
+
+    const advice = await prisma.consejo_financiero.findFirst({
+      where: { id_consejo: adviceId, id_usuario: userId },
+      select: { id_consejo: true, leido: true, fecha_leido: true },
+    });
+
+    if (!advice) {
+      throw new AppError("Consejo financiero no encontrado", 404);
+    }
+
+    return advice;
   },
 };

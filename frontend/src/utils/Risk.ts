@@ -6,14 +6,14 @@ import { NivelRiesgo } from "@/types/Transaction";
 export const getRiskBadgeClass = (nivel?: NivelRiesgo | null): string => {
   switch (nivel) {
     case "CRITICO":
-      return "bg-red-500/10 text-red-500 border-red-500/20";
+      return "bg-risk-critical/10 text-risk-critical border-risk-critical/20";
     case "ALTO":
-      return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      return "bg-risk-high/10 text-risk-high border-risk-high/20";
     case "MEDIO":
-      return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+      return "bg-risk-medium/10 text-risk-medium border-risk-medium/20";
     case "BAJO":
     default:
-      return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+      return "bg-risk-low/10 text-risk-low border-risk-low/20";
   }
 };
 

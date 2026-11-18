@@ -2,13 +2,18 @@ import { apiClient } from "./Client";
 import type {
   ApiSuccess,
   Budget,
+  BudgetFilters,
   CreateBudgetPayload,
   UpdateBudgetPayload,
 } from "@/types";
 
 export const budgetsApi = {
-  getBudgets: async (): Promise<Budget[]> => {
-    const response = await apiClient.get<ApiSuccess<Budget[]>>("/budgets");
+  getBudgets: async (
+    filters: BudgetFilters & { id_cuenta?: number },
+  ): Promise<Budget[]> => {
+    const response = await apiClient.get<ApiSuccess<Budget[]>>("/budgets", {
+      params: filters,
+    });
     return response.data.data;
   },
 

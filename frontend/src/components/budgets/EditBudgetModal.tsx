@@ -45,6 +45,7 @@ export function EditBudgetModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      isSubmitting={submitting}
       title={`Editar Presupuesto: ${budget?.categoria?.nombre || ""}`}
     >
       <form onSubmit={handleSubmit} className="space-y-4">

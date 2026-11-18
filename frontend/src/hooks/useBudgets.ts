@@ -8,9 +8,11 @@ import type {
   CreateBudgetPayload,
   UpdateBudgetPayload,
 } from "@/types";
+import { useAccount } from "@/hooks/useAccount";
 
 export function useBudgets(initialFilters?: BudgetFilters) {
   const { showToast } = useToast();
+  const { selectedAccount } = useAccount();
   const [allBudgets, setAllBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,13 @@ export function useBudgets(initialFilters?: BudgetFilters) {
     try {
       setLoading(true);
       setError(null);
-      setAllBudgets(await budgetsApi.getBudgets());
+      setAllBudgets(
+        await budgetsApi.getBudgets({
+          mes: filters.mes,
+          anio: filters.anio,
+          id_cuenta: selectedAccount?.id_cuenta,
+        }),
+      );
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Error al cargar presupuestos";
@@ -39,7 +47,7 @@ export function useBudgets(initialFilters?: BudgetFilters) {
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, [filters.mes, filters.anio, selectedAccount?.id_cuenta, showToast]);
 
   const budgets = allBudgets.filter((budget) => {
     if (filters.mes !== undefined && budget.mes !== filters.mes) return false;
