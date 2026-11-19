@@ -105,6 +105,146 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_system_name
     ON trida.categorias (LOWER(nombre))
     WHERE id_usuario IS NULL;
 
+CREATE OR REPLACE FUNCTION trida.fn_trg_presupuesto_umbral()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_gastado          NUMERIC(15, 2);
+    v_gastado_anterior NUMERIC(15, 2);
+    v_limite           NUMERIC(15, 2);
+    v_inicio_mes       TIMESTAMPTZ;
+    v_nombre_categoria TEXT;
+BEGIN
+    IF NEW.tipo_movimiento <> 'GASTO'
+       OR NEW.estado NOT IN ('CONFIRMADA', 'APROBADA') THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'UPDATE' THEN
+        IF OLD.estado IN ('CONFIRMADA', 'APROBADA') THEN
+            RETURN NEW;
+        END IF;
+    END IF;
+
+    v_inicio_mes := DATE_TRUNC('month', NEW.fecha_transaccion);
+
+    SELECT p.limite_mensual
+    INTO v_limite
+    FROM trida.presupuestos AS p
+    WHERE p.id_usuario = NEW.id_usuario
+      AND p.id_categoria = NEW.id_categoria
+      AND p.mes = EXTRACT(MONTH FROM NEW.fecha_transaccion)::SMALLINT
+      AND p.anio = EXTRACT(YEAR FROM NEW.fecha_transaccion)::SMALLINT
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT COALESCE(SUM(t.monto), 0)
+    INTO v_gastado
+    FROM trida.transacciones AS t
+    WHERE t.id_usuario = NEW.id_usuario
+      AND t.id_categoria = NEW.id_categoria
+      AND t.tipo_movimiento = 'GASTO'
+      AND t.estado IN ('CONFIRMADA', 'APROBADA')
+      AND t.fecha_transaccion >= v_inicio_mes
+      AND t.fecha_transaccion < v_inicio_mes + INTERVAL '1 month';
+
+    v_gastado_anterior := v_gastado - NEW.monto;
+
+    SELECT c.nombre
+    INTO v_nombre_categoria
+    FROM trida.categorias AS c
+    WHERE c.id_categoria = NEW.id_categoria;
+
+    IF v_gastado >= v_limite AND v_gastado_anterior < v_limite THEN
+        INSERT INTO trida.consejos_financieros
+            (id_usuario, tipo, titulo, descripcion, prioridad)
+        VALUES (
+            NEW.id_usuario,
+            'GASTO',
+            'Presupuesto excedido',
+            FORMAT(
+                'Has gastado %s de %s en %s durante este periodo.',
+                v_gastado,
+                v_limite,
+                COALESCE(v_nombre_categoria, 'esta categoría')
+            ),
+            'ALTA'
+        );
+    ELSIF v_gastado >= v_limite * 0.8
+       AND v_gastado_anterior < v_limite * 0.8 THEN
+        INSERT INTO trida.consejos_financieros
+            (id_usuario, tipo, titulo, descripcion, prioridad)
+        VALUES (
+            NEW.id_usuario,
+            'GASTO',
+            'Presupuesto al 80%',
+            FORMAT(
+                'Has gastado %s de %s en %s durante este periodo.',
+                v_gastado,
+                v_limite,
+                COALESCE(v_nombre_categoria, 'esta categoría')
+            ),
+            'MEDIA'
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_presupuesto_umbral ON trida.transacciones;
+CREATE TRIGGER trg_presupuesto_umbral
+AFTER INSERT OR UPDATE OF estado ON trida.transacciones
+FOR EACH ROW
+EXECUTE FUNCTION trida.fn_trg_presupuesto_umbral();
+
+CREATE OR REPLACE FUNCTION trida.fn_presupuestos(
+    p_id_usuario INTEGER,
+    p_mes        INTEGER DEFAULT NULL,
+    p_anio       INTEGER DEFAULT NULL
+)
+RETURNS TABLE (
+    id_presupuesto INTEGER,
+    id_categoria INTEGER,
+    categoria VARCHAR(80),
+    limite_mensual NUMERIC(15, 2),
+    mes SMALLINT,
+    anio SMALLINT,
+    gastado NUMERIC(15, 2),
+    porcentaje NUMERIC(5, 2)
+)
+LANGUAGE sql STABLE PARALLEL SAFE
+AS $$
+    SELECT
+        p.id_presupuesto,
+        p.id_categoria,
+        c.nombre,
+        p.limite_mensual,
+        p.mes,
+        p.anio,
+        COALESCE(SUM(t.monto), 0)::NUMERIC(15, 2) AS gastado,
+        ROUND(COALESCE(SUM(t.monto), 0) / NULLIF(p.limite_mensual, 0) * 100, 2) AS porcentaje
+    FROM trida.presupuestos AS p
+    LEFT JOIN trida.categorias AS c ON c.id_categoria = p.id_categoria
+    LEFT JOIN trida.transacciones AS t
+      ON t.id_usuario = p.id_usuario
+     AND t.id_categoria = p.id_categoria
+     AND t.tipo_movimiento = 'GASTO'
+     AND t.estado IN ('CONFIRMADA', 'APROBADA')
+     AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
+     AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio
+    WHERE p.id_usuario = p_id_usuario
+      AND (p_mes IS NULL OR p.mes = p_mes)
+      AND (p_anio IS NULL OR p.anio = p_anio)
+    GROUP BY p.id_presupuesto, p.id_categoria, c.nombre,
+             p.limite_mensual, p.mes, p.anio
+    ORDER BY p.mes DESC, c.nombre;
+$$;
+
 DROP TRIGGER IF EXISTS trg_alerta_feedback ON trida.alertas_fraude;
 DROP FUNCTION IF EXISTS trida.fn_trg_alerta_feedback();
 DROP TRIGGER IF EXISTS trg_meta_completada ON trida.metas_ahorro;

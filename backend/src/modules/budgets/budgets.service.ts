@@ -67,7 +67,7 @@ export const budgetsService = {
             FROM trida.transacciones t
             WHERE t.id_categoria = p.id_categoria
               AND t.id_usuario = p.id_usuario
-              AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
+              AND t.tipo_movimiento = 'GASTO'
               AND t.fecha_transaccion >= make_date(p.anio, p.mes, 1)
               AND t.fecha_transaccion < make_date(p.anio, p.mes, 1) + INTERVAL '1 month'
               AND t.estado IN ('CONFIRMADA', 'APROBADA')

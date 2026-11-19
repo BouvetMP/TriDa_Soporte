@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { CategoriesApi } from "@/api/Categories";
 import {
   Category,
@@ -10,12 +10,15 @@ import { useToast } from "@/components/ui/Toast";
 export const useCategories = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const requestId = useRef(0);
   const { showToast } = useToast();
 
   const fetchCategories = useCallback(async () => {
+    const currentRequestId = ++requestId.current;
     setIsLoading(true);
     try {
       const response = await CategoriesApi.getAll();
+      if (currentRequestId !== requestId.current) return;
       if (response.success) {
         setCategories(response.data);
       } else {
@@ -26,6 +29,7 @@ export const useCategories = () => {
         });
       }
     } catch (error) {
+      if (currentRequestId !== requestId.current) return;
       const err = error as Error;
       showToast({
         type: "error",
@@ -33,7 +37,7 @@ export const useCategories = () => {
         message: err.message,
       });
     } finally {
-      setIsLoading(false);
+      if (currentRequestId === requestId.current) setIsLoading(false);
     }
   }, [showToast]);
 
@@ -134,6 +138,9 @@ export const useCategories = () => {
 
   useEffect(() => {
     fetchCategories();
+    return () => {
+      requestId.current += 1;
+    };
   }, [fetchCategories]);
 
   return {

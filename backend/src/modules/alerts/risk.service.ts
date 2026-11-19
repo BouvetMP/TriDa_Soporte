@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { haversineDistance } from "../../utils/geo.js";
+import { getRiskLevel } from "../../utils/risk.js";
 
 export interface EvaluateRiskInput {
   id_usuario: number;
@@ -134,19 +135,13 @@ export class RiskService {
 
     const finalScore = Math.min(score, 100);
 
-    let nivel_riesgo: "BAJO" | "MEDIO" | "ALTO" | "CRITICO" = "BAJO";
-    let estado_evaluacion: "APROBADA" | "REVISAR" | "BLOQUEADA" = "APROBADA";
-
-    if (finalScore >= 95) {
-      nivel_riesgo = "CRITICO";
-      estado_evaluacion = "BLOQUEADA";
-    } else if (finalScore >= 70) {
-      nivel_riesgo = "ALTO";
-      estado_evaluacion = "REVISAR";
-    } else if (finalScore >= 30) {
-      nivel_riesgo = "MEDIO";
-      estado_evaluacion = "REVISAR";
-    }
+    const nivel_riesgo = getRiskLevel(finalScore);
+    const estado_evaluacion =
+      nivel_riesgo === "CRITICO"
+        ? "BLOQUEADA"
+        : nivel_riesgo === "BAJO"
+          ? "APROBADA"
+          : "REVISAR";
 
     return {
       score_riesgo: finalScore,

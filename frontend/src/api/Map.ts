@@ -9,7 +9,7 @@ import type {
 
 interface ApiMapLocation extends Omit<
   GeoTransaction,
-  "categoria" | "es_sospechosa" | "nivel_riesgo"
+  "categoria"
 > {
   nombre_categoria: string | null;
 }
@@ -18,13 +18,6 @@ interface ApiMapLocations {
   items: ApiMapLocation[];
   total: number;
   truncated: boolean;
-}
-
-function getRiskLevel(score: number): GeoTransaction["nivel_riesgo"] {
-  if (score >= 95) return "CRITICO";
-  if (score >= 70) return "ALTO";
-  if (score >= 30) return "MEDIO";
-  return "BAJO";
 }
 
 export const mapApi = {
@@ -43,8 +36,6 @@ export const mapApi = {
         categoria: item.nombre_categoria
           ? { nombre: item.nombre_categoria, color: null, icono: null }
           : null,
-        es_sospechosa: item.score_anomalia >= 30,
-        nivel_riesgo: getRiskLevel(item.score_anomalia),
       })),
     };
   },

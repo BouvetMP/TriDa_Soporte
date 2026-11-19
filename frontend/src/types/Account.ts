@@ -29,6 +29,5 @@ export interface UpdateAccountPayload {
   tipo?: AccountType;
   numero_enmascarado?: string;
   color?: string;
-  saldo_inicial?: number;
   estado?: boolean;
 }

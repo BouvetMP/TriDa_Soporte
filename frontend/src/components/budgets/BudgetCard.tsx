@@ -99,7 +99,7 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
         <div className="flex justify-between items-baseline mb-2">
           <div>
             <span className="text-xs text-[var(--color-text-muted)]">
-              Consumido (gastos + ahorro)
+              Gastado
             </span>
             <p className="text-lg font-bold text-[var(--color-text-primary)]">
               {formatCurrency(montoGastado)}

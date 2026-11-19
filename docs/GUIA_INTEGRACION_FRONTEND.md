@@ -9,7 +9,7 @@ Antes de implementar o modificar una pantalla, consultar:
 1. **OpenAPI generado por el backend:** `GET http://localhost:3000/api/docs.json` o la interfaz `http://localhost:3000/api/docs`.
 2. **Validaciones de las peticiones:** archivos `*.schemas.ts` de cada módulo en `backend/src/modules/`.
 3. **Rutas realmente montadas:** `backend/src/app.ts` y `*.routes.ts`.
-4. **Esquema de la base de datos:** `database/schema.sql` (instalación limpia) y `backend/prisma/schema.prisma` (mapeo que usa el servidor). Para una base existente, usar `database/update_existing.sql` después de hacer respaldo; no ejecutar ambos scripts sobre la misma base.
+4. **Esquema de la base de datos:** `database/schema.sql` (instalación limpia) y `backend/prisma/schema.prisma` (mapeo que usa el servidor). Para una base existente, usar `database/update_existing.sql` después de hacer respaldo; no ejecutar ambos scripts sobre la misma base. El script de actualización recrea `trg_presupuesto_umbral`; en una instalación limpia, `schema.sql` crea el disparador sin intentar eliminar uno inexistente.
 
 Si una tabla de esta guía y la especificación servida difieren, prevalecen las rutas, validaciones y respuestas del backend actual. No inventar endpoints ni campos.
 
@@ -116,6 +116,8 @@ Todas las rutas de cuentas, categorías, transacciones, dispositivos, alertas, d
 
 Centralizar la creación de peticiones HTTP en un cliente API que adjunte el bearer token, serialice JSON y gestione errores. Si una petición devuelve `401`, limpiar el estado de sesión y llevar al usuario al login. El backend usa bearer tokens; no asumir que ya existe una sesión con cookie HttpOnly.
 
+El frontend genera una CSP desde `frontend/vite.config.ts`: limita `connect-src` al origen de `VITE_API_BASE_URL` y, en desarrollo, a los orígenes locales de Vite. Los builds que no sean de desarrollo requieren una URL HTTPS pública; configura `VITE_API_BASE_URL` en el entorno de build. Esta mitigación reduce la superficie de XSS, pero el JWT sigue siendo accesible a JavaScript mientras se guarde en `localStorage`; una cookie HttpOnly con protección CSRF continúa siendo una mejora futura.
+
 ## Endpoints disponibles
 
 Todas las rutas de las tablas siguientes son relativas a `/api/v2`, salvo `/health`. `:id` representa un ID numérico. Salvo donde se indique, las rutas de API requieren JWT.
@@ -136,7 +138,7 @@ Todas las rutas de las tablas siguientes son relativas a `/api/v2`, salvo `/heal
 | `PATCH /accounts/:id` | Actualizar campos de cuenta; enviar solo los que cambian |
 | `DELETE /accounts/:id` | Desactivar la cuenta; no la elimina físicamente |
 
-`tipo`: `BANCO`, `TARJETA`, `BILLETERA` o `EFECTIVO`. `saldo_inicial` no puede ser negativo.
+`tipo`: `BANCO`, `TARJETA`, `BILLETERA` o `EFECTIVO`. `saldo_inicial` solo se establece al crear la cuenta y no puede ser negativo; `PATCH /accounts/:id` no acepta modificarlo.
 
 ### Categorías
 
@@ -182,9 +184,9 @@ En un listado, `data.items` contiene filas con nombres de cuenta/categoría, `es
 
 Solo una transacción `CONFIRMADA` afecta el saldo. `PENDIENTE` no lo modifica; resolverla como `CONFIRMADA` aplica el movimiento y resolverla como `RECHAZADA` no lo aplica. Eliminar una transacción revierte el saldo únicamente si estaba confirmada.
 
-Por compatibilidad, los resúmenes también consideran registros históricos `APROBADA` como confirmados. El trigger de presupuesto definido en `database/schema.sql` solo genera avisos para movimientos `GASTO`/`AHORRO` confirmados (`CONFIRMADA` o histórica `APROBADA`); no genera avisos para movimientos pendientes o rechazados.
+Por compatibilidad, los resúmenes también consideran registros históricos `APROBADA` como confirmados. Los presupuestos y su trigger consideran únicamente movimientos `GASTO` confirmados (`CONFIRMADA` o histórica `APROBADA`); los movimientos `AHORRO`, pendientes o rechazados no consumen presupuesto ni generan avisos.
 
-Para validar flujos contra PostgreSQL, configura `TEST_DATABASE_URL` con una base separada cuyo nombre identifique que es de pruebas y ejecuta `pnpm --dir backend test:integration`. La prueba rechaza la misma base que `DATABASE_URL` y elimina exclusivamente el usuario temporal que crea.
+Para validar flujos contra PostgreSQL, configura `TEST_DATABASE_URL` con una base separada cuyo nombre identifique que es de pruebas y ejecuta `pnpm --dir backend test:integration`. La prueba rechaza la misma base que `DATABASE_URL`, comprueba que `AHORRO` no altera el gasto ni dispara el umbral del presupuesto, y elimina exclusivamente los usuarios temporales que crea.
 
 ### Dispositivos
 

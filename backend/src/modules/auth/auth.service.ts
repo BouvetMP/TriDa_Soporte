@@ -113,6 +113,11 @@ export class AuthService {
       throw new AuthError("Credenciales inválidas", 401);
     }
 
+    await prisma.usuario.update({
+      where: { id_usuario: user.id_usuario },
+      data: { ultimo_acceso: new Date() },
+    });
+
     const token = signToken(
       {
         id_usuario: user.id_usuario,

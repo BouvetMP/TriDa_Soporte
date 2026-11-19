@@ -34,11 +34,11 @@ export function BudgetSummaryCards({ summary }: BudgetSummaryCardsProps) {
       {/* Total Gastado */}
       <Card className="p-4 flex items-center justify-between border-[var(--color-border)] bg-[var(--color-bg-card)]">
         <div>
-          <p className="text-xs font-medium text-[var(--color-text-secondary)]">Total consumido (gastos + ahorro)</p>
+          <p className="text-xs font-medium text-[var(--color-text-secondary)]">Total gastado</p>
           <p className="text-xl font-bold text-[var(--color-text-primary)] mt-1">
             {formatCurrency(totalGastado)}
           </p>
-          <span className="text-xs text-[var(--color-text-muted)]">{porcentajeTotal.toFixed(1)}% consumido</span>
+          <span className="text-xs text-[var(--color-text-muted)]">{porcentajeTotal.toFixed(1)}% del límite</span>
         </div>
         <div className="w-10 h-10 rounded-xl bg-[var(--color-danger-light)] text-[var(--color-danger)] flex items-center justify-center">
           <TrendingDown className="w-5 h-5" />

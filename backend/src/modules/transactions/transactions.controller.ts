@@ -53,10 +53,7 @@ export class TransactionsController {
     try {
       const userId = req.user!.id_usuario;
       const data = createTransactionSchema.parse(req.body);
-      const created = await transactionsService.create(userId, data, {
-        ip: req.ip,
-        userAgent: req.get("user-agent"),
-      });
+      const created = await transactionsService.create(userId, data);
 
       sendSuccess(
         res,

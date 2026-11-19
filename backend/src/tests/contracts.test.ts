@@ -35,6 +35,7 @@ import {
 import { parseId } from "../utils/params.js";
 import { reportQuerySchema } from "../modules/reports/reports.schemas.js";
 import { mapQuerySchema } from "../modules/maps/maps.schemas.js";
+import { getRiskLevel, riskLevelSql, riskRankSql } from "../utils/risk.js";
 import {
   parseDateEnd,
   parseDateStart,
@@ -53,6 +54,24 @@ import {
   verifyEmailVerificationToken,
 } from "../modules/auth/email-verification.js";
 import jwt from "jsonwebtoken";
+
+test("risk thresholds classify boundary scores consistently in TypeScript and SQL", () => {
+  const cases = [
+    [29, "BAJO"],
+    [30, "MEDIO"],
+    [69, "MEDIO"],
+    [70, "ALTO"],
+    [94, "ALTO"],
+    [95, "CRITICO"],
+  ] as const;
+
+  for (const [score, expected] of cases) {
+    assert.equal(getRiskLevel(score), expected);
+  }
+
+  assert.match(riskLevelSql("score_anomalia"), /score_anomalia >= 95 THEN 'CRITICO'/);
+  assert.match(riskRankSql("score_anomalia"), /score_anomalia >= 70 THEN 3/);
+});
 
 test("account schema accepts the documented snake_case contract only", () => {
   const documented = createAccountSchema.parse({
@@ -76,6 +95,31 @@ test("account schema accepts the documented snake_case contract only", () => {
     false,
   );
   assert.equal(updateAccountSchema.safeParse({}).success, false);
+  assert.equal(
+    updateAccountSchema.safeParse({ nombre: "Cuenta principal", saldo_inicial: 500 }).success,
+    false,
+  );
+  const accountUpdatePaths = swaggerSpec as {
+    paths?: Record<
+      string,
+      {
+        patch?: {
+          requestBody?: {
+            content?: Record<
+              string,
+              { schema?: { properties?: Record<string, unknown> } }
+            >;
+          };
+        };
+      }
+    >;
+  };
+  const accountUpdate = accountUpdatePaths.paths?.["/api/v2/accounts/{id}"]?.patch;
+  assert.equal(
+    accountUpdate?.requestBody?.content?.["application/json"]?.schema?.properties
+      ?.saldo_inicial,
+    undefined,
+  );
 });
 
 test("transaction schema accepts snake_case and rejects camelCase aliases", () => {

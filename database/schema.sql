@@ -1,3 +1,7 @@
+-- Canonical schema for new databases.
+-- Keep Prisma-supported tables and indexes aligned with backend/prisma/schema.prisma;
+-- custom checks, partial/expression indexes, rules, triggers, and functions live here.
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -498,7 +502,7 @@ DECLARE
     v_inicio_mes       TIMESTAMPTZ;
     v_nombre_categoria TEXT;
 BEGIN
-    IF NEW.tipo_movimiento NOT IN ('GASTO', 'AHORRO')
+    IF NEW.tipo_movimiento <> 'GASTO'
        OR NEW.estado NOT IN ('CONFIRMADA', 'APROBADA') THEN
         RETURN NEW;
     END IF;
@@ -529,7 +533,7 @@ BEGIN
     FROM trida.transacciones AS t
     WHERE t.id_usuario = NEW.id_usuario
       AND t.id_categoria = NEW.id_categoria
-      AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
+      AND t.tipo_movimiento = 'GASTO'
       AND t.estado IN ('CONFIRMADA', 'APROBADA')
       AND t.fecha_transaccion >= v_inicio_mes
       AND t.fecha_transaccion < v_inicio_mes + INTERVAL '1 month';
@@ -578,8 +582,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
-DROP TRIGGER IF EXISTS trg_presupuesto_umbral ON trida.transacciones;
 
 CREATE TRIGGER trg_presupuesto_umbral
 AFTER INSERT OR UPDATE OF estado ON trida.transacciones
@@ -997,13 +999,15 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
            COALESCE((SELECT SUM(t.monto) FROM trida.transacciones t
                      WHERE t.id_usuario = p.id_usuario
                        AND t.id_categoria = p.id_categoria
-                       AND t.tipo_movimiento IN ('GASTO','AHORRO')
+                       AND t.tipo_movimiento = 'GASTO'
+                       AND t.estado IN ('CONFIRMADA', 'APROBADA')
                        AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
                        AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio), 0) AS gastado,
            ROUND(COALESCE((SELECT SUM(t.monto) FROM trida.transacciones t
                      WHERE t.id_usuario = p.id_usuario
                        AND t.id_categoria = p.id_categoria
-                       AND t.tipo_movimiento IN ('GASTO','AHORRO')
+                       AND t.tipo_movimiento = 'GASTO'
+                       AND t.estado IN ('CONFIRMADA', 'APROBADA')
                        AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
                        AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio), 0)
                  / NULLIF(p.limite_mensual, 0) * 100, 2) AS porcentaje

@@ -10,7 +10,7 @@ Complementa `AUDITORIA_TRIDA_V2.md` (los IDs `F#`, `S#`, `B#`, `DB#`, `UI#`, `D#
 1. **Un PR = un problema.** Nada de refactors mezclados con fixes. Cada PR indica *qué toca*, *qué NO toca*, *riesgo* y *cómo verificar*.
 2. **Contratos de API: solo cambios aditivos.** No se renombran campos, rutas ni códigos de estado existentes. Si algo debe cambiar de forma visible, se hace en dos pasos (primero se acepta lo nuevo, luego se retira lo viejo).
 3. **Alias antes que renombrar.** Para estilos y tokens se añaden alias; no se reescriben cientos de clases de golpe.
-4. **Datos antes que código.** Antes de cambiar una estructura que ya contiene datos, documentar verificaciones y respaldo. Este repositorio mantiene un esquema SQL completo, sin archivos de migración incremental: reflejar los cambios en `database/schema.sql` y, cuando corresponda, en `backend/prisma/schema.prisma`. La actualización de bases existentes se planifica fuera del flujo de instalación limpia.
+4. **Datos antes que código.** Antes de cambiar una estructura que ya contiene datos, documentar verificaciones y respaldo. Este proyecto usa `database/schema.sql` para instalaciones nuevas y `database/update_existing.sql` para actualizar bases existentes. `backend/prisma/schema.prisma` mantiene el modelo relacional e índices compatibles con Prisma; triggers, reglas, funciones, checks e índices basados en expresiones se mantienen en SQL. No se usa un directorio de migraciones Prisma.
 5. **Primero la red de seguridad** (Fase 0), después los arreglos.
 6. **Decisiones de producto explícitas.** Los puntos que cambian reglas de negocio están marcados 🧭 y requieren aprobación antes de codificar (sección 6).
 
@@ -409,27 +409,22 @@ if (confirmsTransaction && currentTransaction.estado === "RECHAZADA" && !systemB
 - *Opción B:* cerrar automáticamente la alerta (`DESCARTADA`/auto-resuelta) al bloquear y mostrar el motivo en la transacción.
 Añadir test de integración (saldo antes/después) cualquiera sea la opción.
 
-### P2-7 · Saldo de cuenta (F15) — primero solo UI
-- **Paso 1 (sin riesgo):** en `EditAccountModal` eliminar el campo "Saldo Inicial" y su valor en el payload; en `AccountCard` mostrar la etiqueta "Saldo actual". El backend sigue aceptando `saldo_inicial` (compatible).
-- **Paso 2 (opcional):** separar `saldo_inicial` inmutable de `saldo` (renombrar la columna con `@map` en Prisma o añadir columna) y rechazar edición directa en `updateAccountSchema`. Actualizar el esquema completo y Prisma; para bases existentes, acordar previamente el procedimiento de actualización y revisar `dashboard`, `AccountContext` y tests.
+### P2-7 · Saldo de cuenta (F15)
+- **Aplicado:** la interfaz no permite editar el saldo y `updateAccountSchema` rechaza `saldo_inicial` en `PATCH`.
+- **Pendiente aparte:** separar el saldo inicial inmutable del saldo actual (renombrar la columna con `@map` en Prisma o añadir otra columna). Requiere acordar y probar el procedimiento de actualización de bases existentes.
 
 ### P2-8 · Metas de ahorro (F16)
-```ts
-// savings.service.ts › create
-estado: data.monto_actual >= data.monto_objetivo ? "COMPLETADA" : "ACTIVA",
-// update: tras actualizar, si no se envió `estado` y monto_actual >= monto_objetivo → COMPLETADA
-// fecha_limite: permitir null para borrarla
-fecha_limite: data.fecha_limite === null ? null : data.fecha_limite ? new Date(data.fecha_limite) : undefined,
-```
-`updateSavingsSchema.fecha_limite` → `.nullable().optional()`; `EditSavingsGoalModal` envía `fechaLimite || null` (ajustar tipo `UpdateSavingsGoalPayload.fecha_limite?: string | null`).
-`useSavings`: calcular `total_objetivo`/`porcentaje_general` excluyendo `CANCELADA`:
-```ts
-const considered = allGoals.filter(g => g.estado !== "CANCELADA");
-```
+La creación marca como completadas las metas que alcanzan el objetivo, la actualización permite borrar `fecha_limite` y `useSavings` excluye las metas `CANCELADA` y `PAUSADA` de `total_ahorrado`, `total_objetivo` y `porcentaje_general`.
 
 ### P2-9 · Índices de BD (DB1) — rendimiento sin cambio funcional
-Los índices `idx_alertas_tx_fecha`, `idx_tx_ubicacion`, `idx_tx_dispositivo` e `idx_tx_user_cat_fecha` ya están en `database/schema.sql` y en el mapeo Prisma. Las bases existentes requieren una actualización planificada por el operador; no se agregan archivos de migración incremental al repositorio.
+Los índices `idx_alertas_tx_fecha`, `idx_tx_ubicacion`, `idx_tx_dispositivo` e `idx_tx_user_cat_fecha` están en `database/schema.sql` y en el modelo Prisma. Los índices parciales y basados en expresiones se mantienen solo en SQL. Para bases existentes, validar y probar `database/update_existing.sql` antes de aplicarlo.
 Comparar `EXPLAIN (ANALYZE)` de `listTransactions` y `budgets.list` antes/después de aplicar el esquema en el entorno correspondiente.
+
+### P2-10 · Mitigación XSS para JWT en `localStorage` (S11)
+La CSP de producción limita scripts al mismo origen y `connect-src` al origen de la API configurada; los builds requieren `VITE_API_BASE_URL` HTTPS. El modo desarrollo permite scripts inline para el cliente/HMR de Vite. La política reduce la capacidad de exfiltrar el token, pero no evita que JavaScript activo lea `localStorage`. La migración a cookie `HttpOnly` con protección CSRF queda como trabajo futuro.
+
+### P2-11 · Auditoría y privacidad (S12–S13)
+**Parcial:** `ultimo_acceso` se actualiza al iniciar sesión; la escritura de nuevos eventos en `logs_auditoria` queda aplazada hasta acordar su retención, ya que la tabla es append-only. La aplicación dejó de añadir automáticamente la IP del servidor a nuevas transacciones; el campo opcional `ip_origen` del API aún puede guardarse si un cliente lo envía. El mapa usa mosaicos de OpenStreetMap (no un `iframe`), solicita recursos con `Referrer-Policy: no-referrer` y muestra un aviso sobre el proveedor externo. Las IP históricas no se borraron.
 
 ---
 
@@ -440,8 +435,9 @@ Se abordan cuando las fases 1–2 estén en producción; cada punto sigue siendo
 | PR | Tema | Resumen del cambio | Riesgo |
 |---|---|---|---|
 | P3-1 | Modal (UI5) | Evitar que un modal cerrado libere el scroll de otro abierto | Bajo |
-| P3-2 | Carreras en hooks (UI4) | `requestId`/`AbortController` en `useTransactions`, `useAlerts`, `useReports`, `useMapTransactions` | Bajo |
-| P3-3 | Umbrales de riesgo (B3) | `RISK_THRESHOLDS` único; mismas cifras (30/70/95) | Medio: unificar `>=50` de mapa/perfil/insights cambia cifras mostradas 🧭 |
+| P3-2 | Carreras en hooks (UI4) | **Aplicado:** control de respuesta más reciente en `useTransactions`, `useAlerts`, `useReports`, `useMapTransactions` y `useCategories`. La caché compartida de categorías queda fuera de este cambio. | Bajo |
+| UI7 | Modal de transacciones | **Aplicado:** limpia el error de validación al reabrir; el selector ya limita categorías al tipo de movimiento. | Bajo |
+| P3-3 | Umbrales de riesgo (B3) | **Aplicado:** `RISK_THRESHOLDS` centraliza 30/70/95; SQL y TypeScript comparten la clasificación y el mapa recibe el nivel desde el backend. | Bajo: no se modificaron los valores del umbral. |
 | P3-4 | Fechas/zonas (B4) | `utils/dateRange.ts` con `APP_TIMEZONE=America/Bogota` | Medio: cambia límites de periodos |
 | P3-5 | Serialización (B5) | Serializadores `monto → number` en transacciones/alertas | Bajo (solo normaliza tipos) |
 | P3-6 | Categorías (B10, DB2) | Baja lógica + filtro `estado` + reactivar si existe el nombre | Medio 🧭 |
@@ -451,6 +447,9 @@ Se abordan cuando las fases 1–2 estén en producción; cada punto sigue siendo
 | P3-10 | Dependencias (T2) | Alinear `zod`, TS, `@types/*`; quitar `@types/bcryptjs`; `engines` y `.nvmrc` | Medio: ejecutar suite completa |
 | P3-11 | Código muerto (sección 8 de la auditoría) | Eliminar archivos/alias sin referencias (verificar con búsqueda global antes) | Bajo |
 | P3-12 | Docs (D2–D5) | Actualizar guía, `README`, `.env.example` | Nulo |
+| B17 | Operación | **Aplicado:** `/health/ready` comprueba PostgreSQL con `SELECT 1`; el cierre espera a que terminen las solicitudes HTTP antes de desconectar Prisma. | Bajo |
+| T3–T4 | Pruebas y CI | **Aplicado:** pruebas Vitest de UI y carreras, y GitHub Actions ejecuta tests, typecheck, lint, builds e integración PostgreSQL. | Bajo |
+| DB4 | Estrategia de esquema | **Flujo manual:** `schema.sql` para bases nuevas y `update_existing.sql` para bases existentes; `schema.prisma` refleja los objetos que Prisma puede modelar. Sin directorio de migraciones Prisma. | Medio: respaldar, validar el estado y probar el script sobre una copia antes de actualizar una base existente. |
 
 ### P3-13 · Registro de dispositivos (F5) 🧭 — **no activar sin esta advertencia**
 Conectar el registro de dispositivo **cambia el comportamiento del motor de riesgo**: los dispositivos nuevos nacen con `confiable = false` y la regla suma +30 puntos (→ riesgo MEDIO → transacción `PENDIENTE`). Si el frontend empieza a enviar `id_dispositivo`, **todas** las transacciones del usuario podrían quedar pendientes.
@@ -468,8 +467,8 @@ Pasos seguros:
 |---|---|---|
 | Transacciones bloqueadas (F12) | ¿El usuario puede liberar un bloqueo del sistema? | Sí, con trazabilidad (Opción A) |
 | Saldo de cuenta (F15) | ¿El usuario puede editar el saldo manualmente? | No; ajustes mediante transacciones |
-| Presupuestos (B8) | ¿`AHORRO` consume presupuesto? | Documentarlo en la UI o excluirlo |
-| Umbral "riesgo alto" (B3) | ¿≥50 o ≥70? | Unificar en 70 (como el resto) |
+| Presupuestos (B8) | ¿`AHORRO` consume presupuesto? | No; solo movimientos `GASTO` |
+| Umbral "riesgo alto" (B3) | ¿≥50 o ≥70? | Resuelto: el código actual ya usaba ≥70; se centralizaron los umbrales 30/70/95. |
 | Categorías (B10) | ¿Baja lógica o borrado? | Baja lógica |
 | Swagger en producción (S7) | ¿Debe estar disponible? | Solo en desarrollo/staging |
 | Dispositivos (F5) | ¿Primer dispositivo confiable? | Sí |
@@ -502,7 +501,7 @@ Pasos seguros:
 **Automático**
 - [ ] `pnpm --dir backend typecheck && pnpm --dir backend lint && pnpm --dir backend test`
 - [ ] `pnpm --dir backend test:integration` (BD de pruebas separada)
-- [ ] `pnpm --dir frontend type-check && pnpm --dir frontend lint && pnpm --dir frontend build`
+- [ ] `pnpm --dir frontend test && pnpm --dir frontend type-check && pnpm --dir frontend lint && pnpm --dir frontend build`
 - [ ] Sin cambios en respuestas existentes (comparar contra `/api/docs.json` anterior; solo adiciones)
 
 **Manual (smoke, ~10 min, tema oscuro y claro)**
@@ -517,7 +516,8 @@ Pasos seguros:
 - [ ] Móvil: menú lateral, modales, scroll
 
 **Despliegue**
-- Cada cambio de base se refleja en `database/schema.sql` y `backend/prisma/schema.prisma` cuando corresponda; verificar el esquema en una base vacía y respaldar/reconciliar bases existentes antes de actualizarlas.
+- Cada cambio de base se refleja en `database/schema.sql` y `backend/prisma/schema.prisma` cuando Prisma puede representarlo; los objetos SQL personalizados se mantienen en `schema.sql` y en `update_existing.sql` cuando corresponda.
+- Antes de actualizar una base existente, respaldar, comprobar las validaciones del script y probarlo sobre una copia representativa.
 - Desplegar backend primero cuando el frontend dependa de un cambio aditivo del API; nunca al revés.
 - Mantener cada PR revertible individualmente (`git revert`).
 

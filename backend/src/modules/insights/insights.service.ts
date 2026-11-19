@@ -2,6 +2,7 @@
 // ¿Para qué? Analizar patrones de gasto, categorías top, alertas y generar consejos accionables por usuario (RS-001).
 
 import { queryRaw } from "../../db/queryRaw.js";
+import { RISK_THRESHOLDS } from "../../utils/risk.js";
 
 export const insightsService = {
   async getInsights(userId: number, periodoDias = 30) {
@@ -146,7 +147,7 @@ export const insightsService = {
       );
     }
 
-    if (scorePromedio >= 70) {
+    if (scorePromedio >= RISK_THRESHOLDS.HIGH) {
       consejos.push(
         "Tu score de riesgo promedio es elevado. Verifica dispositivos desconocidos y transacciones marcadas.",
       );

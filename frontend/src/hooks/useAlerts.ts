@@ -29,16 +29,32 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const requestId = useRef(0);
+  const pendingCountRequestId = useRef(0);
+  const isMounted = useRef(false);
   const { showToast } = useToast();
 
   const fetchPendingCount = useCallback(async () => {
+    if (!isMounted.current) return;
+    const currentRequestId = ++pendingCountRequestId.current;
     try {
       const response = await AlertsApi.getPendingCount();
+      if (
+        !isMounted.current ||
+        currentRequestId !== pendingCountRequestId.current
+      ) {
+        return;
+      }
       if (response.success) {
         setPendingCount(response.data.count);
         window.dispatchEvent(new Event("trida-alerts-updated"));
       }
     } catch (error) {
+      if (
+        !isMounted.current ||
+        currentRequestId !== pendingCountRequestId.current
+      ) {
+        return;
+      }
       const err = error as Error;
       showToast({
         type: "error",
@@ -49,11 +65,12 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
   }, [showToast]);
 
   const fetchAlerts = useCallback(async () => {
+    if (!isMounted.current) return;
     const currentRequestId = ++requestId.current;
     setIsLoading(true);
     try {
       const response = await AlertsApi.getAll(queryParams);
-      if (currentRequestId !== requestId.current) return;
+      if (!isMounted.current || currentRequestId !== requestId.current) return;
       if (response.success) {
         setAlerts(response.data.items);
 
@@ -73,7 +90,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         });
       }
     } catch (error) {
-      if (currentRequestId !== requestId.current) return;
+      if (!isMounted.current || currentRequestId !== requestId.current) return;
       const err = error as Error;
       showToast({
         type: "error",
@@ -81,15 +98,20 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         message: err.message || "No se pudieron cargar las alertas.",
       });
     } finally {
-      if (currentRequestId === requestId.current) setIsLoading(false);
+      if (isMounted.current && currentRequestId === requestId.current) {
+        setIsLoading(false);
+      }
     }
   }, [queryParams, showToast]);
 
   useEffect(() => {
+    isMounted.current = true;
     fetchAlerts();
     fetchPendingCount();
     return () => {
+      isMounted.current = false;
       requestId.current += 1;
+      pendingCountRequestId.current += 1;
     };
   }, [fetchAlerts, fetchPendingCount]);
 
@@ -123,6 +145,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
       });
 
       if (response.success) {
+        if (!isMounted.current) return true;
         showToast({
           type: "success",
           title: "Alerta actualizada",
@@ -133,6 +156,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         return true;
       }
     } catch (error) {
+      if (!isMounted.current) return false;
       const err = error as Error;
       showToast({
         type: "error",

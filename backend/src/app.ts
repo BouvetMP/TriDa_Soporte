@@ -2,6 +2,7 @@
 // ¿Para qué? Montar middlewares globales y registrar las rutas de los 13 módulos.
 
 import express, { Request, Response, NextFunction } from "express";
+import { prisma } from "./db/prisma.js";
 import cors from "cors";
 import helmet from "helmet";
 import { config } from "./config.js";
@@ -52,6 +53,22 @@ app.use(apiRateLimiter);
 // Healthcheck
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", service: "trida-backend", version: "2.0.0" });
+});
+
+app.get("/health/ready", async (_req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ready", service: "trida-backend", version: "2.0.0" });
+  } catch (error) {
+    console.error("Database readiness check failed", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    res.status(503).json({
+      status: "not_ready",
+      service: "trida-backend",
+      version: "2.0.0",
+    });
+  }
 });
 
 // Rutas de API v2

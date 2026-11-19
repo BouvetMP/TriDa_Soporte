@@ -2,6 +2,7 @@ import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
 import type { UpdateProfileInput } from "../auth/auth.schemas.js";
 import { AppError } from "../../utils/AppError.js";
+import { RISK_THRESHOLDS } from "../../utils/risk.js";
 
 export class ProfileError extends AppError {}
 
@@ -59,7 +60,7 @@ export class ProfileService {
             COALESCE(AVG(t.monto), 0)::float AS monto_promedio,
             COALESCE(MAX(t.monto), 0)::float AS monto_maximo,
             COUNT(*) FILTER (
-              WHERE t.score_anomalia >= 70
+              WHERE t.score_anomalia >= ${RISK_THRESHOLDS.HIGH}
                 OR EXISTS (
                   SELECT 1
                   FROM trida.alertas_fraude a

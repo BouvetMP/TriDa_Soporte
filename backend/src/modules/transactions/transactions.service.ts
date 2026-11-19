@@ -5,6 +5,7 @@ import { getTransactionBalanceDelta } from "./transaction-balance.js";
 import { AppError } from "../../utils/AppError.js";
 import { config } from "../../config.js";
 import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
+import { RISK_THRESHOLDS, riskLevelSql, riskRankSql } from "../../utils/risk.js";
 import type { CreateTransactionInput, ListTransactionsQueryInput } from "./transactions.schemas.js";
 
 export class TransactionError extends AppError {}
@@ -57,10 +58,7 @@ export class TransactionsService {
           WHEN 'CRITICA' THEN 'CRITICO'
           ELSE a.severidad
         END
-        WHEN t.score_anomalia >= 95 THEN 'CRITICO'
-        WHEN t.score_anomalia >= 70 THEN 'ALTO'
-        WHEN t.score_anomalia >= 30 THEN 'MEDIO'
-        ELSE 'BAJO'
+        ELSE ${riskLevelSql("t.score_anomalia")}
       END = $${sqlParams.length}`);
     }
 
@@ -99,10 +97,7 @@ export class TransactionsService {
           WHEN 'CRITICA' THEN 4
           ELSE 0
         END
-        WHEN t.score_anomalia >= 95 THEN 4
-        WHEN t.score_anomalia >= 70 THEN 3
-        WHEN t.score_anomalia >= 30 THEN 2
-        ELSE 1
+        ELSE ${riskRankSql("t.score_anomalia")}
       END`,
     };
     const sortField =
@@ -169,7 +164,7 @@ export class TransactionsService {
           t.fecha_transaccion,
           u.latitud,
           u.longitud,
-          (t.score_anomalia >= 30.0 OR a.id_alerta IS NOT NULL) AS es_sospechosa,
+          (t.score_anomalia >= ${RISK_THRESHOLDS.MEDIUM} OR a.id_alerta IS NOT NULL) AS es_sospechosa,
           CASE
             WHEN a.id_alerta IS NOT NULL THEN CASE a.severidad
               WHEN 'BAJA' THEN 'BAJO'
@@ -178,10 +173,7 @@ export class TransactionsService {
               WHEN 'CRITICA' THEN 'CRITICO'
               ELSE a.severidad
             END
-            WHEN t.score_anomalia >= 95 THEN 'CRITICO'
-            WHEN t.score_anomalia >= 70 THEN 'ALTO'
-            WHEN t.score_anomalia >= 30 THEN 'MEDIO'
-            ELSE 'BAJO'
+            ELSE ${riskLevelSql("t.score_anomalia")}
           END AS nivel_riesgo,
           a.motivo AS motivo_riesgo,
           c.nombre AS nombre_cuenta,
@@ -269,7 +261,6 @@ export class TransactionsService {
   async createTransaction(
     userId: string | number,
     data: CreateTransactionInput,
-    meta: { userAgent?: string; ip?: string } = {},
   ) {
     const id_usuario = Number(userId);
     const id_categoria = data.id_categoria ?? null;
@@ -277,7 +268,7 @@ export class TransactionsService {
       ? new Date(data.fecha_transaccion)
       : new Date();
     const variacion_saldo = getTransactionBalanceDelta(data.tipo_movimiento, data.monto);
-    const direccion_ip = data.ip_origen ?? meta.ip ?? null;
+    const direccion_ip = data.ip_origen ?? null;
 
     return prisma.$transaction(async (transaction) => {
       const cuentaTransaccion = await transaction.cuenta.findFirst({
@@ -407,9 +398,8 @@ export class TransactionsService {
   async create(
     userId: string | number,
     data: CreateTransactionInput,
-    meta: { userAgent?: string; ip?: string } = {},
   ) {
-    return this.createTransaction(userId, data, meta);
+    return this.createTransaction(userId, data);
   }
 
   async deleteTransaction(id: string | number, userId: string | number) {
@@ -523,12 +513,7 @@ export class TransactionsService {
         SELECT
           COALESCE(
             a.severidad,
-            CASE
-              WHEN t.score_anomalia >= 95 THEN 'CRITICO'
-              WHEN t.score_anomalia >= 70 THEN 'ALTO'
-              WHEN t.score_anomalia >= 30 THEN 'MEDIO'
-              ELSE 'BAJO'
-            END
+            ${riskLevelSql("t.score_anomalia")}
           ) AS nivel_riesgo,
           COUNT(*)::int AS count
         FROM trida.transacciones t

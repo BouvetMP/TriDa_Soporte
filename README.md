@@ -18,7 +18,7 @@ TriDa es una aplicación de finanzas personales con frontend React/Vite, API Exp
 
 2. Crea `backend/.env` a partir de `.env.example` y configura `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_URL`. `APP_TIMEZONE` define la zona usada en filtros de fecha (por defecto `America/Bogota`). SMTP está desactivado temporalmente por defecto (`SMTP_ENABLED=false`): el registro marca la cuenta como verificada y permite iniciar sesión; la recuperación por correo responde que no está disponible. Para reactivar la verificación y recuperación por correo, configura las credenciales SMTP y establece `SMTP_ENABLED=true`. Si la API está detrás de un proxy confiable, habilita `TRUST_PROXY=true`.
 
-3. En una base nueva, aplica `database/schema.sql` una sola vez. Para actualizar una base existente, haz un respaldo y ejecuta `database/update_existing.sql` con `ON_ERROR_STOP`; valida roles y duplicados que impedirían las restricciones, y crea perfiles financieros que falten. No ejecutes el actualizador sobre una base vacía ni `schema.sql` sobre una base ya creada. El repositorio no mantiene una cadena de migraciones incrementales.
+3. En una base nueva, aplica `database/schema.sql` una sola vez. Para actualizar una base existente, haz un respaldo y ejecuta `database/update_existing.sql` con `ON_ERROR_STOP`; valida antes que la versión del script corresponda al estado de la base. No ejecutes el actualizador sobre una base vacía ni `schema.sql` sobre una base ya creada. Este proyecto usa scripts SQL manuales; Prisma se usa para el modelo y el cliente, no para administrar migraciones.
 
 4. Inicia los servicios en terminales separadas:
 
@@ -35,10 +35,13 @@ TriDa es una aplicación de finanzas personales con frontend React/Vite, API Exp
 pnpm --dir backend typecheck
 pnpm --dir backend lint
 pnpm --dir backend test
+pnpm --dir frontend test
 pnpm --dir frontend type-check
 pnpm --dir frontend lint
 pnpm --dir frontend build
 ```
+
+El workflow de GitHub Actions en `.github/workflows/ci.yml` ejecuta estas verificaciones y las pruebas de integración del backend con PostgreSQL desechable.
 
 Las pruebas de integración requieren `TEST_DATABASE_URL` apuntando a una base de pruebas exclusiva y con `database/schema.sql` aplicado:
 

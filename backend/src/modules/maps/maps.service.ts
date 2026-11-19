@@ -6,6 +6,7 @@ import { queryRaw } from "../../db/queryRaw.js";
 import type { MapQueryInput } from "./maps.schemas.js";
 import { config } from "../../config.js";
 import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
+import { RISK_THRESHOLDS, riskLevelSql, type RiskLevel } from "../../utils/risk.js";
 
 type RawLocation = {
   id_transaccion: number;
@@ -14,6 +15,8 @@ type RawLocation = {
   comercio: string | null;
   estado: string;
   score_anomalia: string | number | null;
+  es_sospechosa: boolean;
+  nivel_riesgo: RiskLevel;
   ciudad: string | null;
   pais: string | null;
   latitud: string | number;
@@ -31,6 +34,8 @@ function formatRawLocation(item: RawLocation) {
     comercio: item.comercio ?? null,
     estado: item.estado,
     score_anomalia: item.score_anomalia !== null ? Number(item.score_anomalia) : 0,
+    es_sospechosa: item.es_sospechosa,
+    nivel_riesgo: item.nivel_riesgo,
     ciudad: item.ciudad ?? null,
     pais: item.pais ?? null,
     latitud: Number(item.latitud),
@@ -57,7 +62,7 @@ export const mapService = {
         COUNT(*)::bigint AS total_geolocalizadas,
         COUNT(DISTINCT ciudad)::bigint AS ciudades_distintas,
         COUNT(DISTINCT pais)::bigint AS paises_distintos,
-        COUNT(*) FILTER (WHERE t.score_anomalia >= 70)::bigint AS transacciones_riesgo_alto,
+        COUNT(*) FILTER (WHERE t.score_anomalia >= ${RISK_THRESHOLDS.HIGH})::bigint AS transacciones_riesgo_alto,
         COALESCE(AVG(t.score_anomalia), 0)::numeric AS score_promedio
       FROM trida.transacciones t
       JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
@@ -99,12 +104,7 @@ export const mapService = {
 
     if (filters.nivel_riesgo && filters.nivel_riesgo !== "ALL") {
       params.push(filters.nivel_riesgo);
-      conditions.push(`CASE
-        WHEN t.score_anomalia >= 95 THEN 'CRITICO'
-        WHEN t.score_anomalia >= 70 THEN 'ALTO'
-        WHEN t.score_anomalia >= 30 THEN 'MEDIO'
-        ELSE 'BAJO'
-      END = $${params.length}`);
+      conditions.push(`${riskLevelSql("t.score_anomalia")} = $${params.length}`);
     }
 
     if (filters.estado && filters.estado !== "ALL") {
@@ -132,6 +132,8 @@ export const mapService = {
         t.comercio,
         t.estado,
         t.score_anomalia,
+        COALESCE(t.score_anomalia >= ${RISK_THRESHOLDS.MEDIUM}, FALSE) AS es_sospechosa,
+        ${riskLevelSql("t.score_anomalia")} AS nivel_riesgo,
         u.ciudad,
         u.pais,
         u.latitud,

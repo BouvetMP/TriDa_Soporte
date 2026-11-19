@@ -21,7 +21,6 @@ export const updateAccountSchema = z
     tipo: accountTypeSchema.optional(),
     numero_enmascarado: z.string().trim().max(20).optional(),
     color: z.string().trim().max(20).optional(),
-    saldo_inicial: z.coerce.number().min(0).optional(),
     estado: z.boolean().optional(),
   })
   .strict()

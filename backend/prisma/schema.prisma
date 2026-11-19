@@ -1,4 +1,6 @@
 // backend/prisma/schema.prisma
+// Prisma-supported relational models and indexes are defined here.
+// PostgreSQL checks, partial/expression indexes, rules, triggers, and functions stay in database/schema.sql.
 
 generator client {
   provider = "prisma-client-js"

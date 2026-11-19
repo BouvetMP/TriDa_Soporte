@@ -511,6 +511,39 @@ const options: swaggerJsdoc.Options = {
           },
         },
       },
+      "/health/ready": {
+        get: {
+          tags: ["Health"],
+          security: [],
+          summary: "Verificar disponibilidad de PostgreSQL",
+          responses: {
+            "200": {
+              description: "Backend y base de datos disponibles",
+              content: {
+                "application/json": {
+                  example: {
+                    status: "ready",
+                    service: "trida-backend",
+                    version: "2.0.0",
+                  },
+                },
+              },
+            },
+            "503": {
+              description: "Base de datos no disponible",
+              content: {
+                "application/json": {
+                  example: {
+                    status: "not_ready",
+                    service: "trida-backend",
+                    version: "2.0.0",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
 
       // ───────────── AUTH ─────────────
       "/api/v2/auth/register": {
@@ -771,7 +804,6 @@ const options: swaggerJsdoc.Options = {
                     entidad: { type: "string", example: "BAC Credomatic" },
                     numero_enmascarado: { type: "string", example: "****9999" },
                     color: { type: "string", example: "#10b981" },
-                    saldo_inicial: { type: "number", example: 1500 },
                   },
                 },
               },

@@ -41,6 +41,11 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    setError("");
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     const defaultAccount = selectedAccount?.estado
       ? selectedAccount
       : activeAccounts[0];

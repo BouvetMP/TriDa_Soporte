@@ -63,7 +63,16 @@ test("transaction routes keep account balances consistent across creation and re
   try {
     const address = server.address();
     assert.ok(address && typeof address === "object");
-    const baseUrl = `http://127.0.0.1:${address.port}/api/v2`;
+    const serverUrl = `http://127.0.0.1:${address.port}`;
+    const baseUrl = `${serverUrl}/api/v2`;
+
+    const readinessResponse = await fetch(`${serverUrl}/health/ready`);
+    assert.equal(readinessResponse.status, 200);
+    assert.deepEqual(await readJson(readinessResponse), {
+      status: "ready",
+      service: "trida-backend",
+      version: "2.0.0",
+    });
 
     userId = (
       await prisma.usuario.create({
@@ -87,6 +96,11 @@ test("transaction routes keep account balances consistent across creation and re
         loginResponse,
       );
     const authorization = { authorization: `Bearer ${login.data.token}` };
+    const loggedInUser = await prisma.usuario.findUnique({
+      where: { id_usuario: login.data.usuario.id_usuario },
+      select: { ultimo_acceso: true },
+    });
+    assert.ok(loggedInUser?.ultimo_acceso);
 
     const accountResponse = await fetch(`${baseUrl}/accounts`, {
       method: "POST",
@@ -221,7 +235,13 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(created.data.transaction.estado, "CONFIRMADA");
     assert.equal(created.data.transaction.id_dispositivo, firstDevice.data.id_dispositivo);
     assert.equal(created.data.evaluation.estado_evaluacion, "APROBADA");
-    assert.notEqual(created.data.transaction.id_ubicacion, null);
+    const locationId = created.data.transaction.id_ubicacion;
+    assert.ok(locationId !== null);
+    const storedLocation = await prisma.ubicacion.findUnique({
+      where: { id_ubicacion: locationId },
+      select: { direccion_ip: true },
+    });
+    assert.equal(storedLocation?.direccion_ip, null);
     assert.equal(
       Number(
         (
@@ -354,6 +374,70 @@ test("transaction routes keep account balances consistent across creation and re
         ).saldo_inicial,
       ),
       100,
+    );
+
+    const budgetDate = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12),
+    );
+    const budgetCategory = await prisma.categoria.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Categoría presupuesto ${randomUUID()}`,
+        tipo: "GASTO",
+        color: "#2563eb",
+      },
+    });
+    const budget = await prisma.presupuesto.create({
+      data: {
+        id_usuario: userId,
+        id_categoria: budgetCategory.id_categoria,
+        limite_mensual: 100,
+        mes: budgetDate.getUTCMonth() + 1,
+        anio: budgetDate.getUTCFullYear(),
+      },
+    });
+    await prisma.transaccion.createMany({
+      data: [
+        {
+          id_usuario: userId,
+          id_cuenta: accountId,
+          id_categoria: budgetCategory.id_categoria,
+          tipo_movimiento: "GASTO",
+          monto: 60,
+          estado: "CONFIRMADA",
+          fecha_transaccion: budgetDate,
+        },
+        {
+          id_usuario: userId,
+          id_cuenta: accountId,
+          id_categoria: budgetCategory.id_categoria,
+          tipo_movimiento: "AHORRO",
+          monto: 30,
+          estado: "CONFIRMADA",
+          fecha_transaccion: budgetDate,
+        },
+      ],
+    });
+    const budgetResponse = await fetch(
+      `${baseUrl}/budgets?mes=${budgetDate.getUTCMonth() + 1}&anio=${budgetDate.getUTCFullYear()}`,
+      { headers: authorization },
+    );
+    assert.equal(budgetResponse.status, 200);
+    const budgets = await readJson<
+      SuccessEnvelope<Array<{ id_presupuesto: number; gastado: number }>>
+    >(budgetResponse);
+    assert.equal(
+      budgets.data.find((item) => item.id_presupuesto === budget.id_presupuesto)?.gastado,
+      60,
+    );
+    assert.equal(
+      await prisma.consejo_financiero.count({
+        where: {
+          id_usuario: userId,
+          titulo: "Presupuesto al 80%",
+        },
+      }),
+      0,
     );
 
     await prisma.cuenta.update({

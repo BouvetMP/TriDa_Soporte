@@ -107,6 +107,7 @@ export function InteractiveExpenseMap({
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            referrerPolicy="no-referrer"
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapViewController
@@ -138,6 +139,15 @@ export function InteractiveExpenseMap({
           })}
         </MapContainer>
       </div>
+
+      <p
+        role="note"
+        className="border-t border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-muted)]"
+      >
+        El mapa carga mosaicos de OpenStreetMap, un proveedor externo que recibe
+        solicitudes asociadas a las zonas visualizadas. No se envía la URL de
+        esta página como referencia.
+      </p>
 
       {selectedTransaction && (
         <div className="p-4 border-t border-[var(--color-border)] bg-[var(--color-bg-card)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
