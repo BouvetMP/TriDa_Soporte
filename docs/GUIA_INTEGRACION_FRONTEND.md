@@ -15,7 +15,7 @@ Si una tabla de esta guía y la especificación servida difieren, prevalecen las
 
 ## Arquitectura existente
 
-- Frontend: React 18, TypeScript, Vite y React Router 6 (`frontend/package.json`). La aplicación ya cuenta con rutas, cliente HTTP, contexto de sesión y pantallas para cuentas, transacciones, alertas, perfil, dashboard, presupuestos, ahorro, insights, reportes y mapa. La administración de categorías se realiza desde su API y no tiene una pantalla dedicada.
+- Frontend: React 18, TypeScript, Vite y React Router 6 (`frontend/package.json`). La aplicación ya cuenta con rutas, cliente HTTP, contexto de sesión y pantallas para cuentas, transacciones, alertas, perfil, dashboard, categorías, presupuestos, ahorro, insights, reportes y mapa.
 - Backend: Express, API versionada en `/api/v2`, Prisma y PostgreSQL.
 - Base de datos: esquema PostgreSQL `trida`; las tablas tienen nombres snake_case, por ejemplo `trida.usuarios`, `trida.cuentas`, `trida.categorias`, `trida.transacciones`, `trida.alertas_fraude` y `trida.metas_ahorro`.
 - El backend es responsable de autenticación, permisos, validación, reglas de negocio, persistencia, relaciones, saldos y evaluación de riesgo.
@@ -145,6 +145,7 @@ Todas las rutas de las tablas siguientes son relativas a `/api/v2`, salvo `/heal
 | Método y ruta | Uso / campos principales |
 |---|---|
 | `GET /categories` | Listar categorías del sistema y del usuario |
+| `GET /categories/:id` | Obtener una categoría activa propia o del sistema |
 | `POST /categories` | Crear categoría propia: `nombre`, `tipo`; opcionales `icono`, `color` |
 | `PATCH /categories/:id` | Actualizar categoría propia |
 | `DELETE /categories/:id` | Desactivar categoría propia (baja lógica) |
@@ -176,7 +177,7 @@ Campos requeridos para `POST /transactions`:
 }
 ```
 
-Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `longitud`, `ip_origen`, `fecha_transaccion`, `es_recurrente`. `monto` debe ser mayor que cero; `tipo_movimiento` acepta `INGRESO`, `GASTO` o `AHORRO`. El backend asigna moneda/estado por defecto y determina usuario, ubicación cuando corresponde y evaluación de riesgo; no inventar campos para esos valores.
+Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `longitud`, `ip_origen`, `fecha_transaccion`, `es_recurrente`. `monto` debe ser mayor que cero; `tipo_movimiento` acepta `INGRESO`, `GASTO` o `AHORRO`. El backend asigna moneda, estado y canal (`web`) por defecto y determina usuario, ubicación cuando corresponde y evaluación de riesgo; no inventar campos para esos valores.
 
 Filtros de `GET /transactions`: `limit`, `offset`, `estado`, `nivel_riesgo`, `tipo_movimiento`, `id_cuenta`, `id_categoria`, `search`, `min_monto`, `max_monto`, `fecha_inicio`, `fecha_fin`, `sort_by`, `sort_order`. Ordenamientos admitidos en el contrato: `fecha_transaccion`, `monto`, `tipo_movimiento`, `nivel_riesgo`; dirección `asc` o `desc`.
 

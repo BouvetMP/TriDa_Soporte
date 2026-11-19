@@ -211,7 +211,7 @@ export class AlertsService {
               saldo_inicial: {
                 increment: getTransactionBalanceDelta(
                   currentTransaction.tipo_movimiento,
-                  Number(currentTransaction.monto),
+                  currentTransaction.monto,
                 ),
               },
             },
@@ -240,7 +240,7 @@ export class AlertsService {
               saldo_inicial: {
                 decrement: getTransactionBalanceDelta(
                   currentTransaction.tipo_movimiento,
-                  Number(currentTransaction.monto),
+                  currentTransaction.monto,
                 ),
               },
             },

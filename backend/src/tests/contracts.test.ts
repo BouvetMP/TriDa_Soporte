@@ -268,9 +268,10 @@ test("pending transactions can only be resolved to a balance-affecting final sta
   assert.equal(updateTransactionStatusSchema.safeParse({ estado: "CONFIRMADA" }).success, true);
   assert.equal(updateTransactionStatusSchema.safeParse({ estado: "RECHAZADA" }).success, true);
   assert.equal(updateTransactionStatusSchema.safeParse({ estado: "PENDIENTE" }).success, false);
-  assert.equal(getTransactionBalanceDelta("INGRESO", 25), 25);
-  assert.equal(getTransactionBalanceDelta("GASTO", 25), -25);
-  assert.equal(getTransactionBalanceDelta("AHORRO", 25), -25);
+  assert.equal(getTransactionBalanceDelta("INGRESO", 25).toString(), "25");
+  assert.equal(getTransactionBalanceDelta("GASTO", 25).toString(), "-25");
+  assert.equal(getTransactionBalanceDelta("AHORRO", 25).toString(), "-25");
+  assert.equal(getTransactionBalanceDelta("GASTO", "25.10").toFixed(2), "-25.10");
   assert.throws(() => getTransactionBalanceDelta("INVALIDO", 25), /Tipo de movimiento inválido/);
   assert.throws(
     () => queryRaw("SELECT $2", 1),
@@ -408,6 +409,40 @@ test("OpenAPI includes all previously undocumented auth and dashboard routes", (
   assert.ok(paths["/api/v2/dashboard/advice"]?.get);
   assert.ok(paths["/api/v2/dashboard/advice/{id}/read"]?.patch);
   assert.ok(paths["/api/v2/auth/me"]?.patch);
+});
+
+test("OpenAPI documents category retrieval, soft deletion, and count severities", () => {
+  type Operation = {
+    summary?: string;
+    responses?: Record<
+      string,
+      {
+        content?: {
+          "application/json"?: { example?: { data?: Record<string, unknown> } };
+        };
+      }
+    >;
+  };
+  const paths = (
+    swaggerSpec as unknown as {
+      paths?: Record<string, Record<string, Operation>>;
+    }
+  ).paths ?? {};
+
+  assert.ok(paths["/api/v2/categories/{id}"]?.get);
+  assert.match(paths["/api/v2/categories/{id}"]?.delete?.summary ?? "", /desactivar/i);
+  assert.deepEqual(
+    paths["/api/v2/transactions/counts-by-level"]?.get?.responses?.["200"]?.content?.[
+      "application/json"
+    ]?.example?.data,
+    { BAJO: 3, MEDIO: 2, ALTO: 1, CRITICO: 0 },
+  );
+  assert.deepEqual(
+    paths["/api/v2/alerts/counts-by-level"]?.get?.responses?.["200"]?.content?.[
+      "application/json"
+    ]?.example?.data,
+    { BAJA: 3, MEDIA: 2, ALTA: 1, CRITICA: 0 },
+  );
 });
 
 test("OpenAPI only references existing local components", () => {

@@ -65,7 +65,7 @@ export const savingsService = {
       const updated = await transaction.meta_ahorro.findUniqueOrThrow({
         where: { id_meta: created.id_meta },
       });
-      if (Number(updated.monto_actual) >= Number(updated.monto_objetivo)) {
+      if (updated.monto_actual.greaterThanOrEqualTo(updated.monto_objetivo)) {
         return transaction.meta_ahorro.update({
           where: { id_meta: created.id_meta },
           data: { estado: "COMPLETADA", fecha_completada: new Date() },
@@ -109,7 +109,7 @@ export const savingsService = {
         estado:
           data.estado ??
           (data.monto_objetivo !== undefined
-            ? Number(existing.monto_actual) >= data.monto_objetivo
+            ? existing.monto_actual.greaterThanOrEqualTo(data.monto_objetivo)
               ? "COMPLETADA"
               : "ACTIVA"
             : undefined),
@@ -117,7 +117,7 @@ export const savingsService = {
           data.estado === "COMPLETADA" ||
           (data.estado === undefined &&
             data.monto_objetivo !== undefined &&
-            Number(existing.monto_actual) >= data.monto_objetivo)
+            existing.monto_actual.greaterThanOrEqualTo(data.monto_objetivo))
             ? new Date()
             : data.estado !== undefined ||
                 (data.monto_objetivo !== undefined && existing.estado === "COMPLETADA")
@@ -161,8 +161,9 @@ export const savingsService = {
         throw new SavingsError("Meta de ahorro no encontrada", 404);
       }
 
-      const estado =
-        Number(updated.monto_actual) >= Number(updated.monto_objetivo) ? "COMPLETADA" : "ACTIVA";
+      const estado = updated.monto_actual.greaterThanOrEqualTo(updated.monto_objetivo)
+        ? "COMPLETADA"
+        : "ACTIVA";
       const meta =
         estado === updated.estado
           ? updated

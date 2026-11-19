@@ -444,12 +444,14 @@ Se abordan cuando las fases 1–2 estén en producción; cada punto sigue siendo
 | P3-7 | Dashboard y reportes (B13, B14, F17, UI11–UI13) | `Promise.all`, tarjetas duplicadas, `RiskBadge`, opciones duplicadas del mapa | Bajo |
 | P3-8 | Estado de transacciones en UI (F13) | Badge de estado y botones Confirmar/Rechazar para `PENDIENTE` (usa el endpoint existente) | Bajo |
 | P3-9 | A11y (UI6) | `useId` en `Input/Select`, `aria-label` en botones de icono, `role="status"` en Toast | Bajo |
-| P3-10 | Dependencias (T2) | Alinear `zod`, TS, `@types/*`; quitar `@types/bcryptjs`; `engines` y `.nvmrc` | Medio: ejecutar suite completa |
+| P3-10 | Dependencias (T2) | **Aplicado:** alinear TS, `@types/node`, `eslint-config-prettier` y tipos de Express; quitar Zod frontend sin uso y `@types/bcryptjs`; añadir `engines` y `.nvmrc` (Node 22.13+). Tests, typecheck y lint pasan; build backend bloqueado por `EPERM` de Prisma en Windows. | Medio |
 | P3-11 | Código muerto (sección 8 de la auditoría) | Eliminar archivos/alias sin referencias (verificar con búsqueda global antes) | Bajo |
-| P3-12 | Docs (D2–D5) | Actualizar guía, `README`, `.env.example` | Nulo |
+| P3-12 | Docs (D2–D5) | **Aplicado parcialmente:** README, guía y variables de entorno aclarados; Swagger incluye `GET /categories/{id}`, baja lógica y ejemplos de conteos. Aún faltan respuestas específicas para el resto de operaciones. | Nulo |
 | B17 | Operación | **Aplicado:** `/health/ready` comprueba PostgreSQL con `SELECT 1`; el cierre espera a que terminen las solicitudes HTTP antes de desconectar Prisma. | Bajo |
 | T3–T4 | Pruebas y CI | **Aplicado:** pruebas Vitest de UI y carreras, y GitHub Actions ejecuta tests, typecheck, lint, builds e integración PostgreSQL. | Bajo |
 | DB4 | Estrategia de esquema | **Flujo manual:** `schema.sql` para bases nuevas y `update_existing.sql` para bases existentes; `schema.prisma` refleja los objetos que Prisma puede modelar. Sin directorio de migraciones Prisma. | Medio: respaldar, validar el estado y probar el script sobre una copia antes de actualizar una base existente. |
+| DB5 / DB7 | Deriva SQL y tipos de esquema | **Decidido:** conservar las funciones SQL legacy (incluidos los triggers) porque no se confirmó que no haya consumidores externos, y mantener `VARCHAR + CHECK` para evitar cambios no coordinados en bases existentes. | Alto: compatibilidad y cambio de esquema |
+| DB8 / DB9 | Canal y precisión monetaria | **Aplicado/parcial:** se documentó el canal predeterminado `web`; saldos y comparaciones de metas usan `Prisma.Decimal`, manteniendo `number` en respuestas serializadas. | Bajo |
 
 ### P3-13 · Registro de dispositivos (F5) 🧭 — **no activar sin esta advertencia**
 Conectar el registro de dispositivo **cambia el comportamiento del motor de riesgo**: los dispositivos nuevos nacen con `confiable = false` y la regla suma +30 puntos (→ riesgo MEDIO → transacción `PENDIENTE`). Si el frontend empieza a enviar `id_dispositivo`, **todas** las transacciones del usuario podrían quedar pendientes.

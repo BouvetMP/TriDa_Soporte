@@ -4,7 +4,7 @@ TriDa es una aplicación de finanzas personales con frontend React/Vite, API Exp
 
 ## Requisitos
 
-- Node.js compatible con ESLint 10 (Node 20.19+ o 22.13+).
+- Node.js 22.13 o superior (`.nvmrc` usa la línea 22).
 - pnpm.
 - PostgreSQL.
 

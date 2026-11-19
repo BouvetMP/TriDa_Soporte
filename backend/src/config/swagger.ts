@@ -854,6 +854,42 @@ const options: swaggerJsdoc.Options = {
         },
       },
       "/api/v2/categories/{id}": {
+        get: {
+          tags: ["Categories"],
+          summary: "Obtener una categoría activa propia o del sistema",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Categoría encontrada",
+              content: {
+                "application/json": {
+                  example: {
+                    success: true,
+                    data: {
+                      id_categoria: 12,
+                      id_usuario: 7,
+                      nombre: "Alimentación",
+                      tipo: "GASTO",
+                      icono: "utensils",
+                      color: "#2563eb",
+                      estado: true,
+                      es_personalizada: true,
+                    },
+                  },
+                },
+              },
+            },
+            "404": { description: "Categoría no encontrada" },
+          },
+        },
         patch: {
           summary: "Actualizar una categoría de transacción",
           tags: ["Categories"],
@@ -891,7 +927,7 @@ const options: swaggerJsdoc.Options = {
         },
         delete: {
           tags: ["Categories"],
-          summary: "Eliminar categoría propia",
+          summary: "Desactivar categoría propia",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -901,7 +937,20 @@ const options: swaggerJsdoc.Options = {
               schema: { type: "integer" },
             },
           ],
-          responses: { "200": { description: "Categoría eliminada" } },
+          responses: {
+            "200": {
+              description: "Categoría desactivada; el historial se conserva",
+              content: {
+                "application/json": {
+                  example: {
+                    success: true,
+                    message: "Categoría eliminada exitosamente",
+                    data: { id_categoria: 12 },
+                  },
+                },
+              },
+            },
+          },
         },
       },
 
@@ -1000,7 +1049,19 @@ const options: swaggerJsdoc.Options = {
           tags: ["Transactions"],
           summary: "Conteos por nivel de riesgo",
           security: [{ bearerAuth: [] }],
-          responses: { "200": { description: "Conteos por nivel: BAJO, MEDIO, ALTO y CRITICO" } },
+          responses: {
+            "200": {
+              description: "Conteos por nivel de riesgo de transacción.",
+              content: {
+                "application/json": {
+                  example: {
+                    success: true,
+                    data: { BAJO: 3, MEDIO: 2, ALTO: 1, CRITICO: 0 },
+                  },
+                },
+              },
+            },
+          },
         },
       },
       "/api/v2/transactions/{id}": {
@@ -1181,7 +1242,19 @@ const options: swaggerJsdoc.Options = {
           tags: ["Alerts"],
           summary: "Conteos de alertas por nivel",
           security: [{ bearerAuth: [] }],
-          responses: { "200": { description: "Conteos por criticidad" } },
+          responses: {
+            "200": {
+              description: "Conteos por severidad de alerta.",
+              content: {
+                "application/json": {
+                  example: {
+                    success: true,
+                    data: { BAJA: 3, MEDIA: 2, ALTA: 1, CRITICA: 0 },
+                  },
+                },
+              },
+            },
+          },
         },
       },
       "/api/v2/alerts/{id}": {
@@ -1783,7 +1856,7 @@ for (const [path, pathItem] of Object.entries(paths ?? {})) {
       if (method === "post" && path === "/api/v2/devices") {
         statuses.add("409");
       }
-    } else if (path === "/health") {
+    } else if (path === "/health" || path === "/health/ready") {
       statuses.add("429");
       statuses.add("500");
     }

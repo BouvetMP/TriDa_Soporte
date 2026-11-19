@@ -130,7 +130,7 @@
 - **B15 — Listado de transacciones.** `ORDER BY` sin desempate (`id_transaccion`) → paginación inestable; `sort_by=nivel_riesgo` ordena por `score_anomalia`, no por el nivel mostrado (que prioriza la alerta); `ILIKE` no escapa `%`/`_`; el `COUNT` hace el `LATERAL JOIN` aun sin filtrar riesgo.
 - **B16 — Conceptos duplicados.** `AHORRO` (transacción que resta saldo) y *metas de ahorro* (aportes que no tocan ninguna cuenta) son dos mecanismos sin relación. Documentar o conectar (aporte → transacción AHORRO opcional).
 - **B17 — Operación.** `shutdown` no cierra el servidor HTTP (corta peticiones en vuelo); `/health` no comprueba la BD (añadir `/health/ready` con `SELECT 1`); no hay `request-id`/logging estructurado; `mailer` crea un transporte por envío (reutilizar/pool).
-- **B18 — Insights.** Texto "Asesor IA" pero es lógica por reglas; los consejos formatean `$${total.toFixed(2)}` (no COP ni locale); `IA_URL` en `.env.example` está truncada y sin uso. Alinear nombre/copy o implementar el servicio.
+- **B18 — Insights.** Texto "Asesor IA" pero es lógica por reglas; los consejos formatean `$${total.toFixed(2)}` (no COP ni locale). La URL de IA se retiró de `.env.example`; la integración con IA sigue fuera del alcance actual.
 - **B19 — Consejos del trigger invisibles.** El trigger de presupuesto inserta en `consejos_financieros`, pero ningún endpoint la lee: las alertas de umbral 80 %/100 % nunca llegan al usuario.
 
 ---
@@ -145,15 +145,15 @@
   - `transacciones(id_usuario, id_categoria, fecha_transaccion)` para el subselect de `gastado` en presupuestos.
 - **DB2 — Unicidad de categorías con `NULL`.** `UNIQUE (id_usuario, nombre)` no protege las categorías del sistema (`id_usuario IS NULL`, los NULL son distintos) ni evita que un usuario duplique el nombre de una del sistema. *Corrección:* índice único parcial para `id_usuario IS NULL` y comprobación contra las del sistema (o `NULLS NOT DISTINCT` en PG 15+).
 - **DB3 — Rol.** `CHECK (rol IN ('USER'))` mientras backend y frontend contemplan `ADMIN` (`ProtectedRoute.allowedRoles`). Ampliar el `CHECK` o eliminar el soporte de `ADMIN`.
-- **DB4 — Sin migraciones.** `schema.sql` y `schema.prisma` se mantienen a mano → riesgo de deriva. *Corrección:* adoptar `prisma migrate` (baseline con `prisma migrate diff`/`db pull`) y añadir un test que compare ambos.
-- **DB5 — Funciones SQL no usadas.** Casi todas las `trida.fn_*` (login, register, dashboard, presupuestos, metas…) no las llama el backend y ya divergen (p. ej. `fn_presupuestos` no filtra `estado`; `fn_categorias` sí filtra `estado`). Eliminarlas o ponerlas bajo test; evitar dos implementaciones.
+- **DB4 — Sin migraciones.** `schema.sql` y `schema.prisma` se mantienen a mano → riesgo de deriva. **Decisión:** se conserva el flujo SQL manual solicitado: `schema.sql` para bases nuevas y `update_existing.sql` para bases existentes; no se usa Prisma Migrate. Sigue pendiente automatizar la comparación de ambos esquemas.
+- **DB5 — Funciones SQL no usadas.** Casi todas las `trida.fn_*` (login, register, dashboard, presupuestos, metas…) no las llama el backend y ya divergen (p. ej. `fn_presupuestos` no filtra `estado`; `fn_categorias` sí filtra `estado`). **Decisión:** conservarlas para no romper consumidores SQL externos no identificados; los triggers `fn_trg_*` también se conservan. Evitar mantener dos implementaciones requiere revisar compatibilidad y acordar pruebas.
 
 ### 🟡 P2
 
 - **DB6 — Tablas sin uso real:** `analisis_gastos`, `reportes_mensuales`, `consejos_financieros` (solo escribe el trigger), `patron_comportamiento` (el endpoint recalcula en caliente en vez de leerla), `perfil_financiero` (sin ruta). Decidir: usarlas o retirarlas del modelo.
-- **DB7 — Enums como `String`.** `estado`, `tipo`, `severidad` son `VARCHAR` con `CHECK`; en Prisma conviene `enum` para tipado fuerte y eliminar cadenas "mágicas" repetidas en servicios.
-- **DB8 — `canal`.** Siempre `'web'` por defecto; el backend nunca lo informa.
-- **DB9 — Dinero en JS.** Se convierte `Decimal → Number` para cálculos; usar `Decimal`/céntimos en sumas críticas (saldos, aportes).
+- **DB7 — Enums como `String`.** `estado`, `tipo`, `severidad` son `VARCHAR` con `CHECK`; Prisma aún los modela como `String`. **Decisión:** mantener el esquema actual para evitar cambios de compatibilidad; reconsiderar enums nativos solo con un procedimiento coordinado para bases existentes.
+- **DB8 — `canal`.** La API no acepta `canal` y la base asigna `'web'` por defecto; se documentó ese comportamiento para la aplicación web.
+- **DB9 — Dinero en JS.** **Parcialmente corregido:** saldos y comparaciones de metas usan `Prisma.Decimal`; la conversión a `number` se conserva en las respuestas serializadas. Revisar otros cálculos monetarios antes de ampliar el cambio.
 - **DB10 — `prisma generate`** no está en `postinstall`/`build`; un despliegue limpio falla al iniciar.
 
 ---
@@ -198,17 +198,13 @@
   - `VerifyResetTokenRequest` está dentro del objeto `errorContentByStatus` (no en `components.schemas`).
   - `UpdateTransactionStatusRequest` está anidado dentro de `UpdateAlertStatusRequest`.
   Ambos `$ref` de `requestBody` quedan sin resolver y los tests actuales no lo detectan. *Corrección:* moverlos a `components.schemas` y añadir un test con `@apidevtools/swagger-parser` (`validate(spec)`, ya presente en el lockfile).
-- **D2 — Guía de integración desactualizada** (`docs/GUIA_INTEGRACION_FRONTEND.md`):
-  - Dice que presupuestos/ahorro/insights/reportes/mapa "aún necesitan su UI": ya existen; solo falta categorías.
-  - Afirma que no existe `GET /categories/:id`: sí existe (ruta y controlador).
-  - Afirma que el trigger de presupuesto no filtra por estado: el `schema.sql` actual sí filtra (`CONFIRMADA/APROBADA`).
-  - `DELETE /accounts` "desactivar/eliminar" → es desactivación; `DELETE /categories` → hoy es borrado físico.
-- **D3 — Swagger incompleto/inexacto.** `counts-by-level` documenta "all/low/medium/high/critical" y la API devuelve `BAJO/MEDIO/ALTO/CRITICO` (transacciones) o `BAJA/…` (alertas); falta `GET /categories/{id}`; las respuestas 2xx no describen el `data` real (todo es `SuccessResponse` genérico); `servers` fijo a localhost.
+- **D2 — Guía de integración desactualizada** (`docs/GUIA_INTEGRACION_FRONTEND.md`): **corregido**; la guía ahora incluye la pantalla y el endpoint de categorías, el filtro vigente del trigger, y aclara que las categorías se desactivan lógicamente.
+- **D3 — Swagger incompleto/inexacto.** **Parcialmente corregido:** se añadió `GET /categories/{id}`, se aclaró la desactivación y se documentaron ejemplos con las claves reales para conteos de transacciones y alertas. El servidor es relativo (`/`); las respuestas 2xx de otros endpoints aún usan el sobre genérico `SuccessResponse` y requieren documentar sus datos específicos.
 
 ### 🟡 P2
 
 - **D4 — README raíz ausente** (arranque, variables, `pnpm`, `TEST_DATABASE_URL`, orden de `schema.sql`/Prisma).
-- **D5 — `.env.example`:** `IA_URL=http:` truncada y sin uso; nombres SMTP inconsistentes (`SMTP_HOST` vs `EMAIL_USER/EMAIL_PASS` → `SMTP_USER/SMTP_PASS`); falta `APP_TIMEZONE` si se adopta B4.
+- **D5 — `.env.example`:** **Corregido/aclarado:** se retiró la URL de IA sin uso y `APP_TIMEZONE` está definido. Se conservan `SMTP_HOST` con `EMAIL_USER`/`EMAIL_PASS`, que coinciden con la configuración del backend y la documentación; renombrarlos sin compatibilidad podría romper despliegues existentes.
 - **D6 — Nombres de archivos vs exports:** `AlertPage.tsx` exporta `AlertsPage`, `DevicePage.tsx` exporta `DevicesPage`; rutas `/security` (alertas) y `/settings` (perfil) no coinciden con nombres de página.
 - **D7 — Tipos del frontend vs API:** `Category.es_predeterminada` no existe (el API devuelve `es_default`/`es_personalizada`); `User` declara campos que `/auth/me` no devuelve; `Transaction.monto` es `number` pero algunas respuestas traen string (B5).
 
@@ -219,7 +215,7 @@
 ### 🟠 P1
 
 - **T1 — Archivos generados en el repo.** `frontend/vite.config.js` y `vite.config.d.ts` son salida de `tsc -b` (porque `tsconfig.node.json` es `composite` sin `noEmit`/`emitDeclarationOnly`) y conviven con `vite.config.ts` (Vite puede cargar el `.js` en lugar del `.ts`). Eliminarlos, configurar el `tsconfig.node.json` y añadirlos al `.gitignore`.
-- **T2 — Desalineación de versiones.** Frontend: `zod 3.23` / TS `~5.5` / `@types/node 22`; backend: `zod 4` / TS `5.9` / `@types/node 26`; `eslint-config-prettier` 9 vs 10. `@types/express ^5` con `express ^4.22` (tipos de otra major). `@types/bcryptjs` es un stub **deprecado** (bcryptjs ya trae tipos). `@types/node 26` no corresponde al runtime típico (20/22). ESLint 10 exige Node ≥ 20.19 / 22.13 → declarar `engines` y `.nvmrc`.
+- **T2 — Desalineación de versiones.** **Corregido:** TS, `@types/node` y `eslint-config-prettier` están alineados; Express 4 usa `@types/express` 4; el frontend no instala Zod (no lo usa); se quitó el stub `@types/bcryptjs` y se añadieron `engines` y `.nvmrc` para Node 22.13+.
 - **T3 — Cobertura de tests insuficiente.** El script `test` solo ejecuta `contracts.test.ts`; la integración cubre solo transacciones. Faltan: alertas (flujo de saldos), ahorros/aportes, presupuestos, auth (reset/reenvío), `requireAuth`, y **ningún** test de frontend. *Corrección:* añadir tests de integración por módulo y Vitest + Testing Library para hooks/formularios críticos; script `test` con glob.
 - **T4 — Scripts.** Backend sin `typecheck` (`tsc --noEmit`); `build` no ejecuta `prisma generate`; no hay CI (lint + typecheck + test + `swagger validate`).
 
