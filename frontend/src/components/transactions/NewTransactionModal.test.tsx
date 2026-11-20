@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NewTransactionModal } from "./NewTransactionModal";
 
@@ -25,14 +31,14 @@ describe("NewTransactionModal", () => {
       categories: [],
       onSubmit: vi.fn().mockResolvedValue(true),
     };
-    const { rerender } = render(
-      <NewTransactionModal {...props} isOpen />,
-    );
+    const { rerender } = render(<NewTransactionModal {...props} isOpen />);
 
     fireEvent.change(screen.getByRole("spinbutton", { name: "Monto (COP)" }), {
       target: { value: "25" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar Transacción" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Guardar Transacción" }),
+    );
 
     const validationMessage =
       "Debes seleccionar una cuenta para registrar la transacción.";

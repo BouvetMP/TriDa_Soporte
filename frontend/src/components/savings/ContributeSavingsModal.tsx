@@ -70,21 +70,16 @@ export function ContributeSavingsModal({
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Monto a Aportar (COP) *
-          </label>
-          <Input
-            type="number"
-            min="1000"
-            step="1000"
-            placeholder="Ej: 50000"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            required
-            autoFocus
-          />
-        </div>
+        <Input
+          label="Monto a Aportar (COP) *"
+          type="number"
+          min="1000"
+          step="0.01"
+          placeholder="Ej: 50000"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+          required
+        />
 
         <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border)]">
           <Button

@@ -9,8 +9,7 @@ import type {
 
 export const savingsApi = {
   getGoals: async (): Promise<SavingsGoal[]> => {
-    const response =
-      await apiClient.get<ApiSuccess<SavingsGoal[]>>("/savings");
+    const response = await apiClient.get<ApiSuccess<SavingsGoal[]>>("/savings");
     return response.data.data;
   },
 

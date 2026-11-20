@@ -79,7 +79,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               Saldo actual
             </span>
             <p className="text-2xl font-extrabold text-text-primary tracking-tight">
-              {formatCurrency(account.saldo_inicial)}
+              {formatCurrency(account.saldo_actual)}
             </p>
           </div>
 

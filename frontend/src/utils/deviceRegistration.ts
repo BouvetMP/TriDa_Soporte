@@ -9,14 +9,19 @@ export const getCurrentDeviceRecordId = (userId: number): number | null => {
   return Number.isSafeInteger(recordId) && recordId > 0 ? recordId : null;
 };
 
-export const clearCurrentDeviceRecordId = (userId: number, recordId: number) => {
+export const clearCurrentDeviceRecordId = (
+  userId: number,
+  recordId: number,
+) => {
   const key = deviceRecordIdKey(userId);
   if (Number(localStorage.getItem(key)) === recordId) {
     localStorage.removeItem(key);
   }
 };
 
-export const registerCurrentDevice = async (userId: number): Promise<number> => {
+export const registerCurrentDevice = async (
+  userId: number,
+): Promise<number> => {
   const identifierKey = deviceIdentifierKey(userId);
   let identifier = localStorage.getItem(identifierKey);
   if (!identifier) {
@@ -54,7 +59,7 @@ export const registerCurrentDevice = async (userId: number): Promise<number> => 
     sistema_operativo: operatingSystem,
     navegador: browser,
   });
-  const recordId = response.data.id_dispositivo;
+  const recordId = response.id_dispositivo;
   localStorage.setItem(deviceRecordIdKey(userId), String(recordId));
   window.dispatchEvent(new Event("trida-device-registered"));
   return recordId;

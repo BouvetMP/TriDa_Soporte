@@ -125,7 +125,11 @@ export const CategoriesPage: React.FC = () => {
             Administra las categorías que utilizas en tus movimientos.
           </p>
         </div>
-        <Button type="button" onClick={openCreateForm} icon={<Plus size={16} />}>
+        <Button
+          type="button"
+          onClick={openCreateForm}
+          icon={<Plus size={16} />}
+        >
           Nueva categoría
         </Button>
       </header>

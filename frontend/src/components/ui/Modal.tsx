@@ -53,7 +53,9 @@ export const Modal: React.FC<ModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     if (activeModalCount === 0) {
       previousBodyOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
@@ -130,7 +132,10 @@ export const Modal: React.FC<ModalProps> = ({
         <div className="flex items-start justify-between gap-4 pb-4">
           <div>
             {title && (
-              <h2 id={titleId} className="text-lg font-semibold text-text-primary">
+              <h2
+                id={titleId}
+                className="text-lg font-semibold text-text-primary"
+              >
                 {title}
               </h2>
             )}

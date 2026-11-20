@@ -7,14 +7,9 @@ import type {
   TipoPeriodoReporte,
 } from "@/types";
 import { useAccount } from "@/hooks/useAccount";
+import { dateOnlyInBogota, monthStartDateInBogota } from "@/utils/Date";
 
-function dateOnly(date: Date) {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-function getDateRange(filters: ReportFilters) {
+export function getReportDateRange(filters: ReportFilters, today = new Date()) {
   if (filters.tipo_periodo === "PERSONALIZADO") {
     if (
       !filters.fecha_inicio ||
@@ -29,20 +24,23 @@ function getDateRange(filters: ReportFilters) {
     };
   }
 
-  const end = new Date();
-  const start = new Date(end.getFullYear(), end.getMonth(), 1);
+  const fecha_fin = dateOnlyInBogota(today);
+  let monthOffset = 0;
   switch (filters.tipo_periodo) {
     case "ULTIMOS_3_MESES":
-      start.setMonth(end.getMonth() - 2, 1);
+      monthOffset = -2;
       break;
     case "ULTIMOS_6_MESES":
-      start.setMonth(end.getMonth() - 5, 1);
+      monthOffset = -5;
       break;
     case "ANIO_ACTUAL":
-      start.setMonth(0, 1);
+      monthOffset = 1 - Number(fecha_fin.slice(5, 7));
       break;
   }
-  return { fecha_inicio: dateOnly(start), fecha_fin: dateOnly(end) };
+  return {
+    fecha_inicio: monthStartDateInBogota(today, monthOffset),
+    fecha_fin,
+  };
 }
 
 export function useReports(initialFilters?: ReportFilters) {
@@ -62,7 +60,7 @@ export function useReports(initialFilters?: ReportFilters) {
 
   const fetchReport = useCallback(async () => {
     const currentRequestId = ++requestId.current;
-    const dateRange = getDateRange(filters);
+    const dateRange = getReportDateRange(filters);
     if (!dateRange) {
       setReportData(null);
       setLoading(false);
@@ -106,10 +104,8 @@ export function useReports(initialFilters?: ReportFilters) {
         return {
           ...prev,
           tipo_periodo: tipo,
-          fecha_inicio:
-            prev.fecha_inicio ??
-            dateOnly(new Date(today.getFullYear(), today.getMonth(), 1)),
-          fecha_fin: prev.fecha_fin ?? dateOnly(today),
+          fecha_inicio: prev.fecha_inicio ?? monthStartDateInBogota(today),
+          fecha_fin: prev.fecha_fin ?? dateOnlyInBogota(today),
         };
       }
 

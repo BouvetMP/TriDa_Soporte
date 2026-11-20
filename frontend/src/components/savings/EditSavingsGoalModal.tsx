@@ -70,27 +70,21 @@ export function EditSavingsGoalModal({
       title={`Editar Meta: ${goal?.nombre || ""}`}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Nombre de la Meta *
-          </label>
-          <Input
-            type="text"
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            required
-          />
-        </div>
+        <Input
+          label="Nombre de la Meta *"
+          type="text"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          required
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-              Monto Objetivo (COP) *
-            </label>
             <Input
+              label="Monto Objetivo (COP) *"
               type="number"
               min="1"
-              step="1000"
+              step="0.01"
               value={montoObjetivo}
               onChange={(e) => setMontoObjetivo(e.target.value)}
               required
@@ -98,10 +92,8 @@ export function EditSavingsGoalModal({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-              Estado
-            </label>
             <Select
+              label="Estado"
               value={estado}
               onChange={(e) => setEstado(e.target.value as EstadoMeta)}
               options={estadoOptions}
@@ -110,10 +102,8 @@ export function EditSavingsGoalModal({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Fecha Límite
-          </label>
           <Input
+            label="Fecha Límite"
             type="date"
             value={fechaLimite}
             onChange={(e) => setFechaLimite(e.target.value)}

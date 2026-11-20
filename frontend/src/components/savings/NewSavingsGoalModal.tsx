@@ -44,30 +44,29 @@ export function NewSavingsGoalModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Nueva Meta de Ahorro" isSubmitting={submitting}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Nueva Meta de Ahorro"
+      isSubmitting={submitting}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Nombre de la Meta *
-          </label>
-          <Input
-            type="text"
-            placeholder="Ej: Fondo de Emergencia, Vacaciones..."
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            required
-          />
-        </div>
+        <Input
+          label="Nombre de la Meta *"
+          type="text"
+          placeholder="Ej: Fondo de Emergencia, Vacaciones..."
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          required
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-              Monto Objetivo (COP) *
-            </label>
             <Input
+              label="Monto Objetivo (COP) *"
               type="number"
               min="1"
-              step="1000"
+              step="0.01"
               placeholder="Ej: 3000000"
               value={montoObjetivo}
               onChange={(e) => setMontoObjetivo(e.target.value)}
@@ -76,13 +75,11 @@ export function NewSavingsGoalModal({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-              Ahorro Inicial (Opcional)
-            </label>
             <Input
+              label="Ahorro Inicial (Opcional)"
               type="number"
               min="0"
-              step="1000"
+              step="0.01"
               placeholder="0"
               value={montoActual}
               onChange={(e) => setMontoActual(e.target.value)}
@@ -91,19 +88,15 @@ export function NewSavingsGoalModal({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-                Fecha Límite (Opcional)
-              </label>
-              <Input
-                type="date"
-                value={fechaLimite}
-                onChange={(e) => setFechaLimite(e.target.value)}
-              />
-            </div>
-
+          <div>
+            <Input
+              label="Fecha Límite (Opcional)"
+              type="date"
+              value={fechaLimite}
+              onChange={(e) => setFechaLimite(e.target.value)}
+            />
+          </div>
         </div>
-
 
         <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border)]">
           <Button

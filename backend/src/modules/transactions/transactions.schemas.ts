@@ -1,4 +1,3 @@
-import { isIP } from "node:net";
 import { z } from "zod";
 import { positiveMoney } from "../../utils/money.js";
 
@@ -23,12 +22,6 @@ export const createTransactionSchema = z
     pais: z.string().trim().max(100).optional(),
     latitud: z.coerce.number().min(-90).max(90).optional(),
     longitud: z.coerce.number().min(-180).max(180).optional(),
-    ip_origen: z
-      .string()
-      .trim()
-      .max(45)
-      .refine((value) => isIP(value) !== 0, "La dirección IP no es válida")
-      .optional(),
     fecha_transaccion: z.iso.datetime().or(z.date()).optional(),
     es_recurrente: z.boolean().optional(),
   })

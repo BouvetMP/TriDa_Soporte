@@ -52,9 +52,9 @@ export const SidebarAccountSelector: React.FC = () => {
 
   return (
     <div className="px-3 py-3 border-b border-border" ref={dropdownRef}>
-      <label className="block text-[10px] font-semibold tracking-wider text-text-muted uppercase mb-1 px-1">
+      <p className="block text-[10px] font-semibold tracking-wider text-text-muted uppercase mb-1 px-1">
         Cuenta seleccionada
-      </label>
+      </p>
 
       <button
         type="button"
@@ -75,7 +75,7 @@ export const SidebarAccountSelector: React.FC = () => {
             </p>
             <p className="text-[11px] font-medium text-text-secondary">
               {selectedAccount
-                ? formatCurrency(selectedAccount.saldo_inicial)
+                ? formatCurrency(selectedAccount.saldo_actual)
                 : formatCurrency(totalBalance)}
             </p>
           </div>
@@ -134,7 +134,7 @@ export const SidebarAccountSelector: React.FC = () => {
                   <div className="truncate text-left">
                     <p className="truncate">{account.nombre}</p>
                     <p className="text-[10px] text-text-muted font-normal">
-                      {formatCurrency(account.saldo_inicial)}
+                      {formatCurrency(account.saldo_actual)}
                     </p>
                   </div>
                 </div>

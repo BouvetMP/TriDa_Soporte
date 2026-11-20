@@ -30,7 +30,9 @@ export function ReportFiltersBar({
     { label: "Año Actual", value: "ANIO_ACTUAL" },
     { label: "Personalizado", value: "PERSONALIZADO" },
   ];
-  const invalidDateRange = Boolean(fechaInicio && fechaFin && fechaInicio > fechaFin);
+  const invalidDateRange = Boolean(
+    fechaInicio && fechaFin && fechaInicio > fechaFin,
+  );
 
   return (
     <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[var(--color-bg-card)] p-3 rounded-2xl border border-[var(--color-border)]">

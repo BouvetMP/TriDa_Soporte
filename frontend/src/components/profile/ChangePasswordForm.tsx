@@ -3,6 +3,7 @@ import { ChangePasswordPayload } from "@/types/Auth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { KeyRound, ShieldCheck, Check, X } from "lucide-react";
+import { getPasswordChecks, isStrongPassword } from "@/utils/Password";
 
 interface ChangePasswordFormProps {
   onSubmit: (payload: ChangePasswordPayload) => Promise<boolean>;
@@ -18,15 +19,16 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [error, setError] = useState<string>("");
 
-  // Validaciones en tiempo real (mínimo 10 caracteres, 1 mayúscula, 1 minúscula, 1 número)
-  const isMinLength = passwordNueva.length >= 10;
-  const hasUpper = /[A-Z]/.test(passwordNueva);
-  const hasLower = /[a-z]/.test(passwordNueva);
-  const hasNumber = /[0-9]/.test(passwordNueva);
+  const passwordChecks = getPasswordChecks(passwordNueva);
+  const isMinLength = passwordChecks.minLength;
+  const isMaxLength = passwordChecks.maxLength;
+  const hasUpper = passwordChecks.hasUpper;
+  const hasLower = passwordChecks.hasLower;
+  const hasNumber = passwordChecks.hasNumber;
   const matchesConfirm =
     passwordNueva.length > 0 && passwordNueva === confirmPassword;
 
-  const isPasswordValid = isMinLength && hasUpper && hasLower && hasNumber;
+  const isPasswordValid = isStrongPassword(passwordNueva);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,12 +107,24 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
           )}
           <span
             className={
-              isMinLength
-                ? "text-income"
-                : "text-[var(--color-text-subtle)]"
+              isMinLength ? "text-income" : "text-[var(--color-text-subtle)]"
             }
           >
             Mínimo 10 caracteres
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isMaxLength ? (
+            <Check className="w-3.5 h-3.5 text-income" />
+          ) : (
+            <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+          )}
+          <span
+            className={
+              isMaxLength ? "text-income" : "text-[var(--color-text-subtle)]"
+            }
+          >
+            Máximo 72 caracteres
           </span>
         </div>
         <div className="flex items-center gap-2">

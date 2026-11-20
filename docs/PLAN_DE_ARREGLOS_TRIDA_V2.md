@@ -1,6 +1,7 @@
 # Plan de arreglos — TriDa v2 (backend + frontend)
 
 Complementa `AUDITORIA_TRIDA_V2.md` (los IDs `F#`, `S#`, `B#`, `DB#`, `UI#`, `D#`, `T#` se refieren a esa auditoría).
+> **Estado:** este plan es histórico y contiene pasos ya aplicados. Para decidir el siguiente trabajo, usar [ERRORES_ACTUALES_TRIDA.md](./ERRORES_ACTUALES_TRIDA.md), que refleja la revisión vigente.
 **Objetivo:** corregir los errores actuales con cambios pequeños, aislados y reversibles, sin alterar el comportamiento que hoy funciona.
 
 ---
@@ -10,7 +11,7 @@ Complementa `AUDITORIA_TRIDA_V2.md` (los IDs `F#`, `S#`, `B#`, `DB#`, `UI#`, `D#
 1. **Un PR = un problema.** Nada de refactors mezclados con fixes. Cada PR indica *qué toca*, *qué NO toca*, *riesgo* y *cómo verificar*.
 2. **Contratos de API: solo cambios aditivos.** No se renombran campos, rutas ni códigos de estado existentes. Si algo debe cambiar de forma visible, se hace en dos pasos (primero se acepta lo nuevo, luego se retira lo viejo).
 3. **Alias antes que renombrar.** Para estilos y tokens se añaden alias; no se reescriben cientos de clases de golpe.
-4. **Datos antes que código.** Antes de cambiar una estructura que ya contiene datos, documentar verificaciones y respaldo. Este proyecto usa `database/schema.sql` para instalaciones nuevas y `database/update_existing.sql` para actualizar bases existentes. `backend/prisma/schema.prisma` mantiene el modelo relacional e índices compatibles con Prisma; triggers, reglas, funciones, checks e índices basados en expresiones se mantienen en SQL. No se usa un directorio de migraciones Prisma.
+4. **Datos antes que código.** Antes de cambiar una estructura que ya contiene datos, documentar verificaciones y respaldo. `database/schema.sql` es el instalador/actualizador idempotente para bases nuevas y existentes. `backend/prisma/schema.prisma` mantiene el modelo relacional e índices compatibles con Prisma; triggers, reglas, funciones, checks e índices basados en expresiones se mantienen en SQL. No se usa un directorio de migraciones Prisma.
 5. **Primero la red de seguridad** (Fase 0), después los arreglos.
 6. **Decisiones de producto explícitas.** Los puntos que cambian reglas de negocio están marcados 🧭 y requieren aprobación antes de codificar (sección 6).
 
@@ -38,8 +39,9 @@ pnpm --dir frontend build
 Anotar errores/avisos existentes: **no se "arreglan de paso"**; solo se evita introducir nuevos.
 
 ### P0-2 · Limpieza de archivos generados del frontend (T1)
+- **Estado: aplicado.** `tsconfig.node.json` no emite archivos; `.gitignore` excluye las salidas generadas y no quedan `vite.config.js` ni `vite.config.d.ts`.
 - **Toca:** `frontend/vite.config.js`, `frontend/vite.config.d.ts` (eliminar), `frontend/tsconfig.node.json`, `frontend/tsconfig.json`, `frontend/package.json`, `.gitignore`.
-- **No toca:** `vite.config.ts` ni código de `src/`.
+- **Aplicado también:** los tipos de Vite se movieron a `src/vite-env.d.ts` y el alias de componente se normalizó a `@/` en el único import que lo usaba.
 
 `tsconfig.node.json`:
 ```json
@@ -67,19 +69,8 @@ En `tsconfig.json` quitar `"references": [...]` (un proyecto referenciado debe s
 **Verificar:** `pnpm --dir frontend build` y `dev` funcionan; no reaparecen `vite.config.js/.d.ts`.
 **Riesgo:** bajo.
 
-### P0-3 · Validar Swagger en tests (D1, parte 1)
-Añadir test que hoy **debe fallar** (demuestra el bug) y pasa tras P1-10.
-```ts
-// backend/src/tests/openapi.test.ts
-import test from "node:test";
-import SwaggerParser from "@apidevtools/swagger-parser";
-import { swaggerSpec } from "../config/swagger.js";
-
-test("OpenAPI es válido y no tiene $ref rotos", async () => {
-  await SwaggerParser.validate(structuredClone(swaggerSpec) as never);
-});
-```
-`pnpm --dir backend add -D @apidevtools/swagger-parser` y ampliar el script: `"test": "node --import tsx --test src/tests/contracts.test.ts src/tests/openapi.test.ts"`.
+### P0-3 · Validar Swagger en tests (D1, parte 1) — APLICADO
+`@apidevtools/swagger-parser` está agregado como dependencia de desarrollo. `contracts.test.ts` valida el documento completo con `SwaggerParser.validate`; el script de contratos ya forma parte del CI.
 
 ### P0-4 · Script `typecheck` en backend (T4)
 `"typecheck": "tsc --noEmit"`. Sin cambios de código.
@@ -275,21 +266,10 @@ useEffect(() => {
 - Cambiar el contenedor raíz a `<div className="space-y-6">`, **eliminar** el bloque "Topbar" y los imports que queden sin uso (`Button`, `ShieldCheck`, `LogOut`, `Sun`, `Moon`, `useTheme`, `logout`): `noUnusedLocals` rompería el build si se dejan.
 - Sustituir "Tu conexión con TriDa v2 está 100% segura." por un texto neutro (UI8).
 
-### P1-10 · Swagger: referencias rotas (D1)
-- **Toca:** `backend/src/config/swagger.ts`.
-Mover los dos esquemas mal anidados a `components.schemas` (sin cambiar sus campos):
-```ts
-// antes: VerifyResetTokenRequest estaba dentro de errorContentByStatus
-// antes: UpdateTransactionStatusRequest estaba dentro de UpdateAlertStatusRequest
-schemas: {
-  // …
-  UpdateAlertStatusRequest: { type: "object", required: ["estado"], properties: { estado: {…}, accion_usuario: {…} } },
-  UpdateTransactionStatusRequest: { type: "object", required: ["estado"], properties: { estado: { type: "string", enum: ["CONFIRMADA", "RECHAZADA"] } } },
-  VerifyResetTokenRequest: { type: "object", required: ["token"], properties: { token: { type: "string" } } },
-}
-```
-Corregir también la descripción de `counts-by-level`. Si `SwaggerParser.validate` (P0-3) revela más errores, corregirlos en este mismo PR.
-**Verificar:** `/api/docs` carga y el test `openapi.test.ts` pasa.
+### P1-10 · Swagger: referencias rotas (D1) — APLICADO
+- Los dos esquemas de entrada están disponibles en `components.schemas`.
+- `SwaggerParser` comprueba el documento completo y sus referencias. Todas las respuestas 2xx tienen esquemas específicos y ejemplos; los conteos documentan las claves devueltas.
+**Verificar:** `pnpm --dir backend test` valida Swagger junto con los contratos.
 
 ### P1-11 · Fechas "solo fecha" (F8) — sin afectar otras pantallas
 En vez de cambiar `formatDate` (usada en todo el sistema), añadir una función nueva y usarla **solo** donde hay columnas `DATE`:
@@ -342,17 +322,16 @@ Frontend: `LoginForm` envía `email.trim()`. Test: login con `ANA@x.com` cuando 
 
 ### P2-2 · Montos válidos (F19)
 ```ts
-// utils/schemas.ts
-export const money = (max = 9_999_999_999_999) =>
-  z.coerce.number().positive("El monto debe ser mayor a 0").max(max).transform(v => Math.round(v * 100) / 100);
+// utils/money.ts
+// Usa Prisma.Decimal, redondeo ROUND_HALF_UP y un máximo compatible con NUMERIC(15,2).
 ```
-Aplicar a `monto` (transacciones, aportes), `limite_mensual`, `monto_objetivo` y `monto_actual` (este último con `min(0)`). No se usa `multipleOf(0.01)` (falla por coma flotante). Los tests de contrato existentes (`"30.5"` → `30.5`, `-1` inválido) deben seguir pasando.
+Aplicado a `monto` (transacciones, aportes), `limite_mensual`, `monto_objetivo`, `monto_actual` y `saldo_inicial`. La UI usa `step="0.01"`. Los tests siguen aceptando `"30.5"` y rechazan negativos y valores superiores al límite.
 
 ### P2-3 · Límite en listados (S5)
 `limit: z.coerce.number().int().positive().max(100).optional()` en `listTransactionsQuerySchema`. El frontend usa 15, no se afecta.
 
 ### P2-4 · Errores unificados y sin fugas (B1, S6)
-Enfoque compatible: introducir `AppError` y hacer que las clases actuales **extiendan** de ella; no se reescriben controladores.
+Enfoque aplicado: `AppError` se usa como base; las clases de dominio conservan un código propio y el error global decide la respuesta. El middleware de autenticación entrega errores al mismo manejador.
 ```ts
 // utils/AppError.ts
 export class AppError extends Error {
@@ -410,21 +389,23 @@ if (confirmsTransaction && currentTransaction.estado === "RECHAZADA" && !systemB
 Añadir test de integración (saldo antes/después) cualquiera sea la opción.
 
 ### P2-7 · Saldo de cuenta (F15)
-- **Aplicado:** la interfaz no permite editar el saldo y `updateAccountSchema` rechaza `saldo_inicial` en `PATCH`.
-- **Pendiente aparte:** separar el saldo inicial inmutable del saldo actual (renombrar la columna con `@map` en Prisma o añadir otra columna). Requiere acordar y probar el procedimiento de actualización de bases existentes.
+- **Aplicado:** la API bloquea editar `saldo_inicial` en `PATCH`, y el modelo ahora distingue `saldo_inicial` de `saldo_actual`.
+- **Aplicado:** Prisma y los scripts SQL incluyen `saldo_actual`; las transacciones y resoluciones de alertas actualizan esta columna; el dashboard y el frontend leen el saldo actual.
+- **Migración SQL:** `schema.sql` agrega `saldo_actual` y lo inicializa desde `saldo_inicial` en bases existentes. Esta backfill preserva el saldo visible actual, pero no permite recuperar el saldo inicial original de cuentas que ya acumularon movimientos.
+- **Pendiente:** ejecutar y validar la migración en una base descartable o copia representativa; no se ejecutó porque el entorno no tiene `TEST_DATABASE_URL` ni `DATABASE_URL`.
 
 ### P2-8 · Metas de ahorro (F16)
-La creación marca como completadas las metas que alcanzan el objetivo, la actualización permite borrar `fecha_limite` y `useSavings` excluye las metas `CANCELADA` y `PAUSADA` de `total_ahorrado`, `total_objetivo` y `porcentaje_general`.
+La creación marca como completadas las metas que alcanzan el objetivo y genera un aporte inicial; la actualización permite borrar `fecha_limite` y recalcula `ACTIVA`/`COMPLETADA` según el monto actual y objetivo. `PAUSADA` y `CANCELADA` se conservan como estados manuales. `useSavings` excluye canceladas y pausadas de los totales generales.
 
 ### P2-9 · Índices de BD (DB1) — rendimiento sin cambio funcional
-Los índices `idx_alertas_tx_fecha`, `idx_tx_ubicacion`, `idx_tx_dispositivo` e `idx_tx_user_cat_fecha` están en `database/schema.sql` y en el modelo Prisma. Los índices parciales y basados en expresiones se mantienen solo en SQL. Para bases existentes, validar y probar `database/update_existing.sql` antes de aplicarlo.
+Los índices `idx_alertas_tx_fecha`, `idx_tx_ubicacion`, `idx_tx_dispositivo` e `idx_tx_user_cat_fecha` están en `database/schema.sql` y en el modelo Prisma. Los índices parciales y basados en expresiones se mantienen solo en SQL. Antes de aplicar `schema.sql` a una base existente, respaldarla y validar el script sobre una copia representativa.
 Comparar `EXPLAIN (ANALYZE)` de `listTransactions` y `budgets.list` antes/después de aplicar el esquema en el entorno correspondiente.
 
 ### P2-10 · Mitigación XSS para JWT en `localStorage` (S11)
 La CSP de producción limita scripts al mismo origen y `connect-src` al origen de la API configurada; los builds requieren `VITE_API_BASE_URL` HTTPS. El modo desarrollo permite scripts inline para el cliente/HMR de Vite. La política reduce la capacidad de exfiltrar el token, pero no evita que JavaScript activo lea `localStorage`. La migración a cookie `HttpOnly` con protección CSRF queda como trabajo futuro.
 
 ### P2-11 · Auditoría y privacidad (S12–S13)
-**Parcial:** `ultimo_acceso` se actualiza al iniciar sesión; la escritura de nuevos eventos en `logs_auditoria` queda aplazada hasta acordar su retención, ya que la tabla es append-only. La aplicación dejó de añadir automáticamente la IP del servidor a nuevas transacciones; el campo opcional `ip_origen` del API aún puede guardarse si un cliente lo envía. El mapa usa mosaicos de OpenStreetMap (no un `iframe`), solicita recursos con `Referrer-Policy: no-referrer` y muestra un aviso sobre el proveedor externo. Las IP históricas no se borraron.
+**Política acordada e implementación agregada; integración PostgreSQL pendiente:** la bitácora conserva eventos indefinidamente, no guarda IP en los nuevos eventos y cada usuario puede consultar solo los suyos en modo de lectura. Se registran inicios de sesión, actividad de dispositivos y decisiones sobre alertas; los cambios de email, contraseña y estado se registran mediante el trigger existente. La API no expone la columna IP. La retención indefinida implica crecimiento continuo de la tabla. Si se incorpora eliminación de cuentas, habrá que resolver la anonimización de eventos frente a las reglas append-only. No se cambió ni ejecutó SQL. La aplicación dejó de añadir automáticamente la IP del servidor a nuevas transacciones; el campo opcional `ip_origen` del API aún puede guardarse si un cliente lo envía. El mapa usa mosaicos de OpenStreetMap (no un `iframe`), solicita recursos con `Referrer-Policy: no-referrer` y muestra un aviso sobre el proveedor externo. Las IP históricas no se borraron.
 
 ---
 
@@ -435,23 +416,23 @@ Se abordan cuando las fases 1–2 estén en producción; cada punto sigue siendo
 | PR | Tema | Resumen del cambio | Riesgo |
 |---|---|---|---|
 | P3-1 | Modal (UI5) | Evitar que un modal cerrado libere el scroll de otro abierto | Bajo |
-| P3-2 | Carreras en hooks (UI4) | **Aplicado:** control de respuesta más reciente en `useTransactions`, `useAlerts`, `useReports`, `useMapTransactions` y `useCategories`. La caché compartida de categorías queda fuera de este cambio. | Bajo |
+| P3-2 | Carreras en hooks (UI4) | **Aplicado:** control de respuesta más reciente en `useTransactions`, `useAlerts`, `useReports`, `useMapTransactions` y `useCategories`. El contexto compartido de categorías está cubierto por el error 8 y sus pruebas de deduplicación, aislamiento por usuario y mutaciones. | Bajo |
 | UI7 | Modal de transacciones | **Aplicado:** limpia el error de validación al reabrir; el selector ya limita categorías al tipo de movimiento. | Bajo |
 | P3-3 | Umbrales de riesgo (B3) | **Aplicado:** `RISK_THRESHOLDS` centraliza 30/70/95; SQL y TypeScript comparten la clasificación y el mapa recibe el nivel desde el backend. | Bajo: no se modificaron los valores del umbral. |
 | P3-4 | Fechas/zonas (B4) | `utils/dateRange.ts` con `APP_TIMEZONE=America/Bogota` | Medio: cambia límites de periodos |
 | P3-5 | Serialización (B5) | Serializadores `monto → number` en transacciones/alertas | Bajo (solo normaliza tipos) |
 | P3-6 | Categorías (B10, DB2) | Baja lógica + filtro `estado` + reactivar si existe el nombre | Medio 🧭 |
-| P3-7 | Dashboard y reportes (B13, B14, F17, UI11–UI13) | `Promise.all`, tarjetas duplicadas, `RiskBadge`, opciones duplicadas del mapa | Bajo |
+| P3-7 | Dashboard y reportes (B13, B14, F17, UI11–UI13) | `Promise.all`, tarjetas del mapa sin duplicados y sección de comercios en reportes; `RiskBadge` y opciones duplicadas pendientes | Bajo |
 | P3-8 | Estado de transacciones en UI (F13) | Badge de estado y botones Confirmar/Rechazar para `PENDIENTE` (usa el endpoint existente) | Bajo |
 | P3-9 | A11y (UI6) | `useId` en `Input/Select`, `aria-label` en botones de icono, `role="status"` en Toast | Bajo |
 | P3-10 | Dependencias (T2) | **Aplicado:** alinear TS, `@types/node`, `eslint-config-prettier` y tipos de Express; quitar Zod frontend sin uso y `@types/bcryptjs`; añadir `engines` y `.nvmrc` (Node 22.13+). Tests, typecheck y lint pasan; build backend bloqueado por `EPERM` de Prisma en Windows. | Medio |
 | P3-11 | Código muerto (sección 8 de la auditoría) | Eliminar archivos/alias sin referencias (verificar con búsqueda global antes) | Bajo |
-| P3-12 | Docs (D2–D5) | **Aplicado parcialmente:** README, guía y variables de entorno aclarados; Swagger incluye `GET /categories/{id}`, baja lógica y ejemplos de conteos. Aún faltan respuestas específicas para el resto de operaciones. | Nulo |
-| B17 | Operación | **Aplicado:** `/health/ready` comprueba PostgreSQL con `SELECT 1`; el cierre espera a que terminen las solicitudes HTTP antes de desconectar Prisma. | Bajo |
+| P3-12 | Docs (D2–D5) | **Aplicado parcialmente:** README y guía aclarados; OpenAPI incluye contratos y ejemplos específicos para todas las respuestas 2xx y se valida con Swagger Parser en CI. Quedan pendientes los otros puntos documentales de D4–D5. | Nulo |
+| B17 | Operación | **Aplicado:** `/health/ready` comprueba PostgreSQL; el apagado ordenado espera solicitudes HTTP y envíos SMTP activos; `request-id`/logs JSON omiten query strings y errores sensibles; SMTP usa transporte pooled reutilizable. | Bajo |
 | T3–T4 | Pruebas y CI | **Aplicado:** pruebas Vitest de UI y carreras, y GitHub Actions ejecuta tests, typecheck, lint, builds e integración PostgreSQL. | Bajo |
-| DB4 | Estrategia de esquema | **Flujo manual:** `schema.sql` para bases nuevas y `update_existing.sql` para bases existentes; `schema.prisma` refleja los objetos que Prisma puede modelar. Sin directorio de migraciones Prisma. | Medio: respaldar, validar el estado y probar el script sobre una copia antes de actualizar una base existente. |
-| DB5 / DB7 | Deriva SQL y tipos de esquema | **Decidido:** conservar las funciones SQL legacy (incluidos los triggers) porque no se confirmó que no haya consumidores externos, y mantener `VARCHAR + CHECK` para evitar cambios no coordinados en bases existentes. | Alto: compatibilidad y cambio de esquema |
-| DB8 / DB9 | Canal y precisión monetaria | **Aplicado/parcial:** se documentó el canal predeterminado `web`; saldos y comparaciones de metas usan `Prisma.Decimal`, manteniendo `number` en respuestas serializadas. | Bajo |
+| DB4 | Estrategia de esquema | **Flujo manual:** `schema.sql` idempotente para bases nuevas y existentes; `schema.prisma` refleja los objetos que Prisma puede modelar. Sin directorio de migraciones Prisma. | Medio: respaldar, validar el estado y probar el script sobre una copia antes de actualizar una base existente. |
+| DB5 / DB7 | Deriva SQL y tipos de esquema | **Decidido:** conservar por ahora las funciones SQL legacy porque no se confirmó que no haya consumidores externos; mantener `VARCHAR + CHECK` para evitar cambios no coordinados en bases existentes. El esquema unificado desconecta solo los triggers legacy cuya lógica duplica al backend, conservando sus funciones. | Alto: compatibilidad y cambio de esquema |
+| DB8 / DB9 | Canal y precisión monetaria | **Aplicado:** se documentó el canal predeterminado `web`; balances, tasas de ahorro, progreso de metas y umbrales de riesgo calculan con `Prisma.Decimal`, convirtiendo al contrato `number` solo al serializar o presentar. La selección de moneda y conversión queda aparte; la presentación actual sigue en COP. | Bajo |
 
 ### P3-13 · Registro de dispositivos (F5) 🧭 — **no activar sin esta advertencia**
 Conectar el registro de dispositivo **cambia el comportamiento del motor de riesgo**: los dispositivos nuevos nacen con `confiable = false` y la regla suma +30 puntos (→ riesgo MEDIO → transacción `PENDIENTE`). Si el frontend empieza a enviar `id_dispositivo`, **todas** las transacciones del usuario podrían quedar pendientes.
@@ -518,7 +499,7 @@ Pasos seguros:
 - [ ] Móvil: menú lateral, modales, scroll
 
 **Despliegue**
-- Cada cambio de base se refleja en `database/schema.sql` y `backend/prisma/schema.prisma` cuando Prisma puede representarlo; los objetos SQL personalizados se mantienen en `schema.sql` y en `update_existing.sql` cuando corresponda.
+- Cada cambio de base se refleja en `database/schema.sql` y `backend/prisma/schema.prisma` cuando Prisma puede representarlo; los objetos SQL personalizados también se mantienen en `schema.sql`.
 - Antes de actualizar una base existente, respaldar, comprobar las validaciones del script y probarlo sobre una copia representativa.
 - Desplegar backend primero cuando el frontend dependa de un cambio aditivo del API; nunca al revés.
 - Mantener cada PR revertible individualmente (`git revert`).

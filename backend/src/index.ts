@@ -5,6 +5,8 @@ import type { Server } from "node:http";
 import app from "./app.js";
 import { config } from "./config.js";
 import { prisma } from "./db/prisma.js";
+import { closeMailer } from "./utils/mailer.js";
+import { logger } from "./utils/logger.js";
 
 let httpServer: Server | undefined;
 let shutdownRequested = false;
@@ -14,7 +16,7 @@ async function bootstrap() {
   try {
     // Verificar conexión a PostgreSQL
     await prisma.$connect();
-    console.log("✅ Conexión a PostgreSQL establecida");
+    logger.info("database.connected");
 
     if (shutdownRequested) {
       return;
@@ -23,14 +25,36 @@ async function bootstrap() {
     const port = config.PORT || 3000;
 
     httpServer = app.listen(port, () => {
-      console.log(`🚀 TriDa Backend v2 escuchando en http://localhost:${port}`);
-      console.log(`📌 Healthcheck: http://localhost:${port}/health`);
-      console.log(`📌 Readiness:  http://localhost:${port}/health/ready`);
-      console.log(`📌 API base:    http://localhost:${port}/api/v2`);
-      console.log(`📚 Swagger:     http://localhost:${port}/api/docs`);
+      const baseUrl = `http://localhost:${port}`;
+
+      logger.info("server.started", { port });
+      logger.info("server.endpoints.begin", {
+        separator: "========== ENDPOINTS DISPONIBLES ==========",
+      });
+      logger.info("server.endpoint", {
+        name: "Healthcheck",
+        url: `${baseUrl}/health`,
+      });
+      logger.info("server.endpoint", {
+        name: "Readiness",
+        url: `${baseUrl}/health/ready`,
+      });
+      logger.info("server.endpoint", {
+        name: "API",
+        url: `${baseUrl}/api/v2`,
+      });
+      if (config.NODE_ENV !== "production") {
+        logger.info("server.endpoint", {
+          name: "Swagger",
+          url: `${baseUrl}/api/docs`,
+        });
+      }
+      logger.info("server.endpoints.end", {
+        separator: "============================================",
+      });
     });
   } catch (error) {
-    console.error("❌ Error al iniciar el servidor:", error);
+    logger.error("server.start_failed", error);
     if (!shutdownRequested) {
       process.exitCode = 1;
     }
@@ -45,7 +69,7 @@ function shutdown(signal: string): Promise<void> {
   }
 
   shutdownPromise = (async () => {
-    console.log(`\n${signal} recibido. Cerrando servidor...`);
+    logger.info("server.shutdown_started", { signal });
     let failed = false;
 
     try {
@@ -57,15 +81,23 @@ function shutdown(signal: string): Promise<void> {
       }
     } catch (error) {
       failed = true;
-      console.error("Error al cerrar el servidor HTTP:", error);
+      logger.error("server.http_shutdown_failed", error);
+    }
+
+    try {
+      await closeMailer();
+      logger.info("mailer.closed");
+    } catch (error) {
+      failed = true;
+      logger.error("mailer.shutdown_failed", error);
     }
 
     try {
       await prisma.$disconnect();
-      console.log("Conexión a Prisma cerrada");
+      logger.info("database.disconnected");
     } catch (error) {
       failed = true;
-      console.error("Error al cerrar Prisma:", error);
+      logger.error("database.shutdown_failed", error);
     }
 
     process.exitCode = failed ? 1 : 0;

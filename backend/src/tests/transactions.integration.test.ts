@@ -3,6 +3,7 @@ import test from "node:test";
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { createPasswordResetToken } from "../modules/auth/reset-token.js";
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ if (process.env.DATABASE_URL) {
 process.env.DATABASE_URL = testDatabaseUrl;
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET ??= "integration-test-secret-not-for-production";
+process.env.SMTP_ENABLED = "false";
 
 type SuccessEnvelope<T> = {
   success: true;
@@ -74,16 +76,22 @@ test("transaction routes keep account balances consistent across creation and re
       version: "2.0.0",
     });
 
-    userId = (
-      await prisma.usuario.create({
-        data: {
+    const registrationResponse = await fetch(`${baseUrl}/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
         nombre_completo: "Usuario de integración",
         email,
-          password_hash: await bcrypt.hash("TestPassword123", 10),
-          email_verificado_en: new Date(),
-        },
-      })
-    ).id_usuario;
+        password: "TestPassword123",
+      }),
+    });
+    assert.equal(registrationResponse.status, 201);
+    const registeredUser = await prisma.usuario.findUniqueOrThrow({
+      where: { email },
+      select: { id_usuario: true, email_verificado_en: true },
+    });
+    userId = registeredUser.id_usuario;
+    assert.ok(registeredUser.email_verificado_en);
 
     const loginResponse = await fetch(`${baseUrl}/auth/login`, {
       method: "POST",
@@ -102,6 +110,92 @@ test("transaction routes keep account balances consistent across creation and re
     });
     assert.ok(loggedInUser?.ultimo_acceso);
 
+    const failedLoginResponse = await fetch(`${baseUrl}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "IncorrectPassword123" }),
+    });
+    assert.equal(failedLoginResponse.status, 401);
+
+    const ownerMarker = `audit-owner-${randomUUID()}`;
+    await prisma.log_auditoria.create({
+      data: {
+        id_usuario: userId,
+        tipo_accion: "INICIO_SESION_FALLIDO",
+        entidad_afectada: "usuarios",
+        descripcion: ownerMarker,
+        direccion_ip: "192.0.2.1",
+      },
+    });
+    const auditResponse = await fetch(`${baseUrl}/audit?limit=50`, {
+      headers: authorization,
+    });
+    assert.equal(auditResponse.status, 200);
+    const auditHistory = await readJson<
+      SuccessEnvelope<{
+        items: Array<{
+          id_log: number;
+          tipo_accion: string;
+          descripcion: string | null;
+          direccion_ip?: string;
+        }>;
+        has_more: boolean;
+        next_cursor: number | null;
+      }>
+    >(auditResponse);
+    assert.ok(
+      auditHistory.data.items.some((event) => event.tipo_accion === "INICIO_SESION_EXITOSO"),
+    );
+    assert.ok(
+      auditHistory.data.items.some((event) => event.tipo_accion === "INICIO_SESION_FALLIDO"),
+    );
+    assert.ok(auditHistory.data.items.some((event) => event.descripcion === ownerMarker));
+    assert.ok(auditHistory.data.items.every((event) => !("direccion_ip" in event)));
+    const retainedAuditEvent = auditHistory.data.items.find(
+      (event) => event.descripcion === ownerMarker,
+    );
+    assert.ok(retainedAuditEvent);
+    const retainedAuditIp = await prisma.log_auditoria.findUniqueOrThrow({
+      where: { id_log: retainedAuditEvent.id_log },
+      select: { direccion_ip: true },
+    });
+    assert.equal(retainedAuditIp.direccion_ip, "192.0.2.1");
+    const auditWriteResponse = await fetch(`${baseUrl}/audit`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({ tipo_accion: "INICIO_SESION_FALLIDO" }),
+    });
+    assert.equal(auditWriteResponse.status, 404);
+    const unauthenticatedAuditResponse = await fetch(`${baseUrl}/audit`);
+    assert.equal(unauthenticatedAuditResponse.status, 401);
+
+    const firstAuditPageResponse = await fetch(`${baseUrl}/audit?limit=1`, {
+      headers: authorization,
+    });
+    assert.equal(firstAuditPageResponse.status, 200);
+    const firstAuditPage = await readJson<
+      SuccessEnvelope<{
+        items: Array<{ id_log: number }>;
+        has_more: boolean;
+        next_cursor: number | null;
+      }>
+    >(firstAuditPageResponse);
+    assert.equal(firstAuditPage.data.has_more, true);
+    assert.ok(firstAuditPage.data.next_cursor);
+    assert.equal(firstAuditPage.data.items.length, 1);
+    const firstAuditId = firstAuditPage.data.items[0]?.id_log;
+    assert.ok(firstAuditId);
+    const olderAuditPageResponse = await fetch(
+      `${baseUrl}/audit?limit=1&before_id=${firstAuditPage.data.next_cursor}`,
+      { headers: authorization },
+    );
+    assert.equal(olderAuditPageResponse.status, 200);
+    const olderAuditPage =
+      await readJson<SuccessEnvelope<{ items: Array<{ id_log: number }> }>>(olderAuditPageResponse);
+    const olderAuditId = olderAuditPage.data.items[0]?.id_log;
+    assert.ok(olderAuditId);
+    assert.ok(olderAuditId < firstAuditId);
+
     const accountResponse = await fetch(`${baseUrl}/accounts`, {
       method: "POST",
       headers: { ...authorization, "content-type": "application/json" },
@@ -115,11 +209,139 @@ test("transaction routes keep account balances consistent across creation and re
     const account = await readJson<SuccessEnvelope<{ id_cuenta: number }>>(accountResponse);
     const accountId = account.data.id_cuenta;
 
+    const savingsResponse = await fetch(`${baseUrl}/savings`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        nombre: "Meta de integración",
+        monto_objetivo: 100,
+        monto_actual: 20,
+      }),
+    });
+    assert.equal(savingsResponse.status, 201);
+    const saving =
+      await readJson<SuccessEnvelope<{ id_meta: number; monto_actual: number; estado: string }>>(
+        savingsResponse,
+      );
+    assert.equal(saving.data.monto_actual, 20);
+    assert.equal(saving.data.estado, "ACTIVA");
+
+    const addFundsResponse = await fetch(`${baseUrl}/savings/${saving.data.id_meta}/funds`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({ monto: 80 }),
+    });
+    assert.equal(addFundsResponse.status, 200);
+    const completedSaving =
+      await readJson<SuccessEnvelope<{ monto_actual: number; estado: string }>>(addFundsResponse);
+    assert.equal(completedSaving.data.monto_actual, 100);
+    assert.equal(completedSaving.data.estado, "COMPLETADA");
+
+    const savedContributions = await prisma.aporte_meta.aggregate({
+      where: { id_meta: saving.data.id_meta },
+      _sum: { monto: true },
+      _count: { _all: true },
+    });
+    assert.equal(Number(savedContributions._sum.monto), 100);
+    assert.equal(savedContributions._count._all, 2);
+
+    const addFundsToCompletedResponse = await fetch(
+      `${baseUrl}/savings/${saving.data.id_meta}/funds`,
+      {
+        method: "POST",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ monto: 1 }),
+      },
+    );
+    assert.equal(addFundsToCompletedResponse.status, 409);
+
+    const completedAtCreationResponse = await fetch(`${baseUrl}/savings`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        nombre: "Meta completada al crear",
+        monto_objetivo: 50,
+        monto_actual: 50,
+        fecha_limite: "2030-01-01",
+      }),
+    });
+    assert.equal(completedAtCreationResponse.status, 201);
+    const completedAtCreation = await readJson<
+      SuccessEnvelope<{ id_meta: number; monto_actual: number; estado: string }>
+    >(completedAtCreationResponse);
+    assert.equal(completedAtCreation.data.monto_actual, 50);
+    assert.equal(completedAtCreation.data.estado, "COMPLETADA");
+
+    const clearDeadlineResponse = await fetch(
+      `${baseUrl}/savings/${completedAtCreation.data.id_meta}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ monto_objetivo: 100, fecha_limite: null }),
+      },
+    );
+    assert.equal(clearDeadlineResponse.status, 200);
+    const clearedDeadline =
+      await readJson<SuccessEnvelope<{ fecha_limite: string | null; estado: string }>>(
+        clearDeadlineResponse,
+      );
+    assert.equal(clearedDeadline.data.fecha_limite, null);
+    assert.equal(clearedDeadline.data.estado, "ACTIVA");
+
+    const pauseGoalResponse = await fetch(
+      `${baseUrl}/savings/${completedAtCreation.data.id_meta}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ estado: "PAUSADA" }),
+      },
+    );
+    assert.equal(pauseGoalResponse.status, 200);
+    const pausedGoal = await readJson<SuccessEnvelope<{ estado: string }>>(pauseGoalResponse);
+    assert.equal(pausedGoal.data.estado, "PAUSADA");
+
+    const keepPausedResponse = await fetch(
+      `${baseUrl}/savings/${completedAtCreation.data.id_meta}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ monto_objetivo: 125 }),
+      },
+    );
+    assert.equal(keepPausedResponse.status, 200);
+    const keptPaused = await readJson<SuccessEnvelope<{ estado: string }>>(keepPausedResponse);
+    assert.equal(keptPaused.data.estado, "PAUSADA");
+
+    const cancelGoalResponse = await fetch(
+      `${baseUrl}/savings/${completedAtCreation.data.id_meta}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ estado: "CANCELADA" }),
+      },
+    );
+    assert.equal(cancelGoalResponse.status, 200);
+    const cancelledGoal = await readJson<SuccessEnvelope<{ estado: string }>>(cancelGoalResponse);
+    assert.equal(cancelledGoal.data.estado, "CANCELADA");
+
+    const keepCancelledResponse = await fetch(
+      `${baseUrl}/savings/${completedAtCreation.data.id_meta}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ monto_objetivo: 150 }),
+      },
+    );
+    assert.equal(keepCancelledResponse.status, 200);
+    const keptCancelled =
+      await readJson<SuccessEnvelope<{ estado: string }>>(keepCancelledResponse);
+    assert.equal(keptCancelled.data.estado, "CANCELADA");
+
     otherUserId = (
       await prisma.usuario.create({
         data: {
-        nombre_completo: "Segundo usuario de integración",
-        email: otherEmail,
+          nombre_completo: "Segundo usuario de integración",
+          email: otherEmail,
           password_hash: await bcrypt.hash("TestPassword123", 10),
           email_verificado_en: new Date(),
         },
@@ -147,14 +369,39 @@ test("transaction routes keep account balances consistent across creation and re
       }),
     });
     assert.equal(firstDeviceResponse.status, 201);
-    const firstDevice = await readJson<
-      SuccessEnvelope<{ id_dispositivo: number; confiable: boolean }>
-    >(firstDeviceResponse);
+    const firstDevice =
+      await readJson<SuccessEnvelope<{ id_dispositivo: number; confiable: boolean }>>(
+        firstDeviceResponse,
+      );
     assert.equal(firstDevice.data.confiable, true);
+    const deviceAuditResponse = await fetch(`${baseUrl}/audit?limit=50`, {
+      headers: authorization,
+    });
+    assert.equal(deviceAuditResponse.status, 200);
+    const deviceAuditHistory =
+      await readJson<SuccessEnvelope<{ items: Array<{ tipo_accion: string }> }>>(
+        deviceAuditResponse,
+      );
+    assert.ok(
+      deviceAuditHistory.data.items.some((event) => event.tipo_accion === "DISPOSITIVO_REGISTRADO"),
+    );
 
     const otherAuthorization = {
       authorization: `Bearer ${otherLogin.data.token}`,
     };
+    const otherAuditResponse = await fetch(`${baseUrl}/audit?limit=50`, {
+      headers: otherAuthorization,
+    });
+    assert.equal(otherAuditResponse.status, 200);
+    const otherAuditHistory =
+      await readJson<SuccessEnvelope<{ items: Array<{ descripcion: string | null }> }>>(
+        otherAuditResponse,
+      );
+    assert.equal(
+      otherAuditHistory.data.items.some((event) => event.descripcion === ownerMarker),
+      false,
+    );
+
     const otherDeviceResponse = await fetch(`${baseUrl}/devices`, {
       method: "POST",
       headers: { ...otherAuthorization, "content-type": "application/json" },
@@ -164,9 +411,10 @@ test("transaction routes keep account balances consistent across creation and re
       }),
     });
     assert.equal(otherDeviceResponse.status, 201);
-    const otherDevice = await readJson<
-      SuccessEnvelope<{ id_dispositivo: number; confiable: boolean }>
-    >(otherDeviceResponse);
+    const otherDevice =
+      await readJson<SuccessEnvelope<{ id_dispositivo: number; confiable: boolean }>>(
+        otherDeviceResponse,
+      );
     assert.equal(otherDevice.data.confiable, true);
 
     const otherAccountResponse = await fetch(`${baseUrl}/accounts`, {
@@ -247,9 +495,9 @@ test("transaction routes keep account balances consistent across creation and re
         (
           await prisma.cuenta.findUniqueOrThrow({
             where: { id_cuenta: accountId },
-            select: { saldo_inicial: true },
+            select: { saldo_actual: true },
           })
-        ).saldo_inicial,
+        ).saldo_actual,
       ),
       75,
     );
@@ -285,9 +533,9 @@ test("transaction routes keep account balances consistent across creation and re
         (
           await prisma.cuenta.findUniqueOrThrow({
             where: { id_cuenta: accountId },
-            select: { saldo_inicial: true },
+            select: { saldo_actual: true },
           })
-        ).saldo_inicial,
+        ).saldo_actual,
       ),
       85,
     );
@@ -335,9 +583,9 @@ test("transaction routes keep account balances consistent across creation and re
         (
           await prisma.cuenta.findUniqueOrThrow({
             where: { id_cuenta: accountId },
-            select: { saldo_inicial: true },
+            select: { saldo_actual: true },
           })
-        ).saldo_inicial,
+        ).saldo_actual,
       ),
       85,
     );
@@ -352,9 +600,9 @@ test("transaction routes keep account balances consistent across creation and re
         (
           await prisma.cuenta.findUniqueOrThrow({
             where: { id_cuenta: accountId },
-            select: { saldo_inicial: true },
+            select: { saldo_actual: true },
           })
-        ).saldo_inicial,
+        ).saldo_actual,
       ),
       75,
     );
@@ -369,9 +617,9 @@ test("transaction routes keep account balances consistent across creation and re
         (
           await prisma.cuenta.findUniqueOrThrow({
             where: { id_cuenta: accountId },
-            select: { saldo_inicial: true },
+            select: { saldo_actual: true },
           })
-        ).saldo_inicial,
+        ).saldo_actual,
       ),
       100,
     );
@@ -387,15 +635,36 @@ test("transaction routes keep account balances consistent across creation and re
         color: "#2563eb",
       },
     });
-    const budget = await prisma.presupuesto.create({
-      data: {
-        id_usuario: userId,
+    const createBudgetResponse = await fetch(`${baseUrl}/budgets`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
         id_categoria: budgetCategory.id_categoria,
-        limite_mensual: 100,
+        limite_mensual: 120,
         mes: budgetDate.getUTCMonth() + 1,
         anio: budgetDate.getUTCFullYear(),
-      },
+      }),
     });
+    assert.equal(createBudgetResponse.status, 201);
+    const createdBudget =
+      await readJson<SuccessEnvelope<{ id_presupuesto: number; limite_mensual: number }>>(
+        createBudgetResponse,
+      );
+    const updateBudgetResponse = await fetch(
+      `${baseUrl}/budgets/${createdBudget.data.id_presupuesto}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ limite_mensual: 100 }),
+      },
+    );
+    assert.equal(updateBudgetResponse.status, 200);
+    assert.equal(
+      (await readJson<SuccessEnvelope<{ limite_mensual: number }>>(updateBudgetResponse)).data
+        .limite_mensual,
+      100,
+    );
+    const budgetId = createdBudget.data.id_presupuesto;
     await prisma.transaccion.createMany({
       data: [
         {
@@ -423,13 +692,11 @@ test("transaction routes keep account balances consistent across creation and re
       { headers: authorization },
     );
     assert.equal(budgetResponse.status, 200);
-    const budgets = await readJson<
-      SuccessEnvelope<Array<{ id_presupuesto: number; gastado: number }>>
-    >(budgetResponse);
-    assert.equal(
-      budgets.data.find((item) => item.id_presupuesto === budget.id_presupuesto)?.gastado,
-      60,
-    );
+    const budgets =
+      await readJson<SuccessEnvelope<Array<{ id_presupuesto: number; gastado: number }>>>(
+        budgetResponse,
+      );
+    assert.equal(budgets.data.find((item) => item.id_presupuesto === budgetId)?.gastado, 60);
     assert.equal(
       await prisma.consejo_financiero.count({
         where: {
@@ -438,6 +705,31 @@ test("transaction routes keep account balances consistent across creation and re
         },
       }),
       0,
+    );
+    for (const monto of [20, 20]) {
+      await prisma.transaccion.create({
+        data: {
+          id_usuario: userId,
+          id_cuenta: accountId,
+          id_categoria: budgetCategory.id_categoria,
+          tipo_movimiento: "GASTO",
+          monto,
+          estado: "CONFIRMADA",
+          fecha_transaccion: budgetDate,
+        },
+      });
+    }
+    assert.equal(
+      await prisma.consejo_financiero.count({
+        where: { id_usuario: userId, titulo: "Presupuesto al 80%" },
+      }),
+      1,
+    );
+    assert.equal(
+      await prisma.consejo_financiero.count({
+        where: { id_usuario: userId, titulo: "Presupuesto excedido" },
+      }),
+      1,
     );
 
     await prisma.cuenta.update({
@@ -448,10 +740,11 @@ test("transaction routes keep account balances consistent across creation and re
       headers: authorization,
     });
     assert.equal(listedAccounts.status, 200);
-    const accounts = await readJson<SuccessEnvelope<Array<{ id_cuenta: number }>>>(
-      listedAccounts,
+    const accounts = await readJson<SuccessEnvelope<Array<{ id_cuenta: number }>>>(listedAccounts);
+    assert.equal(
+      accounts.data.some((item) => item.id_cuenta === accountId),
+      false,
     );
-    assert.equal(accounts.data.some((item) => item.id_cuenta === accountId), false);
 
     const inactiveAccountTransactions = await fetch(
       `${baseUrl}/transactions?id_cuenta=${accountId}`,
@@ -483,6 +776,273 @@ test("transaction routes keep account balances consistent across creation and re
       await prisma.transaccion.count({ where: { id_usuario: userId } }),
       transactionCountBeforeInactiveAccountRequest,
     );
+
+    const alertAccount = await prisma.cuenta.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Cuenta de alertas ${randomUUID()}`,
+        tipo: "BANCO",
+        saldo_inicial: 200,
+        saldo_actual: 200,
+      },
+    });
+    const alertTransaction = await prisma.transaccion.create({
+      data: {
+        id_usuario: userId,
+        id_cuenta: alertAccount.id_cuenta,
+        tipo_movimiento: "INGRESO",
+        monto: 40,
+        estado: "PENDIENTE",
+      },
+    });
+    const alert = await prisma.alerta_fraude.create({
+      data: {
+        id_usuario: userId,
+        id_transaccion: alertTransaction.id_transaccion,
+        severidad: "MEDIA",
+        motivo: "Alerta de integración",
+      },
+    });
+    const resolveAlertResponse = await fetch(`${baseUrl}/alerts/${alert.id_alerta}/status`, {
+      method: "PATCH",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        estado: "DESCARTADA",
+        accion_usuario: "FUI_YO",
+      }),
+    });
+    assert.equal(resolveAlertResponse.status, 200);
+    assert.equal(
+      (
+        await prisma.transaccion.findUniqueOrThrow({
+          where: { id_transaccion: alertTransaction.id_transaccion },
+          select: { estado: true },
+        })
+      ).estado,
+      "CONFIRMADA",
+    );
+    assert.equal(
+      Number(
+        (
+          await prisma.cuenta.findUniqueOrThrow({
+            where: { id_cuenta: alertAccount.id_cuenta },
+            select: { saldo_actual: true },
+          })
+        ).saldo_actual,
+      ),
+      240,
+    );
+    const repeatedResolveAlertResponse = await fetch(
+      `${baseUrl}/alerts/${alert.id_alerta}/status`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({
+          estado: "DESCARTADA",
+          accion_usuario: "FUI_YO",
+        }),
+      },
+    );
+    assert.equal(repeatedResolveAlertResponse.status, 200);
+    assert.equal(
+      Number(
+        (
+          await prisma.cuenta.findUniqueOrThrow({
+            where: { id_cuenta: alertAccount.id_cuenta },
+            select: { saldo_actual: true },
+          })
+        ).saldo_actual,
+      ),
+      240,
+    );
+
+    const blockedTransaction = await prisma.transaccion.create({
+      data: {
+        id_usuario: userId,
+        id_cuenta: alertAccount.id_cuenta,
+        tipo_movimiento: "INGRESO",
+        monto: 15,
+        estado: "RECHAZADA",
+      },
+    });
+    const blockedAlert = await prisma.alerta_fraude.create({
+      data: {
+        id_usuario: userId,
+        id_transaccion: blockedTransaction.id_transaccion,
+        severidad: "ALTA",
+        motivo: "Bloqueo de integración",
+      },
+    });
+    const releaseBlockedResponse = await fetch(
+      `${baseUrl}/alerts/${blockedAlert.id_alerta}/status`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({
+          estado: "DESCARTADA",
+          accion_usuario: "FUI_YO",
+        }),
+      },
+    );
+    assert.equal(releaseBlockedResponse.status, 200);
+    assert.equal(
+      (
+        await prisma.transaccion.findUniqueOrThrow({
+          where: { id_transaccion: blockedTransaction.id_transaccion },
+          select: { estado: true },
+        })
+      ).estado,
+      "CONFIRMADA",
+    );
+    assert.equal(
+      Number(
+        (
+          await prisma.cuenta.findUniqueOrThrow({
+            where: { id_cuenta: alertAccount.id_cuenta },
+            select: { saldo_actual: true },
+          })
+        ).saldo_actual,
+      ),
+      255,
+    );
+
+    const rejectedAlertTransaction = await prisma.transaccion.create({
+      data: {
+        id_usuario: userId,
+        id_cuenta: alertAccount.id_cuenta,
+        tipo_movimiento: "GASTO",
+        monto: 12,
+        estado: "PENDIENTE",
+      },
+    });
+    const rejectedAlert = await prisma.alerta_fraude.create({
+      data: {
+        id_usuario: userId,
+        id_transaccion: rejectedAlertTransaction.id_transaccion,
+        severidad: "MEDIA",
+        motivo: "Rechazo de integración",
+      },
+    });
+    const rejectAlertResponse = await fetch(`${baseUrl}/alerts/${rejectedAlert.id_alerta}/status`, {
+      method: "PATCH",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        estado: "CONFIRMADA",
+        accion_usuario: "NO_FUI_YO",
+      }),
+    });
+    assert.equal(rejectAlertResponse.status, 200);
+    assert.equal(
+      (
+        await prisma.transaccion.findUniqueOrThrow({
+          where: { id_transaccion: rejectedAlertTransaction.id_transaccion },
+          select: { estado: true },
+        })
+      ).estado,
+      "RECHAZADA",
+    );
+    assert.equal(
+      Number(
+        (
+          await prisma.cuenta.findUniqueOrThrow({
+            where: { id_cuenta: alertAccount.id_cuenta },
+            select: { saldo_actual: true },
+          })
+        ).saldo_actual,
+      ),
+      255,
+    );
+
+    const trustDeviceResponse = await fetch(
+      `${baseUrl}/devices/${firstDevice.data.id_dispositivo}/trust`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ confiable: false }),
+      },
+    );
+    assert.equal(trustDeviceResponse.status, 200);
+    const deleteDeviceResponse = await fetch(
+      `${baseUrl}/devices/${firstDevice.data.id_dispositivo}`,
+      { method: "DELETE", headers: authorization },
+    );
+    assert.equal(deleteDeviceResponse.status, 200);
+
+    await prisma.usuario.update({
+      where: { id_usuario: userId },
+      data: { password_hash: await bcrypt.hash("UpdatedPassword123", 10) },
+    });
+
+    const finalAuditResponse = await fetch(`${baseUrl}/audit?limit=50`, {
+      headers: authorization,
+    });
+    assert.equal(finalAuditResponse.status, 200);
+    const finalAuditHistory =
+      await readJson<SuccessEnvelope<{ items: Array<{ tipo_accion: string }> }>>(
+        finalAuditResponse,
+      );
+    for (const action of [
+      "ALERTA_FRAUDE_RESUELTA",
+      "DISPOSITIVO_MARCADO_NO_CONFIABLE",
+      "DISPOSITIVO_ELIMINADO",
+      "CAMBIO_PASSWORD",
+    ]) {
+      assert.ok(finalAuditHistory.data.items.some((event) => event.tipo_accion === action));
+    }
+
+    const userForReset = await prisma.usuario.findUniqueOrThrow({
+      where: { id_usuario: userId },
+      select: { password_hash: true },
+    });
+    const jwtSecret = process.env.JWT_SECRET;
+    assert.ok(jwtSecret);
+    const resetToken = createPasswordResetToken(userId, userForReset.password_hash, jwtSecret);
+    const verifyResetResponse = await fetch(`${baseUrl}/auth/verify-reset-token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: resetToken }),
+    });
+    assert.equal(verifyResetResponse.status, 200);
+    assert.equal(
+      (await readJson<SuccessEnvelope<{ valid: boolean }>>(verifyResetResponse)).data.valid,
+      true,
+    );
+
+    const resetPasswordResponse = await fetch(`${baseUrl}/auth/reset-password`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token: resetToken,
+        password_nueva: "NewPassword123",
+      }),
+    });
+    assert.equal(resetPasswordResponse.status, 200);
+
+    const reusedResetTokenResponse = await fetch(`${baseUrl}/auth/verify-reset-token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: resetToken }),
+    });
+    assert.equal(reusedResetTokenResponse.status, 401);
+    const invalidatedAuthorizationResponse = await fetch(`${baseUrl}/auth/me`, {
+      headers: authorization,
+    });
+    assert.equal(invalidatedAuthorizationResponse.status, 401);
+
+    const resetLoginResponse = await fetch(`${baseUrl}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "NewPassword123" }),
+    });
+    assert.equal(resetLoginResponse.status, 200);
+    const resetLogin = await readJson<SuccessEnvelope<{ token: string }>>(resetLoginResponse);
+    const resetAuthorization = {
+      authorization: `Bearer ${resetLogin.data.token}`,
+    };
+    const authenticatedAfterResetResponse = await fetch(`${baseUrl}/auth/me`, {
+      headers: resetAuthorization,
+    });
+    assert.equal(authenticatedAfterResetResponse.status, 200);
   } finally {
     try {
       const userIds = [userId, otherUserId].filter((id): id is number => id !== undefined);

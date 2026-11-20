@@ -15,21 +15,22 @@ export const useDashboard = () => {
     const currentRequestId = ++requestId.current;
     setIsLoading(true);
     try {
-      const [
+      const [metrics, recentAlerts, recentTransactions, categories, advice] =
+        await Promise.all([
+          DashboardApi.getStats(selectedAccount?.id_cuenta),
+          DashboardApi.getRecentAlerts(selectedAccount?.id_cuenta),
+          DashboardApi.getRecentTransactions(selectedAccount?.id_cuenta),
+          DashboardApi.getCategoryExpenses(selectedAccount?.id_cuenta),
+          DashboardApi.getAdvice(),
+        ]);
+      if (currentRequestId !== requestId.current) return;
+      setData({
         metrics,
         recentAlerts,
         recentTransactions,
         categories,
         advice,
-      ] = await Promise.all([
-        DashboardApi.getStats(selectedAccount?.id_cuenta),
-        DashboardApi.getRecentAlerts(selectedAccount?.id_cuenta),
-        DashboardApi.getRecentTransactions(selectedAccount?.id_cuenta),
-        DashboardApi.getCategoryExpenses(selectedAccount?.id_cuenta),
-        DashboardApi.getAdvice(),
-      ]);
-      if (currentRequestId !== requestId.current) return;
-      setData({ metrics, recentAlerts, recentTransactions, categories, advice });
+      });
     } catch (error) {
       if (currentRequestId !== requestId.current) return;
       const err = error as Error;

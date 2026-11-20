@@ -18,7 +18,13 @@ TriDa es una aplicación de finanzas personales con frontend React/Vite, API Exp
 
 2. Crea `backend/.env` a partir de `.env.example` y configura `DATABASE_URL`, `JWT_SECRET` y `FRONTEND_URL`. `APP_TIMEZONE` define la zona usada en filtros de fecha (por defecto `America/Bogota`). SMTP está desactivado temporalmente por defecto (`SMTP_ENABLED=false`): el registro marca la cuenta como verificada y permite iniciar sesión; la recuperación por correo responde que no está disponible. Para reactivar la verificación y recuperación por correo, configura las credenciales SMTP y establece `SMTP_ENABLED=true`. Si la API está detrás de un proxy confiable, habilita `TRUST_PROXY=true`.
 
-3. En una base nueva, aplica `database/schema.sql` una sola vez. Para actualizar una base existente, haz un respaldo y ejecuta `database/update_existing.sql` con `ON_ERROR_STOP`; valida antes que la versión del script corresponda al estado de la base. No ejecutes el actualizador sobre una base vacía ni `schema.sql` sobre una base ya creada. Este proyecto usa scripts SQL manuales; Prisma se usa para el modelo y el cliente, no para administrar migraciones.
+3. Aplica `database/schema.sql` tanto en una base nueva como en una base TriDa existente:
+
+   ```sh
+   psql -v ON_ERROR_STOP=1 -d TriDa -f database/schema.sql
+   ```
+
+   El script es idempotente y aplica las actualizaciones aditivas compatibles; antes de usarlo sobre una base con datos, haz un respaldo y resuelve las validaciones de datos duplicados o roles no admitidos que el script reporte. Este proyecto usa SQL manual; Prisma se usa para el modelo y el cliente, no para administrar migraciones.
 
 4. Inicia los servicios en terminales separadas:
 
@@ -52,7 +58,7 @@ pnpm --dir backend test:integration
 ## Comportamientos importantes
 
 - El saldo de una cuenta cambia por transacciones; la interfaz no permite editarlo directamente.
-- Los movimientos `AHORRO` cuentan como consumo del presupuesto. Los aportes a metas de ahorro son independientes y no descuentan automáticamente una cuenta.
+- Solo los movimientos `GASTO` confirmados consumen presupuesto; `AHORRO` y los movimientos pendientes o rechazados no cuentan. Los aportes a metas de ahorro son independientes y no descuentan automáticamente una cuenta.
 - Las categorías se desactivan lógicamente para conservar el historial.
 - Una transacción bloqueada por el motor puede ser confirmada por el usuario desde su alerta; esta decisión se registra.
 - El primer dispositivo registrado se considera confiable. La geolocalización solo se solicita con consentimiento del usuario.

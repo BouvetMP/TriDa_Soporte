@@ -35,11 +35,14 @@ export function useMapTransactions(initialFilters?: MapFilters) {
       setTotal(locations.total);
       setTruncated(locations.truncated);
       setSummary(summaryData);
-      setSelectedTransaction((current) =>
-        locations.items.find(
-          (transaction) =>
-            transaction.id_transaccion === current?.id_transaccion,
-        ) ?? locations.items[0] ?? null,
+      setSelectedTransaction(
+        (current) =>
+          locations.items.find(
+            (transaction) =>
+              transaction.id_transaccion === current?.id_transaccion,
+          ) ??
+          locations.items[0] ??
+          null,
       );
     } catch (err) {
       if (currentRequestId !== requestId.current) return;

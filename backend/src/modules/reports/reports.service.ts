@@ -1,6 +1,10 @@
 // ¿Qué? Servicio de reportes financieros.
 // ¿Para qué? Generar resúmenes por periodo, desglose por categoría y detalle exportable aislado por usuario (RS-001).
 
+import {
+  calculateNetBalance,
+  type DecimalValue,
+} from "../../utils/decimal-money.js";
 import { queryRaw } from "../../db/queryRaw.js";
 import { ReportQueryInput } from "./reports.schemas.js";
 import { config } from "../../config.js";
@@ -23,9 +27,9 @@ export const reportsService = {
 
     const rows = await queryRaw<
       {
-        ingresos: string | number;
-        gastos: string | number;
-        ahorros: string | number;
+        ingresos: DecimalValue;
+        gastos: DecimalValue;
+        ahorros: DecimalValue;
         total_tx: string | number;
         aprobadas: string | number;
         alertadas: string | number;
@@ -70,9 +74,9 @@ export const reportsService = {
       bloqueadas: 0,
     };
 
-    const ingresos = Number(r.ingresos);
-    const gastos = Number(r.gastos);
-    const ahorros = Number(r.ahorros);
+    const ingresos = r.ingresos;
+    const gastos = r.gastos;
+    const ahorros = r.ahorros;
 
     return {
       periodo: {
@@ -80,10 +84,10 @@ export const reportsService = {
         fecha_fin: end,
       },
       totales: {
-        ingresos,
-        gastos,
-        ahorros,
-        balance: ingresos - gastos,
+        ingresos: Number(ingresos),
+        gastos: Number(gastos),
+        ahorros: Number(ahorros),
+        balance: calculateNetBalance(ingresos, gastos).toNumber(),
       },
       transacciones: {
         total: Number(r.total_tx),

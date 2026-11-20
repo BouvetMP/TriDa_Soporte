@@ -4,7 +4,11 @@ import { getTransactionBalanceDelta } from "../transactions/transaction-balance.
 import { AppError } from "../../utils/AppError.js";
 import type { ListAlertsQueryInput, UpdateAlertStatusInput } from "./alerts.schemas.js";
 
-export class AlertError extends AppError {}
+export class AlertError extends AppError {
+  constructor(message: string, statusCode = 400, code = "ALERT_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 export const getAlertTransactionDecision = (
   data: Pick<UpdateAlertStatusInput, "estado" | "accion_usuario">,
@@ -208,7 +212,7 @@ export class AlertsService {
           await transaction.cuenta.update({
             where: { id_cuenta: currentTransaction.id_cuenta },
             data: {
-              saldo_inicial: {
+              saldo_actual: {
                 increment: getTransactionBalanceDelta(
                   currentTransaction.tipo_movimiento,
                   currentTransaction.monto,
@@ -237,7 +241,7 @@ export class AlertsService {
           await transaction.cuenta.update({
             where: { id_cuenta: currentTransaction.id_cuenta },
             data: {
-              saldo_inicial: {
+              saldo_actual: {
                 decrement: getTransactionBalanceDelta(
                   currentTransaction.tipo_movimiento,
                   currentTransaction.monto,
@@ -254,6 +258,15 @@ export class AlertsService {
           estado: data.estado,
           accion_usuario: data.accion_usuario,
           fecha_resuelta: data.estado === "PENDIENTE" ? null : new Date(),
+        },
+      });
+      await transaction.log_auditoria.create({
+        data: {
+          id_usuario: userId,
+          tipo_accion: "ALERTA_FRAUDE_RESUELTA",
+          entidad_afectada: "alertas_fraude",
+          id_entidad: id_alerta,
+          descripcion: `Acción registrada: ${data.accion_usuario ?? data.estado}.`,
         },
       });
 

@@ -5,6 +5,7 @@
 import React from "react";
 import { Check, X } from "lucide-react";
 import { cn } from "@/utils/cn";
+import { getPasswordChecks } from "@/utils/Password";
 
 interface PasswordStrengthMeterProps {
   password: string;
@@ -13,22 +14,27 @@ interface PasswordStrengthMeterProps {
 export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
   password,
 }) => {
+  const passwordChecks = getPasswordChecks(password);
   const checks = [
     {
       label: "Mínimo 10 caracteres",
-      valid: password.length >= 10,
+      valid: passwordChecks.minLength,
+    },
+    {
+      label: "Máximo 72 caracteres",
+      valid: passwordChecks.maxLength,
     },
     {
       label: "Al menos una mayúscula (A-Z)",
-      valid: /[A-Z]/.test(password),
+      valid: passwordChecks.hasUpper,
     },
     {
       label: "Al menos una minúscula (a-z)",
-      valid: /[a-z]/.test(password),
+      valid: passwordChecks.hasLower,
     },
     {
       label: "Al menos un número (0-9)",
-      valid: /\d/.test(password),
+      valid: passwordChecks.hasNumber,
     },
   ];
 
@@ -36,14 +42,14 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
 
   const getStrengthColor = () => {
     if (passedCount <= 1) return "bg-expense";
-    if (passedCount <= 3) return "bg-budget-warn";
+    if (passedCount < checks.length) return "bg-budget-warn";
     return "bg-income";
   };
 
   const getStrengthText = () => {
     if (passedCount === 0) return "Vacía";
     if (passedCount <= 2) return "Débil";
-    if (passedCount === 3) return "Casi lista";
+    if (passedCount < checks.length) return "Casi lista";
     return "Válida";
   };
 

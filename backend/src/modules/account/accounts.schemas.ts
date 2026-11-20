@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nonNegativeMoney } from "../../utils/money.js";
 
 const accountTypeSchema = z.enum(["BANCO", "TARJETA", "BILLETERA", "EFECTIVO"]);
 
@@ -9,7 +10,7 @@ export const createAccountSchema = z
     tipo: accountTypeSchema,
     numero_enmascarado: z.string().trim().max(20).optional(),
     color: z.string().trim().max(20).optional().default("#6366F1"),
-    saldo_inicial: z.coerce.number().min(0).optional().default(0),
+    saldo_inicial: nonNegativeMoney.optional().default(0),
     estado: z.boolean().optional().default(true),
   })
   .strict();

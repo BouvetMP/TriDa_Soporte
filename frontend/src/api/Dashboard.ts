@@ -6,6 +6,7 @@ import {
   DashboardData,
   DashboardRecentTransaction,
   FinancialAdvice,
+  FinancialAdviceReadResult,
 } from "@/types/Dashboard";
 
 interface ApiCategoryReport {
@@ -25,9 +26,7 @@ export const DashboardApi = {
     return response.data.data;
   },
 
-  getRecentAlerts: async (
-    id_cuenta?: number,
-  ): Promise<DashboardAlert[]> => {
+  getRecentAlerts: async (id_cuenta?: number): Promise<DashboardAlert[]> => {
     const response = await apiClient.get<ApiSuccess<DashboardAlert[]>>(
       "/dashboard/recent-alerts",
       { params: id_cuenta ? { id_cuenta } : undefined },
@@ -38,10 +37,11 @@ export const DashboardApi = {
   getRecentTransactions: async (
     id_cuenta?: number,
   ): Promise<DashboardRecentTransaction[]> => {
-    const response = await apiClient.get<ApiSuccess<DashboardRecentTransaction[]>>(
-      "/dashboard/recent-transactions",
-      { params: id_cuenta ? { id_cuenta } : undefined },
-    );
+    const response = await apiClient.get<
+      ApiSuccess<DashboardRecentTransaction[]>
+    >("/dashboard/recent-transactions", {
+      params: id_cuenta ? { id_cuenta } : undefined,
+    });
     return response.data.data;
   },
 
@@ -68,15 +68,15 @@ export const DashboardApi = {
   },
 
   getAdvice: async (): Promise<FinancialAdvice[]> => {
-    const response = await apiClient.get<ApiSuccess<FinancialAdvice[]>>(
-      "/dashboard/advice",
-    );
+    const response =
+      await apiClient.get<ApiSuccess<FinancialAdvice[]>>("/dashboard/advice");
     return response.data.data;
   },
 
-  markAdviceRead: async (id: number): Promise<void> => {
-    await apiClient.patch<ApiSuccess<unknown>>(
-      `/dashboard/advice/${id}/read`,
-    );
+  markAdviceRead: async (id: number): Promise<FinancialAdviceReadResult> => {
+    const response = await apiClient.patch<
+      ApiSuccess<FinancialAdviceReadResult>
+    >(`/dashboard/advice/${id}/read`);
+    return response.data.data;
   },
 };

@@ -14,10 +14,7 @@ export const useDevices = () => {
   const fetchDevices = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await DevicesApi.getAll();
-      if (response.success) {
-        setDevices(response.data);
-      }
+      setDevices(await DevicesApi.getAll());
     } catch (error) {
       const err = error as Error;
       showToast({
@@ -51,26 +48,22 @@ export const useDevices = () => {
   ): Promise<boolean> => {
     try {
       const nuevoEstado = !confiableActual;
-      const response = await DevicesApi.updateTrust(id, {
+      await DevicesApi.updateTrust(id, {
         confiable: nuevoEstado,
       });
-      if (response.success) {
-        setDevices((prev) =>
-          prev.map((dev) =>
-            dev.id_dispositivo === id
-              ? { ...dev, confiable: nuevoEstado }
-              : dev,
-          ),
-        );
-        showToast({
-          type: "success",
-          title: "Confianza actualizada",
-          message: nuevoEstado
-            ? "El dispositivo ahora está marcado como confiable."
-            : "El dispositivo ya no se considera confiable.",
-        });
-        return true;
-      }
+      setDevices((prev) =>
+        prev.map((dev) =>
+          dev.id_dispositivo === id ? { ...dev, confiable: nuevoEstado } : dev,
+        ),
+      );
+      showToast({
+        type: "success",
+        title: "Confianza actualizada",
+        message: nuevoEstado
+          ? "El dispositivo ahora está marcado como confiable."
+          : "El dispositivo ya no se considera confiable.",
+      });
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({
@@ -86,17 +79,15 @@ export const useDevices = () => {
 
   const removeDevice = async (id: number): Promise<boolean> => {
     try {
-      const response = await DevicesApi.delete(id);
-      if (response.success) {
-        if (user) clearCurrentDeviceRecordId(user.id_usuario, id);
-        setDevices((prev) => prev.filter((dev) => dev.id_dispositivo !== id));
-        showToast({
-          type: "success",
-          title: "Dispositivo eliminado",
-          message: "El dispositivo ha sido desvinculado exitosamente.",
-        });
-        return true;
-      }
+      await DevicesApi.delete(id);
+      if (user) clearCurrentDeviceRecordId(user.id_usuario, id);
+      setDevices((prev) => prev.filter((dev) => dev.id_dispositivo !== id));
+      showToast({
+        type: "success",
+        title: "Dispositivo eliminado",
+        message: "El dispositivo ha sido desvinculado exitosamente.",
+      });
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({

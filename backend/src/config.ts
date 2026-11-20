@@ -4,6 +4,7 @@
 
 import dotenv from "dotenv";
 import { z } from "zod";
+import { logger } from "./utils/logger.js";
 
 dotenv.config();
 
@@ -63,8 +64,9 @@ const parseEnv = () => {
   const result = envSchema.safeParse(process.env);
 
   if (!result.success) {
-    console.error("❌ Error grave en las variables de entorno:");
-    console.error(JSON.stringify(result.error.format(), null, 2));
+    logger.error("config.validation_failed", result.error, {
+      invalidFields: result.error.issues.map((issue) => issue.path.join(".")).join(","),
+    });
     process.exit(1);
   }
 

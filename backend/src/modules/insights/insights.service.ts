@@ -1,7 +1,12 @@
 // ¿Qué? Servicio de insights financieros y de riesgo.
 // ¿Para qué? Analizar patrones de gasto, categorías top, alertas y generar consejos accionables por usuario (RS-001).
 
+import { Prisma } from "@prisma/client";
 import { queryRaw } from "../../db/queryRaw.js";
+import {
+  calculateNetBalance,
+  calculatePercentage,
+} from "../../utils/decimal-money.js";
 import { RISK_THRESHOLDS } from "../../utils/risk.js";
 
 export const insightsService = {
@@ -119,11 +124,11 @@ export const insightsService = {
       score_promedio: 0,
     };
 
-    const ingresos = Number(resumen.ingresos);
-    const gastos = Number(resumen.gastos);
-    const ahorros = Number(resumen.ahorros);
-    const balance = ingresos - gastos;
-    const tasaAhorro = ingresos > 0 ? (ahorros / ingresos) * 100 : 0;
+    const ingresos = new Prisma.Decimal(resumen.ingresos);
+    const gastos = new Prisma.Decimal(resumen.gastos);
+    const ahorros = new Prisma.Decimal(resumen.ahorros);
+    const balance = calculateNetBalance(ingresos, gastos);
+    const tasaAhorro = calculatePercentage(ahorros, ingresos);
     const scorePromedio = Number(resumen.score_promedio);
     const totalAlertas = Number(alertasRows[0]?.total_alertas ?? 0);
     const alertasCriticas = Number(alertasRows[0]?.criticas ?? 0);
@@ -131,17 +136,17 @@ export const insightsService = {
     // 5. Consejos generados a partir de los datos
     const consejos: string[] = [];
 
-    if (gastos > ingresos && ingresos > 0) {
+    if (gastos.greaterThan(ingresos) && ingresos.greaterThan(0)) {
       consejos.push(
         "Tus gastos superan tus ingresos en este periodo. Revisa categorías no esenciales para equilibrar tu balance.",
       );
     }
 
-    if (tasaAhorro < 10 && ingresos > 0) {
+    if (tasaAhorro.lessThan(10) && ingresos.greaterThan(0)) {
       consejos.push(
         "Tu tasa de ahorro está por debajo del 10%. Considera crear o reforzar una meta de ahorro automática.",
       );
-    } else if (tasaAhorro >= 20) {
+    } else if (tasaAhorro.greaterThanOrEqualTo(20)) {
       consejos.push(
         "Excelente disciplina: estás ahorrando al menos el 20% de tus ingresos en este periodo.",
       );
@@ -175,11 +180,13 @@ export const insightsService = {
     return {
       periodo_dias: periodoDias,
       resumen: {
-        ingresos,
-        gastos,
-        ahorros,
-        balance,
-        tasa_ahorro: Math.round(tasaAhorro * 100) / 100,
+        ingresos: Number(ingresos),
+        gastos: Number(gastos),
+        ahorros: Number(ahorros),
+        balance: balance.toNumber(),
+        tasa_ahorro: tasaAhorro
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+          .toNumber(),
         total_transacciones: Number(resumen.total_tx),
         score_riesgo_promedio: Math.round(scorePromedio * 100) / 100,
         total_alertas: totalAlertas,

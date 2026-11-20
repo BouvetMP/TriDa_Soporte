@@ -49,11 +49,15 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider mb-1">
+        <label
+          htmlFor="profile-email"
+          className="block text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider mb-1"
+        >
           Correo Electrónico (No modificable)
         </label>
         <div className="relative">
           <input
+            id="profile-email"
             type="email"
             value={user?.email || ""}
             disabled
@@ -72,11 +76,15 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
       />
 
       <div>
-        <label className="block text-sm font-medium text-[var(--color-text-subtle)] mb-1">
+        <label
+          htmlFor="profile-phone"
+          className="block text-sm font-medium text-[var(--color-text-subtle)] mb-1"
+        >
           Teléfono de Contacto
         </label>
         <div className="relative">
           <input
+            id="profile-phone"
             type="tel"
             placeholder="+57 300 000 0000"
             value={telefono}

@@ -12,25 +12,24 @@ export const AlertsApi = {
    */
   getAll: async (
     params: ListAlertsQueryParams = {},
-  ): Promise<ApiSuccess<PaginatedResponse<FraudAlert>>> => {
+  ): Promise<PaginatedResponse<FraudAlert>> => {
     const response = await apiClient.get<
       ApiSuccess<PaginatedResponse<FraudAlert>>
     >("/alerts", { params });
-    return response.data;
+    return response.data.data;
   },
 
   /**
    * Obtiene el conteo total de alertas pendientes de revisión
    */
-  getPendingCount: async (): Promise<ApiSuccess<{ count: number }>> => {
+  getPendingCount: async (): Promise<{ count: number }> => {
     const response = await AlertsApi.getAll({
       estado: "PENDIENTE",
       limit: 1,
       offset: 0,
     });
     return {
-      success: true,
-      data: { count: response.data.pagination.total },
+      count: response.pagination.total,
     };
   },
 
@@ -40,11 +39,11 @@ export const AlertsApi = {
   updateStatus: async (
     id: number,
     payload: UpdateAlertStatusPayload,
-  ): Promise<ApiSuccess<FraudAlert>> => {
+  ): Promise<FraudAlert> => {
     const response = await apiClient.patch<ApiSuccess<FraudAlert>>(
       `/alerts/${id}/status`,
       payload,
     );
-    return response.data;
+    return response.data.data;
   },
 };

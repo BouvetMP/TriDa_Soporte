@@ -58,10 +58,19 @@ export const AccountProvider: React.FC<{ children: React.ReactNode }> = ({
       ? accounts.find((a) => a.id_cuenta === selectedAccountId) || null
       : null;
 
-  // Suma de saldo_inicial de todas las cuentas activas
+  useEffect(() => {
+    if (
+      selectedAccountId !== null &&
+      !accounts.some((account) => account.id_cuenta === selectedAccountId)
+    ) {
+      setSelectedAccountId(null);
+    }
+  }, [accounts, selectedAccountId]);
+
+  // Suma del saldo actual de todas las cuentas activas
   const totalBalance = accounts
     .filter((a) => a.estado)
-    .reduce((sum, account) => sum + Number(account.saldo_inicial || 0), 0);
+    .reduce((sum, account) => sum + Number(account.saldo_actual || 0), 0);
 
   return (
     <AccountContext.Provider

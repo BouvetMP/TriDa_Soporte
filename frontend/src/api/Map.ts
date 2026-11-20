@@ -7,10 +7,7 @@ import type {
   MapLocationResult,
 } from "@/types";
 
-interface ApiMapLocation extends Omit<
-  GeoTransaction,
-  "categoria"
-> {
+interface ApiMapLocation extends Omit<GeoTransaction, "categoria"> {
   nombre_categoria: string | null;
 }
 
@@ -41,10 +38,9 @@ export const mapApi = {
   },
 
   getMapSummary: async (id_cuenta?: number): Promise<MapSummary> => {
-    const response =
-      await apiClient.get<ApiSuccess<MapSummary>>("/map/stats", {
-        params: id_cuenta ? { id_cuenta } : undefined,
-      });
+    const response = await apiClient.get<ApiSuccess<MapSummary>>("/map/stats", {
+      params: id_cuenta ? { id_cuenta } : undefined,
+    });
     return response.data.data;
   },
 };

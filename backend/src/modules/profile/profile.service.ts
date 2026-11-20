@@ -4,7 +4,11 @@ import type { UpdateProfileInput } from "../auth/auth.schemas.js";
 import { AppError } from "../../utils/AppError.js";
 import { RISK_THRESHOLDS } from "../../utils/risk.js";
 
-export class ProfileError extends AppError {}
+export class ProfileError extends AppError {
+  constructor(message: string, statusCode = 400, code = "PROFILE_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 const profileSelect = {
   id_usuario: true,

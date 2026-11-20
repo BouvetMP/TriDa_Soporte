@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Prisma } from "@prisma/client";
+import SwaggerParser from "@apidevtools/swagger-parser";
+import type { Request, Response } from "express";
+import { AppError } from "../utils/AppError.js";
 import { swaggerSpec } from "../config/swagger.js";
 import { createAccountSchema, updateAccountSchema } from "../modules/account/accounts.schemas.js";
 import {
@@ -10,14 +14,13 @@ import {
 import { getTransactionBalanceDelta } from "../modules/transactions/transaction-balance.js";
 import { queryRaw } from "../db/queryRaw.js";
 import {
+  changePasswordSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
   updateProfileSchema,
 } from "../modules/auth/auth.schemas.js";
-import {
-  budgetQuerySchema,
-  createBudgetSchema,
-} from "../modules/budgets/budgets.schemas.js";
+import { budgetQuerySchema, createBudgetSchema } from "../modules/budgets/budgets.schemas.js";
 import {
   alertIdSchema,
   listAlertsQuerySchema,
@@ -25,16 +28,27 @@ import {
 } from "../modules/alerts/alerts.schemas.js";
 import { getAlertTransactionDecision } from "../modules/alerts/alerts.service.js";
 import { registerDeviceSchema, updateTrustSchema } from "../modules/devices/devices.schemas.js";
-import { isPrismaKnownRequestError } from "../middlewares/error.middleware.js";
+import {
+  errorHandler,
+  isPrismaKnownRequestError,
+} from "../middlewares/error.middleware.js";
+import { requestLogger } from "../middlewares/requestLogger.middleware.js";
 import {
   addFundsSchema,
   createSavingsSchema,
   savingsIdSchema,
   updateSavingsSchema,
 } from "../modules/savings/savings.schemas.js";
+import { deriveSavingsState } from "../modules/savings/savings.state.js";
 import { parseId } from "../utils/params.js";
 import { reportQuerySchema } from "../modules/reports/reports.schemas.js";
 import { mapQuerySchema } from "../modules/maps/maps.schemas.js";
+import { auditHistoryQuerySchema } from "../modules/audit/audit.schemas.js";
+import {
+  calculateNetBalance,
+  calculatePercentage,
+  exceedsAverageMultiple,
+} from "../utils/decimal-money.js";
 import { getRiskLevel, riskLevelSql, riskRankSql } from "../utils/risk.js";
 import {
   parseDateEnd,
@@ -53,7 +67,96 @@ import {
   getUnverifiedEmailVerificationUserId,
   verifyEmailVerificationToken,
 } from "../modules/auth/email-verification.js";
+import { Logger } from "../utils/logger.js";
 import jwt from "jsonwebtoken";
+
+test("request logger returns a request ID and logs safe completion metadata", () => {
+  const originalInfo = console.info;
+  const loggedLines: string[] = [];
+  const headers = new Map<string, string>();
+  let finishListener: (() => void) | undefined;
+  const request = {
+    method: "GET",
+    path: "/api/v2/accounts/123",
+    baseUrl: "/api/v2/accounts",
+    route: { path: "/:id" },
+    originalUrl: "/api/v2/accounts/123?token=must-not-be-logged",
+  } as Request;
+  const response = {
+    locals: {},
+    statusCode: 200,
+    setHeader: (name: string, value: string) => {
+      headers.set(name, value);
+      return response;
+    },
+    once: (event: string, listener: () => void) => {
+      assert.equal(event, "finish");
+      finishListener = listener;
+      return response;
+    },
+  } as unknown as Response;
+
+  console.info = (line?: unknown) => {
+    loggedLines.push(String(line));
+  };
+
+  try {
+    requestLogger(request, response, () => undefined);
+    const requestId = headers.get("X-Request-Id");
+    assert.match(
+      requestId ?? "",
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    assert.equal(response.locals.requestId, requestId);
+
+    finishListener?.();
+
+    const logRecord = JSON.parse(loggedLines[0] ?? "{}") as Record<string, unknown>;
+    const context = logRecord.context as Record<string, unknown>;
+    assert.equal(logRecord.event, "http.request.completed");
+    assert.equal(logRecord.service, "trida-backend");
+    assert.equal(context.requestId, requestId);
+    assert.equal(context.method, "GET");
+    assert.equal(context.path, "/api/v2/accounts/:id");
+    assert.equal(context.statusCode, 200);
+    assert.equal("token" in context, false);
+    assert.equal(loggedLines[0]?.includes("must-not-be-logged"), false);
+  } finally {
+    console.info = originalInfo;
+  }
+});
+
+test("structured logger includes child context without leaking error messages or stacks", () => {
+  const originalError = console.error;
+  const loggedLines: string[] = [];
+  console.error = (line?: unknown) => {
+    loggedLines.push(String(line));
+  };
+
+  try {
+    const logger = new Logger({
+      service: "test-service",
+      minLevel: "debug",
+      baseContext: { environment: "test" },
+    }).child({ requestId: "request-123" });
+    logger.error("request.failed", new Error("sensitive exception detail"));
+
+    const logRecord = JSON.parse(loggedLines[0] ?? "{}") as Record<string, unknown>;
+    const context = logRecord.context as Record<string, unknown>;
+    const error = logRecord.error as Record<string, unknown>;
+    assert.equal(logRecord.level, "error");
+    assert.equal(logRecord.service, "test-service");
+    assert.equal(logRecord.event, "request.failed");
+    assert.equal(context.environment, "test");
+    assert.equal(context.requestId, "request-123");
+    assert.equal(error.name, "Error");
+    assert.equal("message" in error, false);
+    assert.equal("stack" in error, false);
+    assert.equal(loggedLines[0]?.includes("sensitive exception detail"), false);
+  } finally {
+    console.error = originalError;
+  }
+});
 
 test("risk thresholds classify boundary scores consistently in TypeScript and SQL", () => {
   const cases = [
@@ -72,6 +175,101 @@ test("risk thresholds classify boundary scores consistently in TypeScript and SQ
   assert.match(riskLevelSql("score_anomalia"), /score_anomalia >= 95 THEN 'CRITICO'/);
   assert.match(riskRankSql("score_anomalia"), /score_anomalia >= 70 THEN 3/);
 });
+
+test("audit history query is bounded and documented as a read-only self endpoint", () => {
+  assert.deepEqual(auditHistoryQuerySchema.parse({}), { limit: 20 });
+  assert.equal(auditHistoryQuerySchema.safeParse({ limit: 51 }).success, false);
+  assert.equal(auditHistoryQuerySchema.safeParse({ before_id: 0 }).success, false);
+
+  const paths = Reflect.get(swaggerSpec, "paths");
+  assert.ok(paths && typeof paths === "object");
+  const auditPath = Reflect.get(paths, "/api/v2/audit");
+  assert.ok(auditPath && typeof auditPath === "object");
+  const getOperation = Reflect.get(auditPath, "get");
+  assert.ok(getOperation && typeof getOperation === "object");
+  assert.match(
+    String(Reflect.get(getOperation, "summary") ?? ""),
+    /historial de seguridad propio/i,
+  );
+});
+
+test("financial calculations preserve decimal cents and threshold boundaries", () => {
+  assert.equal(calculateNetBalance("0.30", "0.10").toString(), "0.2");
+  assert.equal(calculateNetBalance("999999999999.99", "999999999999.98").toFixed(2), "0.01");
+  assert.equal(calculatePercentage("0.10", "0.30").toFixed(2), "33.33");
+  assert.equal(calculatePercentage("1.00", "0.00").toString(), "0");
+  assert.equal(exceedsAverageMultiple("0.30", "0.10", 3), false);
+  assert.equal(exceedsAverageMultiple("0.31", "0.10", 3), true);
+});
+
+test("application errors carry stable module and domain codes", () => {
+  const error = new AppError("Cuenta no encontrada", 404, "ACCOUNT_NOT_FOUND");
+  assert.equal(error.statusCode, 404);
+  assert.equal(error.code, "ACCOUNT_NOT_FOUND");
+  assert.equal(error.message, "Cuenta no encontrada");
+});
+
+test("error handler returns the standard envelope with a domain code", () => {
+  const result = runErrorHandler(
+    new AppError("Consejo financiero no encontrado", 404, "DASHBOARD_ADVICE_NOT_FOUND"),
+  );
+
+  assert.equal(result.statusCode, 404);
+  assert.deepEqual(result.body, {
+    success: false,
+    error: {
+      code: "DASHBOARD_ADVICE_NOT_FOUND",
+      message: "Consejo financiero no encontrado",
+    },
+  });
+});
+
+test("error handler does not expose unexpected internal error messages", () => {
+  const originalError = console.error;
+  console.error = () => undefined;
+
+  try {
+    const result = runErrorHandler(new Error("database credentials leaked"));
+
+    assert.equal(result.statusCode, 500);
+    assert.deepEqual(result.body, {
+      success: false,
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Ocurrió un error interno en el servidor.",
+      },
+    });
+  } finally {
+    console.error = originalError;
+  }
+});
+
+function runErrorHandler(error: unknown) {
+  const result: { statusCode: number; body: unknown } = {
+    statusCode: 200,
+    body: undefined,
+  };
+  const response = {
+    locals: { requestId: "test-request" },
+    status(statusCode: number) {
+      result.statusCode = statusCode;
+      return response;
+    },
+    json(body: unknown) {
+      result.body = body;
+      return response;
+    },
+  } as unknown as Response;
+
+  errorHandler(
+    error,
+    { method: "GET", path: "/api/v2/test" } as Request,
+    response,
+    () => undefined,
+  );
+
+  return result;
+}
 
 test("account schema accepts the documented snake_case contract only", () => {
   const documented = createAccountSchema.parse({
@@ -105,10 +303,7 @@ test("account schema accepts the documented snake_case contract only", () => {
       {
         patch?: {
           requestBody?: {
-            content?: Record<
-              string,
-              { schema?: { properties?: Record<string, unknown> } }
-            >;
+            content?: Record<string, { schema?: { properties?: Record<string, unknown> } }>;
           };
         };
       }
@@ -116,8 +311,7 @@ test("account schema accepts the documented snake_case contract only", () => {
   };
   const accountUpdate = accountUpdatePaths.paths?.["/api/v2/accounts/{id}"]?.patch;
   assert.equal(
-    accountUpdate?.requestBody?.content?.["application/json"]?.schema?.properties
-      ?.saldo_inicial,
+    accountUpdate?.requestBody?.content?.["application/json"]?.schema?.properties?.saldo_inicial,
     undefined,
   );
 });
@@ -131,11 +325,14 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
 
   assert.equal(transaction.id_cuenta, 5);
   assert.equal(transaction.monto, 30.5);
-  assert.equal(createTransactionSchema.parse({
-    id_cuenta: 5,
-    monto: "1.239",
-    tipo_movimiento: "GASTO",
-  }).monto, 1.24);
+  assert.equal(
+    createTransactionSchema.parse({
+      id_cuenta: 5,
+      monto: "1.239",
+      tipo_movimiento: "GASTO",
+    }).monto,
+    1.24,
+  );
   assert.equal(
     createTransactionSchema.safeParse({
       accountId: "5",
@@ -144,10 +341,7 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
     }).success,
     false,
   );
-  assert.equal(
-    listTransactionsQuerySchema.safeParse({ limit: "101" }).success,
-    false,
-  );
+  assert.equal(listTransactionsQuerySchema.safeParse({ limit: "101" }).success, false);
   assert.equal(
     createTransactionSchema.safeParse({
       id_cuenta: 5,
@@ -172,7 +366,7 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
       tipo_movimiento: "GASTO",
       ip_origen: "::1",
     }).success,
-    true,
+    false,
   );
 });
 
@@ -181,6 +375,33 @@ test("route IDs and monetary values are bounded and normalized", () => {
   assert.throws(() => parseId("abc"));
   assert.throws(() => parseId("0"));
   assert.equal(addFundsSchema.safeParse({ monto: "2.345" }).data?.monto, 2.35);
+  assert.equal(addFundsSchema.safeParse({ monto: "1.005" }).data?.monto, 1.01);
+  const maximumAmount = addFundsSchema.safeParse({ monto: "9999999999999.99" });
+  assert.equal(maximumAmount.success, true);
+  if (maximumAmount.success) {
+    assert.equal(new Prisma.Decimal(maximumAmount.data.monto).toFixed(2), "9999999999999.99");
+  }
+  assert.equal(
+    addFundsSchema.safeParse({ monto: "9999999999999.994" }).data?.monto,
+    9999999999999.99,
+  );
+  assert.equal(addFundsSchema.safeParse({ monto: "9999999999999.995" }).success, false);
+  assert.equal(
+    createAccountSchema.safeParse({
+      nombre: "Cuenta centavos",
+      tipo: "EFECTIVO",
+      saldo_inicial: "1.005",
+    }).data?.saldo_inicial,
+    1.01,
+  );
+  assert.equal(
+    createAccountSchema.safeParse({
+      nombre: "Cuenta negativa",
+      tipo: "EFECTIVO",
+      saldo_inicial: "-0.01",
+    }).success,
+    false,
+  );
   assert.equal(addFundsSchema.safeParse({ monto: "10000000000000" }).success, false);
   assert.equal(
     createBudgetSchema.safeParse({
@@ -204,20 +425,11 @@ test("route IDs and monetary values are bounded and normalized", () => {
 
 test("calendar date filters use the configured timezone boundaries", () => {
   const timeZone = "America/Bogota";
-  assert.equal(
-    parseDateStart("2026-11-01", timeZone).toISOString(),
-    "2026-11-01T05:00:00.000Z",
-  );
-  assert.equal(
-    parseDateEnd("2026-11-01", timeZone).toISOString(),
-    "2026-11-02T04:59:59.999Z",
-  );
+  assert.equal(parseDateStart("2026-11-01", timeZone).toISOString(), "2026-11-01T05:00:00.000Z");
+  assert.equal(parseDateEnd("2026-11-01", timeZone).toISOString(), "2026-11-02T04:59:59.999Z");
   const date = new Date("2026-11-18T12:00:00.000Z");
   assert.equal(startOfMonth(date, timeZone).toISOString(), "2026-11-01T05:00:00.000Z");
-  assert.equal(
-    startOfNextMonth(date, timeZone).toISOString(),
-    "2026-12-01T05:00:00.000Z",
-  );
+  assert.equal(startOfNextMonth(date, timeZone).toISOString(), "2026-12-01T05:00:00.000Z");
   assert.throws(() => parseDateStart("2026-02-30", timeZone), /Fecha de calendario inválida/);
 });
 
@@ -238,10 +450,11 @@ test("documented transaction query parameters map to service filters", () => {
   assert.equal(query.sort_by, "monto");
   assert.equal(query.sort_order, "asc");
   assert.equal(query.estado, "CONFIRMADA");
-  assert.deepEqual(
-    budgetQuerySchema.parse({ id_cuenta: "5", mes: "2", anio: "2026" }),
-    { id_cuenta: 5, mes: 2, anio: 2026 },
-  );
+  assert.deepEqual(budgetQuerySchema.parse({ id_cuenta: "5", mes: "2", anio: "2026" }), {
+    id_cuenta: 5,
+    mes: 2,
+    anio: 2026,
+  });
   assert.equal(reportQuerySchema.parse({ id_cuenta: "5" }).id_cuenta, 5);
   assert.equal(mapQuerySchema.parse({ id_cuenta: "5" }).id_cuenta, 5);
 });
@@ -260,7 +473,10 @@ test("global account filters are documented for dashboard, reports, budgets and 
     "/api/v2/map/locations",
   ]) {
     const parameters = spec.paths?.[path]?.get?.parameters ?? [];
-    assert.ok(parameters.some(({ name }) => name === "id_cuenta"), `${path} must expose id_cuenta`);
+    assert.ok(
+      parameters.some(({ name }) => name === "id_cuenta"),
+      `${path} must expose id_cuenta`,
+    );
   }
 });
 
@@ -304,10 +520,31 @@ test("auth schemas align with the snake_case OpenAPI fields", () => {
     telefono: null,
   });
   assert.equal(updateProfileSchema.safeParse({ telefono: "" }).success, true);
+  const maximumLengthPassword = `A1${"a".repeat(70)}`;
+  assert.equal(
+    resetPasswordSchema.safeParse({
+      token: "reset-token",
+      password_nueva: maximumLengthPassword,
+    }).success,
+    true,
+  );
+  assert.equal(
+    changePasswordSchema.safeParse({
+      password_actual: "actual",
+      password_nueva: `${maximumLengthPassword}a`,
+    }).success,
+    false,
+  );
 
+  type DocumentedProperty = {
+    type?: string;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+  };
   const spec = swaggerSpec as {
     components?: {
-      schemas?: Record<string, { properties?: Record<string, unknown> }>;
+      schemas?: Record<string, { properties?: Record<string, DocumentedProperty> }>;
     };
     paths?: Record<string, { get?: { parameters?: Array<{ name: string }> } }>;
   };
@@ -315,6 +552,17 @@ test("auth schemas align with the snake_case OpenAPI fields", () => {
   assert.ok(schemas.RegisterRequest?.properties?.email);
   assert.equal(schemas.RegisterRequest?.properties?.correo, undefined);
   assert.ok(schemas.ResetPasswordRequest?.properties?.password_nueva);
+  for (const passwordSchema of [
+    schemas.RegisterRequest?.properties?.password,
+    schemas.ResetPasswordRequest?.properties?.password_nueva,
+    schemas.ChangePasswordRequest?.properties?.password_nueva,
+  ]) {
+    assert.ok(passwordSchema);
+    assert.equal(passwordSchema.type, "string");
+    assert.equal(passwordSchema.minLength, 10);
+    assert.equal(passwordSchema.maxLength, 72);
+    assert.equal(passwordSchema.pattern, "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)");
+  }
 
   const transactionParameters =
     spec.paths?.["/api/v2/transactions"]?.get?.parameters?.map(({ name }) => name) ?? [];
@@ -352,11 +600,13 @@ test("budget, alert and device payloads use database-aligned snake_case fields",
     true,
   );
   assert.equal(
-    updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA", accion_usuario: "NO_FUI_YO" }).success,
+    updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA", accion_usuario: "NO_FUI_YO" })
+      .success,
     true,
   );
   assert.equal(
-    updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA", accion_usuario: "BLOQUEAR_TARJETA" }).success,
+    updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA", accion_usuario: "BLOQUEAR_TARJETA" })
+      .success,
     true,
   );
   assert.equal(
@@ -395,11 +645,12 @@ test("budget, alert and device payloads use database-aligned snake_case fields",
 });
 
 test("OpenAPI includes all previously undocumented auth and dashboard routes", () => {
-  const paths = (
-    swaggerSpec as {
-      paths?: Record<string, { get?: unknown; patch?: unknown }>;
-    }
-  ).paths ?? {};
+  const paths =
+    (
+      swaggerSpec as {
+        paths?: Record<string, { get?: unknown; patch?: unknown }>;
+      }
+    ).paths ?? {};
 
   assert.ok(paths["/api/v2/auth/forgot-password"]);
   assert.ok(paths["/api/v2/auth/verify-email"]);
@@ -423,11 +674,12 @@ test("OpenAPI documents category retrieval, soft deletion, and count severities"
       }
     >;
   };
-  const paths = (
-    swaggerSpec as unknown as {
-      paths?: Record<string, Record<string, Operation>>;
-    }
-  ).paths ?? {};
+  const paths =
+    (
+      swaggerSpec as unknown as {
+        paths?: Record<string, Record<string, Operation>>;
+      }
+    ).paths ?? {};
 
   assert.ok(paths["/api/v2/categories/{id}"]?.get);
   assert.match(paths["/api/v2/categories/{id}"]?.delete?.summary ?? "", /desactivar/i);
@@ -438,9 +690,8 @@ test("OpenAPI documents category retrieval, soft deletion, and count severities"
     { BAJO: 3, MEDIO: 2, ALTO: 1, CRITICO: 0 },
   );
   assert.deepEqual(
-    paths["/api/v2/alerts/counts-by-level"]?.get?.responses?.["200"]?.content?.[
-      "application/json"
-    ]?.example?.data,
+    paths["/api/v2/alerts/counts-by-level"]?.get?.responses?.["200"]?.content?.["application/json"]
+      ?.example?.data,
     { BAJA: 3, MEDIA: 2, ALTA: 1, CRITICA: 0 },
   );
 });
@@ -516,14 +767,8 @@ test("email verification tokens bind the user and normalized email", () => {
 
   assert.equal(getUnverifiedEmailVerificationUserId(token), 42);
   assert.equal(jwt.decode(token, { complete: true })?.header.alg, "HS256");
-  assert.equal(
-    verifyEmailVerificationToken(token, 42, "ana@email.com", serverSecret),
-    true,
-  );
-  assert.equal(
-    verifyEmailVerificationToken(token, 42, "other@email.com", serverSecret),
-    false,
-  );
+  assert.equal(verifyEmailVerificationToken(token, 42, "ana@email.com", serverSecret), true);
+  assert.equal(verifyEmailVerificationToken(token, 42, "other@email.com", serverSecret), false);
   assert.equal(
     verifyEmailVerificationToken(token, 42, "ana@email.com", `${serverSecret}-changed`),
     false,
@@ -550,10 +795,46 @@ test("savings funding validates positive IDs and contribution amounts", () => {
   assert.equal(addFundsSchema.safeParse({ monto: 0 }).success, false);
 });
 
-test("OpenAPI documents common errors for every API operation", () => {
+test("savings state derives from progress and preserves paused or cancelled status", () => {
+  assert.equal(
+    deriveSavingsState(new Prisma.Decimal(100), new Prisma.Decimal(100), "ACTIVA", "COMPLETADA"),
+    "COMPLETADA",
+  );
+  assert.equal(
+    deriveSavingsState(new Prisma.Decimal(99), new Prisma.Decimal(100), "COMPLETADA", "COMPLETADA"),
+    "ACTIVA",
+  );
+  assert.equal(
+    deriveSavingsState(new Prisma.Decimal(50), new Prisma.Decimal(100), "ACTIVA", "PAUSADA"),
+    "PAUSADA",
+  );
+  assert.equal(
+    deriveSavingsState(new Prisma.Decimal(50), new Prisma.Decimal(100), "PAUSADA"),
+    "PAUSADA",
+  );
+  assert.equal(
+    deriveSavingsState(new Prisma.Decimal(50), new Prisma.Decimal(100), "CANCELADA"),
+    "CANCELADA",
+  );
+  assert.equal(
+    deriveSavingsState(new Prisma.Decimal(50), new Prisma.Decimal(100), "PAUSADA", "ACTIVA"),
+    "ACTIVA",
+  );
+});
+
+test("OpenAPI documents concrete success data and common errors for every API operation", () => {
   type DocumentedResponse = {
     $ref?: string;
-    content?: { "application/json"?: { schema?: { $ref?: string } } };
+    content?: {
+      "application/json"?: {
+        example?: unknown;
+        schema?: {
+          $ref?: string;
+          type?: string;
+          properties?: Record<string, { enum?: unknown[]; $ref?: string }>;
+        };
+      };
+    };
   };
   type Operation = {
     security?: unknown[];
@@ -563,7 +844,14 @@ test("OpenAPI documents common errors for every API operation", () => {
     paths?: Record<string, Record<string, Operation>>;
     components?: {
       responses?: Record<string, unknown>;
-      schemas?: Record<string, unknown>;
+      schemas?: Record<
+        string,
+        {
+          type?: string;
+          properties?: Record<string, unknown>;
+          additionalProperties?: unknown;
+        }
+      >;
     };
   };
   const paths = spec.paths ?? {};
@@ -584,11 +872,37 @@ test("OpenAPI documents common errors for every API operation", () => {
 
       for (const [status, response] of Object.entries(responses)) {
         if (/^2\d\d$/.test(status) && !response.$ref) {
-          assert.equal(
-            response.content?.["application/json"]?.schema?.$ref,
-            "#/components/schemas/SuccessResponse",
-            `${method.toUpperCase()} ${path} should use the common success envelope`,
+          const jsonContent = response.content?.["application/json"];
+          const schema = jsonContent?.schema;
+          assert.equal(schema?.type, "object");
+          assert.deepEqual(
+            schema?.properties?.success?.enum,
+            [true],
+            `${method.toUpperCase()} ${path} should document a successful envelope`,
           );
+          const dataRef = schema?.properties?.data?.$ref;
+          assert.ok(dataRef?.startsWith("#/components/schemas/"));
+          assert.notEqual(dataRef, "#/components/schemas/SuccessResponse");
+          const dataSchemaName = dataRef?.split("/").pop();
+          const dataSchema = dataSchemaName
+            ? spec.components?.schemas?.[dataSchemaName]
+            : undefined;
+          assert.ok(dataSchema);
+          assert.ok(
+            dataSchema.type === "array" ||
+              Object.keys(dataSchema.properties ?? {}).length > 0 ||
+              dataSchema.additionalProperties,
+            `${method.toUpperCase()} ${path} should describe the data structure`,
+          );
+          const example = jsonContent?.example;
+          assert.ok(example && typeof example === "object");
+          const exampleEnvelope = example as Record<string, unknown>;
+          assert.equal(
+            exampleEnvelope.success,
+            true,
+            `${method.toUpperCase()} ${path} example should use the success envelope`,
+          );
+          assert.ok("data" in exampleEnvelope);
         }
       }
 
@@ -615,6 +929,13 @@ test("OpenAPI documents common errors for every API operation", () => {
   assert.ok(operationCount > 0);
 });
 
+test("OpenAPI specification passes Swagger Parser validation", async () => {
+  const document = JSON.parse(JSON.stringify(swaggerSpec)) as Parameters<
+    typeof SwaggerParser.validate
+  >[0];
+  await SwaggerParser.validate(document);
+});
+
 test("OpenAPI documents the pending transaction resolution route and response envelopes", () => {
   const spec = swaggerSpec as {
     paths?: Record<string, { patch?: { requestBody?: unknown } }>;
@@ -624,7 +945,8 @@ test("OpenAPI documents the pending transaction resolution route and response en
     };
   };
   assert.ok(spec.paths?.["/api/v2/transactions/{id}/status"]?.patch?.requestBody);
-  assert.ok(spec.components?.schemas?.SuccessResponse);
+  assert.ok(spec.components?.schemas?.TransactionStatusData);
+  assert.equal(spec.components?.schemas?.SuccessResponse, undefined);
   assert.ok(spec.components?.schemas?.ErrorResponse);
   assert.ok(spec.components?.responses?.BadRequestError);
   assert.ok(spec.components?.responses?.TooManyRequestsError);

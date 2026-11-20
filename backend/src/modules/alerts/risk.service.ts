@@ -1,5 +1,6 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { haversineDistance } from "../../utils/geo.js";
+import { exceedsAverageMultiple } from "../../utils/decimal-money.js";
 import { getRiskLevel } from "../../utils/risk.js";
 
 export interface EvaluateRiskInput {
@@ -43,19 +44,20 @@ export class RiskService {
       _avg: { monto: true },
       _count: { id_transaccion: true },
     });
-    const avgMonto = stats._avg.monto ? Number(stats._avg.monto) : 0;
+    const avgMonto = stats._avg.monto ?? new Prisma.Decimal(0);
+    const monto = new Prisma.Decimal(input.monto);
     const countTx = stats._count.id_transaccion;
 
-    if (countTx >= 1 && avgMonto > 0) {
-      if (input.monto > avgMonto * 5) {
+    if (countTx >= 1 && avgMonto.greaterThan(0)) {
+      if (exceedsAverageMultiple(monto, avgMonto, 5)) {
         score += 40;
         razones.push(
-          `Monto (${input.monto}) excede 5 veces el promedio del usuario (${avgMonto.toFixed(2)})`,
+          `Monto (${monto.toFixed(2)}) excede 5 veces el promedio del usuario (${avgMonto.toFixed(2)})`,
         );
-      } else if (input.monto > avgMonto * 3) {
+      } else if (exceedsAverageMultiple(monto, avgMonto, 3)) {
         score += 25;
         razones.push(
-          `Monto (${input.monto}) excede 3 veces el promedio del usuario (${avgMonto.toFixed(2)})`,
+          `Monto (${monto.toFixed(2)}) excede 3 veces el promedio del usuario (${avgMonto.toFixed(2)})`,
         );
       }
     }

@@ -71,6 +71,7 @@ model cuenta {
   numero_enmascarado String?  @db.VarChar(20)
   color              String   @default("#6366F1") @db.VarChar(20)
   saldo_inicial      Decimal  @default(0) @db.Decimal(15, 2)
+  saldo_actual       Decimal  @default(0) @db.Decimal(15, 2)
   estado             Boolean  @default(true)
   fecha_creacion     DateTime @default(now()) @db.Timestamptz
 

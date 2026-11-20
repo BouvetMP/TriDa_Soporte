@@ -8,10 +8,15 @@ function formatAccount(account: AccountRecord) {
   return {
     ...account,
     saldo_inicial: Number(account.saldo_inicial),
+    saldo_actual: Number(account.saldo_actual),
   };
 }
 
-export class AccountError extends AppError {}
+export class AccountError extends AppError {
+  constructor(message: string, statusCode = 400, code = "ACCOUNT_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 export class AccountsService {
   async getAccounts(userId: number) {
@@ -54,6 +59,7 @@ export class AccountsService {
         numero_enmascarado: data.numero_enmascarado,
         color: data.color,
         saldo_inicial: data.saldo_inicial,
+        saldo_actual: data.saldo_inicial,
         estado: data.estado,
       },
     });

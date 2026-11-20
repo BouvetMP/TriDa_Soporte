@@ -15,18 +15,16 @@ export const useProfile = () => {
   ): Promise<boolean> => {
     setIsUpdatingProfile(true);
     try {
-      const response = await ProfileApi.updateProfile(payload);
-      if (response.success) {
-        showToast({
-          type: "success",
-          title: "Perfil actualizado",
-          message: "Tus datos personales han sido guardados correctamente.",
-        });
-        if (refreshUser) {
-          await refreshUser();
-        }
-        return true;
+      await ProfileApi.updateProfile(payload);
+      showToast({
+        type: "success",
+        title: "Perfil actualizado",
+        message: "Tus datos personales han sido guardados correctamente.",
+      });
+      if (refreshUser) {
+        await refreshUser();
       }
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({
@@ -46,11 +44,9 @@ export const useProfile = () => {
   ): Promise<boolean> => {
     setIsChangingPassword(true);
     try {
-      const response = await ProfileApi.changePassword(payload);
-      if (response.success) {
-        logout();
-        return true;
-      }
+      await ProfileApi.changePassword(payload);
+      logout();
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({

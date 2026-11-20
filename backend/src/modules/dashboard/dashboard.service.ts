@@ -1,6 +1,10 @@
 // ¿Qué? Servicio del dashboard de finanzas personales y monitoreo de riesgo.
 // ¿Para qué? Agregar saldos totales, resumen mensual de ingresos/gastos, alertas activas y transacciones recientes por usuario (RS-001).
 
+import {
+  calculateNetBalance,
+  type DecimalValue,
+} from "../../utils/decimal-money.js";
 import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
 import { config } from "../../config.js";
@@ -15,9 +19,9 @@ export const dashboardService = {
 
     // 1. Saldo Total acumulado de las cuentas del usuario
     const [saldoRows, resumenMesRows, alertasRows] = await Promise.all([
-      queryRaw<{ saldo_total: string | number }[]>(
+      queryRaw<{ saldo_total: DecimalValue }[]>(
       `
-      SELECT COALESCE(SUM(saldo_inicial), 0)::numeric AS saldo_total
+      SELECT COALESCE(SUM(saldo_actual), 0)::numeric AS saldo_total
       FROM trida.cuentas
       WHERE id_usuario = $1 AND estado = true
         AND ($2::int IS NULL OR id_cuenta = $2)
@@ -28,9 +32,9 @@ export const dashboardService = {
 
       queryRaw<
       {
-        ingresos: string | number;
-        gastos: string | number;
-        ahorros: string | number;
+        ingresos: DecimalValue;
+        gastos: DecimalValue;
+        ahorros: DecimalValue;
       }[]
       >(
       `
@@ -80,16 +84,16 @@ export const dashboardService = {
       alertas_criticas: 0,
     };
 
-    const ingresos = Number(rMes.ingresos);
-    const gastos = Number(rMes.gastos);
+    const ingresos = rMes.ingresos;
+    const gastos = rMes.gastos;
 
     return {
       saldo_total: saldoTotal,
       mes_actual: {
-        ingresos,
-        gastos,
+        ingresos: Number(ingresos),
+        gastos: Number(gastos),
         ahorros: Number(rMes.ahorros),
-        balance_neto: ingresos - gastos,
+        balance_neto: calculateNetBalance(ingresos, gastos).toNumber(),
       },
       alertas: {
         activas: Number(rAlertas.alertas_activas),
@@ -247,7 +251,7 @@ export const dashboardService = {
     });
 
     if (!advice) {
-      throw new AppError("Consejo financiero no encontrado", 404);
+      throw new AppError("Consejo financiero no encontrado", 404, "DASHBOARD_ADVICE_NOT_FOUND");
     }
 
     return advice;

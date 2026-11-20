@@ -44,21 +44,19 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
 
       const response = await TransactionsApi.getAll(queryFilters);
       if (currentRequestId !== requestId.current) return;
-      if (response.success) {
-        setTransactions(response.data.items);
-        const metadata: PaginationMetadata = response.data.pagination;
-        const limit = metadata.limit;
-        const page =
-          metadata.page ??
-          Math.floor((metadata.offset ?? filters.offset ?? 0) / limit) + 1;
-        setPagination({
-          total: metadata.total,
-          page,
-          limit,
-          total_pages:
-            metadata.total_pages ?? (Math.ceil(metadata.total / limit) || 1),
-        });
-      }
+      setTransactions(response.items);
+      const metadata: PaginationMetadata = response.pagination;
+      const limit = metadata.limit;
+      const page =
+        metadata.page ??
+        Math.floor((metadata.offset ?? filters.offset ?? 0) / limit) + 1;
+      setPagination({
+        total: metadata.total,
+        page,
+        limit,
+        total_pages:
+          metadata.total_pages ?? (Math.ceil(metadata.total / limit) || 1),
+      });
     } catch (error) {
       if (currentRequestId !== requestId.current) return;
       const err = error as Error;
@@ -99,16 +97,14 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     payload: CreateTransactionPayload,
   ): Promise<boolean> => {
     try {
-      const response = await TransactionsApi.create(payload);
-      if (response.success) {
-        showToast({
-          type: "success",
-          title: "Transacción exitosa",
-          message: "El movimiento se ha registrado correctamente.",
-        });
-        await Promise.all([fetchTransactions(), refreshAccounts()]);
-        return true;
-      }
+      await TransactionsApi.create(payload);
+      showToast({
+        type: "success",
+        title: "Transacción exitosa",
+        message: "El movimiento se ha registrado correctamente.",
+      });
+      await Promise.all([fetchTransactions(), refreshAccounts()]);
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({
@@ -122,16 +118,14 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
 
   const deleteTransaction = async (id: number): Promise<boolean> => {
     try {
-      const response = await TransactionsApi.delete(id);
-      if (response.success) {
-        showToast({
-          type: "success",
-          title: "Eliminada",
-          message: "La transacción fue eliminada del registro.",
-        });
-        await Promise.all([fetchTransactions(), refreshAccounts()]);
-        return true;
-      }
+      await TransactionsApi.delete(id);
+      showToast({
+        type: "success",
+        title: "Eliminada",
+        message: "La transacción fue eliminada del registro.",
+      });
+      await Promise.all([fetchTransactions(), refreshAccounts()]);
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({
@@ -148,16 +142,17 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     estado: "CONFIRMADA" | "RECHAZADA",
   ): Promise<boolean> => {
     try {
-      const response = await TransactionsApi.updateStatus(id, estado);
-      if (response.success) {
-        showToast({
-          type: "success",
-          title: "Transacción actualizada",
-          message: estado === "CONFIRMADA" ? "Transacción confirmada." : "Transacción rechazada.",
-        });
-        await Promise.all([fetchTransactions(), refreshAccounts()]);
-        return true;
-      }
+      await TransactionsApi.updateStatus(id, estado);
+      showToast({
+        type: "success",
+        title: "Transacción actualizada",
+        message:
+          estado === "CONFIRMADA"
+            ? "Transacción confirmada."
+            : "Transacción rechazada.",
+      });
+      await Promise.all([fetchTransactions(), refreshAccounts()]);
+      return true;
     } catch (error) {
       const err = error as Error;
       showToast({

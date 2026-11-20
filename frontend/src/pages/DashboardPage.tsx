@@ -116,7 +116,9 @@ export const DashboardPage: React.FC = () => {
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Transacciones recientes</CardTitle>
+                  <CardTitle className="text-base">
+                    Transacciones recientes
+                  </CardTitle>
                   <Link
                     to="/transactions"
                     className="text-xs font-medium text-primary hover:underline"
@@ -163,7 +165,9 @@ export const DashboardPage: React.FC = () => {
                                 </p>
                               </div>
                             </div>
-                            <span className={`shrink-0 text-sm font-semibold ${color}`}>
+                            <span
+                              className={`shrink-0 text-sm font-semibold ${color}`}
+                            >
                               {formatCurrency(transaction.monto)}
                             </span>
                           </li>
@@ -178,7 +182,9 @@ export const DashboardPage: React.FC = () => {
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <div className="flex items-center gap-2">
                     <BellRing className="h-4 w-4 text-risk-high" />
-                    <CardTitle className="text-base">Alertas recientes</CardTitle>
+                    <CardTitle className="text-base">
+                      Alertas recientes
+                    </CardTitle>
                   </div>
                   <Link
                     to="/security"

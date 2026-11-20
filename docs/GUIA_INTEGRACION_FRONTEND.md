@@ -9,7 +9,7 @@ Antes de implementar o modificar una pantalla, consultar:
 1. **OpenAPI generado por el backend:** `GET http://localhost:3000/api/docs.json` o la interfaz `http://localhost:3000/api/docs`.
 2. **Validaciones de las peticiones:** archivos `*.schemas.ts` de cada módulo en `backend/src/modules/`.
 3. **Rutas realmente montadas:** `backend/src/app.ts` y `*.routes.ts`.
-4. **Esquema de la base de datos:** `database/schema.sql` (instalación limpia) y `backend/prisma/schema.prisma` (mapeo que usa el servidor). Para una base existente, usar `database/update_existing.sql` después de hacer respaldo; no ejecutar ambos scripts sobre la misma base. El script de actualización recrea `trg_presupuesto_umbral`; en una instalación limpia, `schema.sql` crea el disparador sin intentar eliminar uno inexistente.
+4. **Esquema de la base de datos:** `database/schema.sql` es el instalador y actualizador idempotente para bases TriDa nuevas o existentes; `backend/prisma/schema.prisma` es el mapeo que usa el servidor. Antes de aplicarlo sobre una base con datos, hacer un respaldo. El script recrea de forma transaccional los triggers administrados por el esquema y conserva las funciones legacy.
 
 Si una tabla de esta guía y la especificación servida difieren, prevalecen las rutas, validaciones y respuestas del backend actual. No inventar endpoints ni campos.
 
@@ -177,7 +177,7 @@ Campos requeridos para `POST /transactions`:
 }
 ```
 
-Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `longitud`, `ip_origen`, `fecha_transaccion`, `es_recurrente`. `monto` debe ser mayor que cero; `tipo_movimiento` acepta `INGRESO`, `GASTO` o `AHORRO`. El backend asigna moneda, estado y canal (`web`) por defecto y determina usuario, ubicación cuando corresponde y evaluación de riesgo; no inventar campos para esos valores.
+Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `longitud`, `fecha_transaccion`, `es_recurrente`. `ip_origen` no forma parte del contrato y se rechaza si el cliente lo envía. `monto` debe ser mayor que cero; `tipo_movimiento` acepta `INGRESO`, `GASTO` o `AHORRO`. El backend asigna moneda, estado y canal (`web`) por defecto y determina usuario, ubicación cuando corresponde y evaluación de riesgo; no inventar campos para esos valores.
 
 Filtros de `GET /transactions`: `limit`, `offset`, `estado`, `nivel_riesgo`, `tipo_movimiento`, `id_cuenta`, `id_categoria`, `search`, `min_monto`, `max_monto`, `fecha_inicio`, `fecha_fin`, `sort_by`, `sort_order`. Ordenamientos admitidos en el contrato: `fecha_transaccion`, `monto`, `tipo_movimiento`, `nivel_riesgo`; dirección `asc` o `desc`.
 

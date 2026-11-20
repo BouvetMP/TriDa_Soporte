@@ -87,74 +87,68 @@ export const AlertsPage: React.FC = () => {
       ) : (
         <div className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl shadow-sm overflow-hidden">
           <ul className="divide-y divide-[var(--color-border-subtle)]">
-            {alerts.map((alert) => (
-              <li
-                key={alert.id_alerta}
-                role={alert.estado === "PENDIENTE" ? "button" : undefined}
-                tabIndex={alert.estado === "PENDIENTE" ? 0 : undefined}
-                onClick={() => {
-                  if (alert.estado === "PENDIENTE") {
-                    setSelectedAlert(alert);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    alert.estado === "PENDIENTE" &&
-                    (event.key === "Enter" || event.key === " ")
-                  ) {
-                    event.preventDefault();
-                    setSelectedAlert(alert);
-                  }
-                }}
-                aria-label={alert.estado === "PENDIENTE" ? "Revisar alerta pendiente" : undefined}
-                className={`p-4 transition-colors flex flex-col sm:flex-row sm:items-center gap-4 ${
-                  alert.estado === "PENDIENTE"
-                    ? "bg-[var(--color-bg-surface-hover)] cursor-pointer"
-                    : "hover:bg-[var(--color-bg-surface-hover)]"
-                }`}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <AlertBadge severidad={alert.severidad} />
-                    <AlertBadge estado={alert.estado} />
-                  </div>
+            {alerts.map((alert) => {
+              const isPending = alert.estado === "PENDIENTE";
+              const content = (
+                <>
+                  <span className="flex-1">
+                    <span className="flex items-center gap-2 mb-1.5">
+                      <AlertBadge severidad={alert.severidad} />
+                      <AlertBadge estado={alert.estado} />
+                    </span>
 
-                  <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
-                    {alert.motivo}
-                  </h4>
+                    <span className="block text-sm font-semibold text-[var(--color-text-primary)]">
+                      {alert.motivo}
+                    </span>
 
-                  {alert.transaccion && (
-                    <p className="text-xs text-[var(--color-text-subtle)] mt-1">
-                      Comercio:{" "}
-                      <span className="font-medium">
-                        {alert.transaccion.comercio || "No especificado"}
-                      </span>{" "}
-                      | Monto:{" "}
-                      <span className="font-medium font-mono">
-                        {formatCurrency(alert.transaccion.monto)}
+                    {alert.transaccion && (
+                      <span className="block text-xs text-[var(--color-text-subtle)] mt-1">
+                        Comercio:{" "}
+                        <span className="font-medium">
+                          {alert.transaccion.comercio || "No especificado"}
+                        </span>{" "}
+                        | Monto:{" "}
+                        <span className="font-medium font-mono">
+                          {formatCurrency(alert.transaccion.monto)}
+                        </span>
                       </span>
-                    </p>
-                  )}
+                    )}
 
-                  <span className="text-xs text-[var(--color-text-muted)] mt-2 block font-mono">
-                    Detectada: {formatDate(alert.fecha_detectada)}
+                    <span className="text-xs text-[var(--color-text-muted)] mt-2 block font-mono">
+                      Detectada: {formatDate(alert.fecha_detectada)}
+                    </span>
                   </span>
-                </div>
 
-                {alert.estado === "PENDIENTE" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedAlert(alert);
-                    }}
-                  >
-                    Resolver
-                  </Button>
-                )}
-              </li>
-            ))}
+                  {isPending && (
+                    <span className="text-sm font-medium text-primary">
+                      Resolver
+                    </span>
+                  )}
+                </>
+              );
+              const rowClassName = `p-4 transition-colors flex flex-col sm:flex-row sm:items-center gap-4 ${
+                isPending
+                  ? "bg-[var(--color-bg-surface-hover)] cursor-pointer"
+                  : "hover:bg-[var(--color-bg-surface-hover)]"
+              }`;
+
+              return (
+                <li key={alert.id_alerta}>
+                  {isPending ? (
+                    <button
+                      type="button"
+                      aria-label={`Resolver alerta: ${alert.motivo}`}
+                      onClick={() => setSelectedAlert(alert)}
+                      className={`${rowClassName} w-full text-left`}
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div className={rowClassName}>{content}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

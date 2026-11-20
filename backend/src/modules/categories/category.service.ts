@@ -9,7 +9,11 @@ type CategoryData = {
   estado?: boolean;
 };
 
-export class CategoryError extends AppError {}
+export class CategoryError extends AppError {
+  constructor(message: string, statusCode = 400, code = "CATEGORY_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 function withOwnership(category: Awaited<ReturnType<typeof prisma.categoria.findFirst>>) {
   if (!category) {

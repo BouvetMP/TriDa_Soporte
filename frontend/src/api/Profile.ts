@@ -1,5 +1,5 @@
 import { apiClient } from "./Client";
-import { ApiSuccess } from "@/types/Api";
+import { ApiMessageData, ApiSuccess } from "@/types/Api";
 import {
   User,
   UpdateProfilePayload,
@@ -10,14 +10,12 @@ export const ProfileApi = {
   /**
    * Actualiza la información personal del usuario autenticado
    */
-  updateProfile: async (
-    payload: UpdateProfilePayload,
-  ): Promise<ApiSuccess<User>> => {
+  updateProfile: async (payload: UpdateProfilePayload): Promise<User> => {
     const response = await apiClient.patch<ApiSuccess<User>>(
       "/auth/me",
       payload,
     );
-    return response.data;
+    return response.data.data;
   },
 
   /**
@@ -25,11 +23,11 @@ export const ProfileApi = {
    */
   changePassword: async (
     payload: ChangePasswordPayload,
-  ): Promise<ApiSuccess<void>> => {
-    const response = await apiClient.post<ApiSuccess<void>>(
+  ): Promise<ApiMessageData> => {
+    const response = await apiClient.post<ApiSuccess<ApiMessageData>>(
       "/auth/change-password",
       payload,
     );
-    return response.data;
+    return response.data.data;
   },
 };

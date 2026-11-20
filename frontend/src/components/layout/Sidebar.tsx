@@ -28,8 +28,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const refreshPendingAlerts = () => {
       AlertsApi.getPendingCount()
         .then((response) => {
-          if (active && response.success) {
-            setPendingAlertsCount(response.data.count);
+          if (active) {
+            setPendingAlertsCount(response.count);
           }
         })
         .catch((error: unknown) => {
@@ -49,7 +49,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <>
       {/* Overlay Móvil */}
       {isOpenMobile && (
-        <div
+        <button
+          type="button"
+          aria-label="Cerrar menú"
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden transition-opacity"
           onClick={onCloseMobile}
         />

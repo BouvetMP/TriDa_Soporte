@@ -14,10 +14,15 @@ import {
 } from "./email-verification.js";
 import { isEmailConfigured, sendEmail } from "../../utils/mailer.js";
 import { AppError } from "../../utils/AppError.js";
+import { logger } from "../../utils/logger.js";
 import { comparePassword, hashPassword } from "../../utils/password.js";
 import type { ChangePasswordInput, RegisterInput } from "./auth.schemas.js";
 
-export class AuthError extends AppError {}
+export class AuthError extends AppError {
+  constructor(message: string, statusCode = 400, code = "AUTH_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 const JWT_SECRET = config.JWT_SECRET;
 const JWT_EXPIRES_IN = config.JWT_EXPIRES_IN;
@@ -105,17 +110,38 @@ export class AuthService {
     });
 
     const isPasswordValid = await comparePassword(password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
-    if (!user || !isPasswordValid) {
+    if (
+      !user ||
+      !isPasswordValid ||
+      !user.estado ||
+      (config.SMTP_ENABLED && !user.email_verificado_en)
+    ) {
+      await prisma.log_auditoria.create({
+        data: {
+          id_usuario: user?.id_usuario ?? null,
+          tipo_accion: "INICIO_SESION_FALLIDO",
+          entidad_afectada: "usuarios",
+          id_entidad: user?.id_usuario ?? null,
+          descripcion: "Intento de inicio de sesión rechazado.",
+        },
+      });
       throw new AuthError("Credenciales inválidas", 401);
     }
 
-    if (!user.estado || (config.SMTP_ENABLED && !user.email_verificado_en)) {
-      throw new AuthError("Credenciales inválidas", 401);
-    }
-
-    await prisma.usuario.update({
-      where: { id_usuario: user.id_usuario },
-      data: { ultimo_acceso: new Date() },
+    await prisma.$transaction(async (transaction) => {
+      await transaction.usuario.update({
+        where: { id_usuario: user.id_usuario },
+        data: { ultimo_acceso: new Date() },
+      });
+      await transaction.log_auditoria.create({
+        data: {
+          id_usuario: user.id_usuario,
+          tipo_accion: "INICIO_SESION_EXITOSO",
+          entidad_afectada: "usuarios",
+          id_entidad: user.id_usuario,
+          descripcion: "Inicio de sesión exitoso.",
+        },
+      });
     });
 
     const token = signToken(
@@ -155,9 +181,7 @@ export class AuthService {
         `<p>Confirma tu correo para activar tu cuenta.</p><p><a href="${escapedVerificationUrl}">Verificar correo</a></p><p>El enlace vence en 24 horas.</p>`,
       );
     } catch (error) {
-      console.error("No se pudo enviar el correo de verificación", {
-        error: error instanceof Error ? error.message : "Error desconocido",
-      });
+      logger.error("email.verification_send_failed", error);
       throw new AuthError(
         "No se pudo enviar el correo de verificación. Inténtalo nuevamente.",
         503,
@@ -224,12 +248,7 @@ export class AuthService {
     const resetUrl = new URL("/reset-password", config.FRONTEND_URL);
     resetUrl.hash = new URLSearchParams({ token: resetToken }).toString();
     void this.sendPasswordResetEmail(user.email, resetUrl).catch((error: unknown) => {
-      console.error("No se pudo enviar el correo de recuperación de contraseña", {
-        error: error instanceof Error ? error.message : "Error desconocido",
-      });
-      if (config.NODE_ENV === "development") {
-        console.info(`[DEV] Enlace de recuperación: ${resetUrl.toString()}`);
-      }
+      logger.error("email.password_reset_send_failed", error);
     });
 
     return { message: PASSWORD_RESET_MESSAGE };

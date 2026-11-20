@@ -2,7 +2,11 @@ import { prisma } from "../../db/prisma.js";
 import { AppError } from "../../utils/AppError.js";
 import type { RegisterDeviceInput } from "./devices.schemas.js";
 
-export class DeviceError extends AppError {}
+export class DeviceError extends AppError {
+  constructor(message: string, statusCode = 400, code = "DEVICE_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 export class DevicesService {
   async list(userId: number) {
@@ -28,47 +32,126 @@ export class DevicesService {
   }
 
   async registerOrUpdate(userId: number, data: RegisterDeviceInput) {
-    const firstDevice = !(await prisma.dispositivo.findFirst({
-      where: { id_usuario: userId },
-      select: { id_dispositivo: true },
-    }));
-
-    return prisma.dispositivo.upsert({
-      where: {
+    return prisma.$transaction(async (transaction) => {
+      const uniqueDevice = {
         id_usuario_identificador_unico: {
           id_usuario: userId,
           identificador_unico: data.identificador_unico,
         },
-      },
-      create: {
-        id_usuario: userId,
-        identificador_unico: data.identificador_unico,
-        tipo_dispositivo: data.tipo_dispositivo,
-        sistema_operativo: data.sistema_operativo,
-        navegador: data.navegador,
-        confiable: firstDevice,
-      },
-      update: {
-        tipo_dispositivo: data.tipo_dispositivo,
-        sistema_operativo: data.sistema_operativo,
-        navegador: data.navegador,
-        fecha_ultimo_uso: new Date(),
-      },
+      };
+      const existingDevice = await transaction.dispositivo.findUnique({
+        where: uniqueDevice,
+        select: { id_dispositivo: true },
+      });
+      const firstDevice =
+        !existingDevice &&
+        !(await transaction.dispositivo.findFirst({
+          where: { id_usuario: userId },
+          select: { id_dispositivo: true },
+        }));
+
+      const device = await transaction.dispositivo.upsert({
+        where: uniqueDevice,
+        create: {
+          id_usuario: userId,
+          identificador_unico: data.identificador_unico,
+          tipo_dispositivo: data.tipo_dispositivo,
+          sistema_operativo: data.sistema_operativo,
+          navegador: data.navegador,
+          confiable: firstDevice,
+        },
+        update: {
+          tipo_dispositivo: data.tipo_dispositivo,
+          sistema_operativo: data.sistema_operativo,
+          navegador: data.navegador,
+          fecha_ultimo_uso: new Date(),
+        },
+      });
+
+      if (!existingDevice) {
+        await transaction.log_auditoria.create({
+          data: {
+            id_usuario: userId,
+            tipo_accion: "DISPOSITIVO_REGISTRADO",
+            entidad_afectada: "dispositivos",
+            id_entidad: device.id_dispositivo,
+            descripcion: device.confiable
+              ? "Se registró el primer dispositivo y se marcó como confiable."
+              : "Se registró un dispositivo.",
+          },
+        });
+      }
+
+      return device;
     });
   }
 
   async updateTrustStatus(userId: number, deviceId: number, confiable: boolean) {
-    await this.getById(userId, deviceId);
-    return prisma.dispositivo.update({
-      where: { id_dispositivo: deviceId },
-      data: { confiable },
+    return prisma.$transaction(async (transaction) => {
+      const device = await transaction.dispositivo.findFirst({
+        where: {
+          id_dispositivo: deviceId,
+          id_usuario: userId,
+        },
+      });
+
+      if (!device) {
+        throw new DeviceError("Dispositivo no encontrado", 404);
+      }
+
+      if (device.confiable === confiable) {
+        return device;
+      }
+
+      const updatedDevice = await transaction.dispositivo.update({
+        where: { id_dispositivo: deviceId },
+        data: { confiable },
+      });
+      await transaction.log_auditoria.create({
+        data: {
+          id_usuario: userId,
+          tipo_accion: confiable
+            ? "DISPOSITIVO_MARCADO_CONFIABLE"
+            : "DISPOSITIVO_MARCADO_NO_CONFIABLE",
+          entidad_afectada: "dispositivos",
+          id_entidad: deviceId,
+          descripcion: confiable
+            ? "El dispositivo fue marcado como confiable."
+            : "El dispositivo dejó de ser confiable.",
+        },
+      });
+
+      return updatedDevice;
     });
   }
 
   async delete(userId: number, deviceId: number) {
-    await this.getById(userId, deviceId);
-    return prisma.dispositivo.delete({
-      where: { id_dispositivo: deviceId },
+    return prisma.$transaction(async (transaction) => {
+      const device = await transaction.dispositivo.findFirst({
+        where: {
+          id_dispositivo: deviceId,
+          id_usuario: userId,
+        },
+      });
+
+      if (!device) {
+        throw new DeviceError("Dispositivo no encontrado", 404);
+      }
+
+      const deletedDevice = await transaction.dispositivo.delete({
+        where: { id_dispositivo: deviceId },
+      });
+      await transaction.log_auditoria.create({
+        data: {
+          id_usuario: userId,
+          tipo_accion: "DISPOSITIVO_ELIMINADO",
+          entidad_afectada: "dispositivos",
+          id_entidad: deviceId,
+          descripcion: "Se eliminó un dispositivo de la cuenta.",
+        },
+      });
+
+      return deletedDevice;
     });
   }
 }

@@ -21,7 +21,7 @@ export function NewBudgetModal({
   currentMonth,
   currentYear,
 }: NewBudgetModalProps) {
-  const { categories } = useCategories();
+  const { categories } = useCategories({ enabled: isOpen });
   const [idCategoria, setIdCategoria] = useState<string>("");
   const [montoLimite, setMontoLimite] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -57,34 +57,31 @@ export function NewBudgetModal({
   ];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Nuevo Presupuesto" isSubmitting={submitting}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Nuevo Presupuesto"
+      isSubmitting={submitting}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Categoría de Gasto *
-          </label>
-          <Select
-            value={idCategoria}
-            onChange={(e) => setIdCategoria(e.target.value)}
-            options={categoryOptions}
-            required
-          />
-        </div>
+        <Select
+          label="Categoría de Gasto *"
+          value={idCategoria}
+          onChange={(e) => setIdCategoria(e.target.value)}
+          options={categoryOptions}
+          required
+        />
 
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Monto Límite (COP) *
-          </label>
-          <Input
-            type="number"
-            min="1"
-            step="1000"
-            placeholder="Ej: 500000"
-            value={montoLimite}
-            onChange={(e) => setMontoLimite(e.target.value)}
-            required
-          />
-        </div>
+        <Input
+          label="Monto Límite (COP) *"
+          type="number"
+          min="1"
+          step="0.01"
+          placeholder="Ej: 500000"
+          value={montoLimite}
+          onChange={(e) => setMontoLimite(e.target.value)}
+          required
+        />
 
         <p className="text-xs text-[var(--color-text-muted)]">
           Este presupuesto aplica al mes y año seleccionados en la pantalla.

@@ -44,10 +44,8 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
       ) {
         return;
       }
-      if (response.success) {
-        setPendingCount(response.data.count);
-        window.dispatchEvent(new Event("trida-alerts-updated"));
-      }
+      setPendingCount(response.count);
+      window.dispatchEvent(new Event("trida-alerts-updated"));
     } catch (error) {
       if (
         !isMounted.current ||
@@ -71,24 +69,23 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
     try {
       const response = await AlertsApi.getAll(queryParams);
       if (!isMounted.current || currentRequestId !== requestId.current) return;
-      if (response.success) {
-        setAlerts(response.data.items);
+      setAlerts(response.items);
 
-        const { pagination: responsePagination } = response.data;
-        const limit = responsePagination.limit || queryParams.limit || 15;
-        const total = responsePagination.total;
-        const totalPages = Math.ceil(total / limit) || 1;
-        const currentPage =
-          Math.floor((responsePagination.offset ?? queryParams.offset ?? 0) / limit) +
-          1;
+      const { pagination: responsePagination } = response;
+      const limit = responsePagination.limit || queryParams.limit || 15;
+      const total = responsePagination.total;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const currentPage =
+        Math.floor(
+          (responsePagination.offset ?? queryParams.offset ?? 0) / limit,
+        ) + 1;
 
-        setPagination({
-          total,
-          page: currentPage,
-          limit,
-          total_pages: totalPages,
-        });
-      }
+      setPagination({
+        total,
+        page: currentPage,
+        limit,
+        total_pages: totalPages,
+      });
     } catch (error) {
       if (!isMounted.current || currentRequestId !== requestId.current) return;
       const err = error as Error;
@@ -139,22 +136,20 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
       const nuevoEstado: AlertStatus =
         accion === "FUI_YO" ? "DESCARTADA" : "CONFIRMADA";
 
-      const response = await AlertsApi.updateStatus(id, {
+      await AlertsApi.updateStatus(id, {
         estado: nuevoEstado,
         accion_usuario: accion,
       });
 
-      if (response.success) {
-        if (!isMounted.current) return true;
-        showToast({
-          type: "success",
-          title: "Alerta actualizada",
-          message: "Tu acción de seguridad ha sido registrada exitosamente.",
-        });
-        fetchAlerts();
-        fetchPendingCount();
-        return true;
-      }
+      if (!isMounted.current) return true;
+      showToast({
+        type: "success",
+        title: "Alerta actualizada",
+        message: "Tu acción de seguridad ha sido registrada exitosamente.",
+      });
+      fetchAlerts();
+      fetchPendingCount();
+      return true;
     } catch (error) {
       if (!isMounted.current) return false;
       const err = error as Error;

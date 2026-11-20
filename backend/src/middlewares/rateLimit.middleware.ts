@@ -6,7 +6,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { sendError } from "../utils/apiResponse.js";
 
 const authLimitHandler = (_req: import("express").Request, res: import("express").Response) => {
-  sendError(res, "Demasiados intentos. Por favor, inténtalo más tarde.", 429);
+  sendError(res, "Demasiados intentos. Por favor, inténtalo más tarde.", 429, null, "RATE_LIMITED");
 };
 
 export const loginRateLimiter = rateLimit({
@@ -59,6 +59,6 @@ export const apiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {
-    sendError(res, "Límite de peticiones superado. Por favor ralentice sus solicitudes.", 429);
+    sendError(res, "Límite de peticiones superado. Por favor ralentice sus solicitudes.", 429, null, "RATE_LIMITED");
   },
 });

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { PasswordStrengthMeter } from "./PasswordStrengthMeter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/Toast";
+import { getPasswordValidationMessage } from "@/utils/Password";
 
 export const RegisterForm: React.FC = () => {
   const navigate = useNavigate();
@@ -34,17 +35,9 @@ export const RegisterForm: React.FC = () => {
       setFormError("Ingresa un correo electrónico válido.");
       return false;
     }
-    if (password.length < 10) {
-      setFormError("La contraseña debe tener al menos 10 caracteres.");
-      return false;
-    }
-    const hasUpper = /[A-Z]/.test(password);
-    const hasLower = /[a-z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    if (!hasUpper || !hasLower || !hasNumber) {
-      setFormError(
-        "La contraseña debe contener al menos una mayúscula, una minúscula y un número.",
-      );
+    const passwordError = getPasswordValidationMessage(password);
+    if (passwordError) {
+      setFormError(passwordError);
       return false;
     }
     return true;
@@ -68,7 +61,9 @@ export const RegisterForm: React.FC = () => {
 
       showToast({
         type: result.emailVerificationRequired ? "info" : "success",
-        title: result.emailVerificationRequired ? "Revisa tu correo" : "Registro recibido",
+        title: result.emailVerificationRequired
+          ? "Revisa tu correo"
+          : "Registro recibido",
         message: result.message,
       });
       navigate("/login", { replace: true });

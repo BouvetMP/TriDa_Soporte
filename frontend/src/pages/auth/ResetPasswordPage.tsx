@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { PasswordStrengthMeter } from "@/components/auth/PasswordStrengthMeter";
 import { AuthApi } from "@/api/Auth";
 import { useToast } from "@/components/ui/Toast";
+import { getPasswordValidationMessage } from "@/utils/Password";
 
 export const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -70,17 +71,12 @@ export const ResetPasswordPage: React.FC = () => {
       return;
     }
 
-    if (
-      passwordNueva.length < 10 ||
-      !/[A-Z]/.test(passwordNueva) ||
-      !/[a-z]/.test(passwordNueva) ||
-      !/\d/.test(passwordNueva)
-    ) {
+    const passwordError = getPasswordValidationMessage(passwordNueva);
+    if (passwordError) {
       showToast({
         type: "error",
         title: "Contraseña inválida",
-        message:
-          "Usa al menos 10 caracteres con mayúscula, minúscula y número.",
+        message: passwordError,
       });
       return;
     }

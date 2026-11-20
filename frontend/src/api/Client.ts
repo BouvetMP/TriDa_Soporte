@@ -37,7 +37,7 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response) => {
-    // Si la API responde con el wrapper { success: true, data: ... }, devolvemos response.data
+    // Los módulos API extraen data del sobre ApiSuccess y devuelven el payload.
     return response;
   },
   (error: AxiosError<ApiErrorResponse>) => {

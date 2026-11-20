@@ -8,6 +8,10 @@ export interface ApiSuccess<T> {
   data: T;
 }
 
+export interface ApiMessageData {
+  message: string;
+}
+
 /**
  * ¿Qué? Estructura estandarizada de errores devueltos por el backend.
  * ¿Para qué? Manejar fallos de validación, autenticación y servidor.

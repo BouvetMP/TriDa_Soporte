@@ -9,6 +9,7 @@ export interface Account {
   numero_enmascarado?: string | null;
   color: string;
   saldo_inicial: number;
+  saldo_actual: number;
   estado: boolean;
   fecha_creacion: string;
 }

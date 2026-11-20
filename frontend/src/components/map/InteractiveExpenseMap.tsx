@@ -1,11 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  MapContainer,
-  Marker,
-  Popup,
-  TileLayer,
-  useMap,
-} from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import { AlertTriangle, Building2, Calendar } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -30,7 +24,10 @@ function MapViewController({
   selectedTransaction,
 }: MapViewControllerProps) {
   const map = useMap();
-  const previous = useRef({ transactionIds: "", selectedId: null as number | null });
+  const previous = useRef({
+    transactionIds: "",
+    selectedId: null as number | null,
+  });
   const transactionIds = transactions
     .map((transaction) => transaction.id_transaccion)
     .join(",");
@@ -116,7 +113,8 @@ export function InteractiveExpenseMap({
           />
           {transactions.map((transaction) => {
             const selected =
-              selectedTransaction?.id_transaccion === transaction.id_transaccion;
+              selectedTransaction?.id_transaccion ===
+              transaction.id_transaccion;
             return (
               <Marker
                 key={`${transaction.id_transaccion}-${selected}`}
@@ -129,7 +127,9 @@ export function InteractiveExpenseMap({
                 }}
               >
                 <Popup>
-                  <strong>{transaction.comercio || "Comercio no especificado"}</strong>
+                  <strong>
+                    {transaction.comercio || "Comercio no especificado"}
+                  </strong>
                   <br />
                   {formatCurrency(transaction.monto)} ·{" "}
                   {formatDate(transaction.fecha_transaccion)}

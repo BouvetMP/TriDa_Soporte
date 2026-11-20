@@ -95,6 +95,1072 @@ const errorResponseComponentByStatus: Record<string, string> = {
   "500": "InternalServerError",
 };
 
+type OpenApiSchema = Record<string, unknown>;
+
+const objectSchema = (
+  properties: Record<string, OpenApiSchema>,
+  example?: Record<string, unknown>,
+): OpenApiSchema => ({
+  type: "object",
+  required: Object.keys(properties),
+  properties,
+  ...(example ? { example } : {}),
+});
+
+const stringSchema = (example?: string, nullable = false): OpenApiSchema => ({
+  type: "string",
+  ...(example === undefined ? {} : { example }),
+  ...(nullable ? { nullable: true } : {}),
+});
+
+const numberSchema = (example?: number, nullable = false): OpenApiSchema => ({
+  type: "number",
+  ...(example === undefined ? {} : { example }),
+  ...(nullable ? { nullable: true } : {}),
+});
+
+const integerSchema = (example?: number, nullable = false): OpenApiSchema => ({
+  type: "integer",
+  ...(example === undefined ? {} : { example }),
+  ...(nullable ? { nullable: true } : {}),
+});
+
+const booleanSchema = (example?: boolean): OpenApiSchema => ({
+  type: "boolean",
+  ...(example === undefined ? {} : { example }),
+});
+
+const dateTimeSchema = (example: string, nullable = false): OpenApiSchema => ({
+  type: "string",
+  format: "date-time",
+  example,
+  ...(nullable ? { nullable: true } : {}),
+});
+
+const arraySchema = (items: OpenApiSchema, example?: unknown[]): OpenApiSchema => ({
+  type: "array",
+  items,
+  ...(example ? { example } : {}),
+});
+
+const schemaRef = (name: string): OpenApiSchema => ({
+  $ref: `#/components/schemas/${name}`,
+});
+
+const responseDataSchemas: Record<string, OpenApiSchema> = {
+  AuditEntryData: objectSchema({
+    id_log: integerSchema(21),
+    tipo_accion: stringSchema("INICIO_SESION_EXITOSO"),
+    entidad_afectada: stringSchema("usuarios"),
+    id_entidad: integerSchema(7, true),
+    descripcion: stringSchema("Inicio de sesión exitoso.", true),
+    fecha_accion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+  }),
+  AuditHistoryData: objectSchema(
+    {
+      items: arraySchema(schemaRef("AuditEntryData")),
+      has_more: booleanSchema(false),
+      next_cursor: integerSchema(20, true),
+    },
+    {
+      items: [
+        {
+          id_log: 21,
+          tipo_accion: "INICIO_SESION_EXITOSO",
+          entidad_afectada: "usuarios",
+          id_entidad: 7,
+          descripcion: "Inicio de sesión exitoso.",
+          fecha_accion: "2026-11-19T10:00:00.000Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    },
+  ),
+  MessageData: objectSchema(
+    { message: stringSchema("Operación completada") },
+    { message: "Operación completada" },
+  ),
+  RegistrationData: objectSchema(
+    {
+      message: stringSchema("Si el correo puede registrarse, ya puedes intentar iniciar sesión"),
+      emailVerificationRequired: booleanSchema(false),
+    },
+    {
+      message: "Si el correo puede registrarse, ya puedes intentar iniciar sesión",
+      emailVerificationRequired: false,
+    },
+  ),
+  ResetTokenData: objectSchema({ valid: { type: "boolean", enum: [true] } }, { valid: true }),
+  LoginData: objectSchema(
+    {
+      token: stringSchema("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."),
+      usuario: schemaRef("LoginUser"),
+    },
+    {
+      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      usuario: {
+        id_usuario: 7,
+        email: "ana@example.com",
+        nombre_completo: "Ana Pérez",
+        rol: "USER",
+      },
+    },
+  ),
+  LoginUser: objectSchema({
+    id_usuario: integerSchema(7),
+    email: stringSchema("ana@example.com"),
+    nombre_completo: stringSchema("Ana Pérez"),
+    rol: stringSchema("USER"),
+  }),
+  UserProfileData: objectSchema(
+    {
+      id_usuario: integerSchema(7),
+      nombre_completo: stringSchema("Ana Pérez"),
+      email: stringSchema("ana@example.com"),
+      telefono: stringSchema("+584121234567", true),
+      pais: stringSchema("Venezuela", true),
+      ciudad: stringSchema("Caracas", true),
+      rol: stringSchema("USER"),
+      estado: booleanSchema(true),
+      fecha_registro: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      ultimo_acceso: dateTimeSchema("2026-11-19T10:30:00.000Z", true),
+    },
+    {
+      id_usuario: 7,
+      nombre_completo: "Ana Pérez",
+      email: "ana@example.com",
+      telefono: null,
+      pais: null,
+      ciudad: null,
+      rol: "USER",
+      estado: true,
+      fecha_registro: "2026-11-19T10:00:00.000Z",
+      ultimo_acceso: "2026-11-19T10:30:00.000Z",
+    },
+  ),
+  AccountData: objectSchema(
+    {
+      id_cuenta: integerSchema(3),
+      id_usuario: integerSchema(7),
+      nombre: stringSchema("Cuenta principal"),
+      entidad: stringSchema("Banco", true),
+      tipo: stringSchema("BANCO"),
+      numero_enmascarado: stringSchema("****1234", true),
+      color: stringSchema("#6366F1"),
+      saldo_inicial: numberSchema(1000),
+      saldo_actual: numberSchema(1250.5),
+      estado: booleanSchema(true),
+      fecha_creacion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_cuenta: 3,
+      id_usuario: 7,
+      nombre: "Cuenta principal",
+      entidad: "Banco",
+      tipo: "BANCO",
+      numero_enmascarado: "****1234",
+      color: "#6366F1",
+      saldo_inicial: 1000,
+      saldo_actual: 1250.5,
+      estado: true,
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  AccountListData: arraySchema(schemaRef("AccountData"), [
+    {
+      id_cuenta: 3,
+      id_usuario: 7,
+      nombre: "Cuenta principal",
+      entidad: "Banco",
+      tipo: "BANCO",
+      numero_enmascarado: "****1234",
+      color: "#6366F1",
+      saldo_inicial: 1000,
+      saldo_actual: 1250.5,
+      estado: true,
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+    },
+  ]),
+  AccountDeletedData: objectSchema(
+    {
+      id_cuenta: integerSchema(3),
+      id_usuario: integerSchema(7),
+      nombre: stringSchema("Cuenta principal"),
+      entidad: stringSchema("Banco", true),
+      tipo: stringSchema("BANCO"),
+      numero_enmascarado: stringSchema("****1234", true),
+      color: stringSchema("#6366F1"),
+      saldo_inicial: stringSchema("1000"),
+      saldo_actual: stringSchema("1250.50"),
+      estado: booleanSchema(true),
+      fecha_creacion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_cuenta: 3,
+      id_usuario: 7,
+      nombre: "Cuenta principal",
+      entidad: "Banco",
+      tipo: "BANCO",
+      numero_enmascarado: "****1234",
+      color: "#6366F1",
+      saldo_inicial: "1000",
+      saldo_actual: "1250.50",
+      estado: true,
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  CategoryData: objectSchema(
+    {
+      id_categoria: integerSchema(12),
+      id_usuario: integerSchema(7, true),
+      nombre: stringSchema("Alimentación"),
+      tipo: stringSchema("GASTO"),
+      icono: stringSchema("utensils", true),
+      color: stringSchema("#2563eb"),
+      es_default: booleanSchema(false),
+      estado: booleanSchema(true),
+      fecha_creacion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      es_personalizada: booleanSchema(true),
+    },
+    {
+      id_categoria: 12,
+      id_usuario: 7,
+      nombre: "Alimentación",
+      tipo: "GASTO",
+      icono: "utensils",
+      color: "#2563eb",
+      es_default: false,
+      estado: true,
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+      es_personalizada: true,
+    },
+  ),
+  CategoryListData: arraySchema(schemaRef("CategoryData"), [
+    {
+      id_categoria: 12,
+      id_usuario: 7,
+      nombre: "Alimentación",
+      tipo: "GASTO",
+      icono: "utensils",
+      color: "#2563eb",
+      es_default: false,
+      estado: true,
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+      es_personalizada: true,
+    },
+  ]),
+  CategoryDeletedData: objectSchema(
+    {
+      id_categoria: integerSchema(12),
+      id_usuario: integerSchema(7, true),
+      nombre: stringSchema("Alimentación"),
+      tipo: stringSchema("GASTO"),
+      icono: stringSchema("utensils", true),
+      color: stringSchema("#2563eb"),
+      es_default: booleanSchema(false),
+      estado: booleanSchema(false),
+      fecha_creacion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_categoria: 12,
+      id_usuario: 7,
+      nombre: "Alimentación",
+      tipo: "GASTO",
+      icono: "utensils",
+      color: "#2563eb",
+      es_default: false,
+      estado: false,
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  TransactionListItem: objectSchema({
+    id_transaccion: integerSchema(42),
+    id_usuario: integerSchema(7),
+    id_cuenta: integerSchema(3, true),
+    nombre_cuenta: stringSchema("Cuenta principal", true),
+    id_categoria: integerSchema(12, true),
+    nombre_categoria: stringSchema("Alimentación", true),
+    icono_categoria: stringSchema("utensils", true),
+    color_categoria: stringSchema("#2563eb", true),
+    monto: numberSchema(50.75),
+    tipo_movimiento: stringSchema("GASTO"),
+    comercio: stringSchema("Tienda", true),
+    descripcion: stringSchema("Compra", true),
+    estado: stringSchema("CONFIRMADA"),
+    fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    latitud: numberSchema(10.48, true),
+    longitud: numberSchema(-66.9, true),
+    es_sospechosa: booleanSchema(false),
+    nivel_riesgo: stringSchema("BAJO"),
+    motivo_riesgo: stringSchema("", true),
+  }),
+  TransactionListData: objectSchema(
+    {
+      items: arraySchema(schemaRef("TransactionListItem")),
+      pagination: objectSchema({
+        total: integerSchema(1),
+        page: integerSchema(1),
+        limit: integerSchema(10),
+        total_pages: integerSchema(1),
+      }),
+    },
+    {
+      items: [
+        {
+          id_transaccion: 42,
+          id_usuario: 7,
+          id_cuenta: 3,
+          nombre_cuenta: "Cuenta principal",
+          id_categoria: 12,
+          nombre_categoria: "Alimentación",
+          icono_categoria: "utensils",
+          color_categoria: "#2563eb",
+          monto: 50.75,
+          tipo_movimiento: "GASTO",
+          comercio: "Tienda",
+          descripcion: "Compra",
+          estado: "CONFIRMADA",
+          fecha_transaccion: "2026-11-19T10:00:00.000Z",
+          latitud: null,
+          longitud: null,
+          es_sospechosa: false,
+          nivel_riesgo: "BAJO",
+          motivo_riesgo: null,
+        },
+      ],
+      pagination: { total: 1, page: 1, limit: 10, total_pages: 1 },
+    },
+  ),
+  TransactionData: objectSchema(
+    {
+      id_transaccion: integerSchema(42),
+      id_usuario: integerSchema(7),
+      id_cuenta: integerSchema(3, true),
+      id_categoria: integerSchema(12, true),
+      id_dispositivo: integerSchema(4, true),
+      id_ubicacion: integerSchema(9, true),
+      tipo_movimiento: stringSchema("GASTO"),
+      monto: numberSchema(50.75),
+      moneda: stringSchema("COP"),
+      descripcion: stringSchema("Compra", true),
+      comercio: stringSchema("Tienda", true),
+      canal: stringSchema("web"),
+      es_recurrente: booleanSchema(false),
+      score_anomalia: numberSchema(5, true),
+      estado: stringSchema("CONFIRMADA"),
+      fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_transaccion: 42,
+      id_usuario: 7,
+      id_cuenta: 3,
+      id_categoria: 12,
+      id_dispositivo: null,
+      id_ubicacion: null,
+      tipo_movimiento: "GASTO",
+      monto: 50.75,
+      moneda: "COP",
+      descripcion: "Compra",
+      comercio: "Tienda",
+      canal: "web",
+      es_recurrente: false,
+      score_anomalia: 5,
+      estado: "CONFIRMADA",
+      fecha_transaccion: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  TransactionRawData: objectSchema({
+    id_transaccion: integerSchema(42),
+    id_usuario: integerSchema(7),
+    id_cuenta: integerSchema(3, true),
+    id_categoria: integerSchema(12, true),
+    id_dispositivo: integerSchema(4, true),
+    id_ubicacion: integerSchema(9, true),
+    tipo_movimiento: stringSchema("GASTO"),
+    monto: stringSchema("50.75"),
+    moneda: stringSchema("COP"),
+    descripcion: stringSchema("Compra", true),
+    comercio: stringSchema("Tienda", true),
+    canal: stringSchema("web"),
+    es_recurrente: booleanSchema(false),
+    score_anomalia: stringSchema("5.00", true),
+    estado: stringSchema("CONFIRMADA"),
+    fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+  }),
+  TransactionCreateData: objectSchema(
+    {
+      transaction: schemaRef("TransactionData"),
+      evaluation: objectSchema({
+        score_riesgo: numberSchema(5),
+        nivel_riesgo: stringSchema("BAJO"),
+        estado_evaluacion: stringSchema("APROBADA"),
+        razones: arraySchema(stringSchema()),
+      }),
+      alert: objectSchema(
+        {
+          id_alerta: integerSchema(6),
+          id_usuario: integerSchema(7),
+          id_transaccion: integerSchema(42),
+          severidad: stringSchema("MEDIA"),
+          motivo: stringSchema("Revisar movimiento"),
+          estado: stringSchema("PENDIENTE"),
+          fecha_detectada: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+          fecha_resuelta: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
+          accion_usuario: stringSchema("FUI_YO", true),
+        },
+        {
+          id_alerta: 6,
+          id_usuario: 7,
+          id_transaccion: 42,
+          severidad: "MEDIA",
+          motivo: "Revisar movimiento",
+          estado: "PENDIENTE",
+          fecha_detectada: "2026-11-19T10:00:00.000Z",
+          fecha_resuelta: null,
+          accion_usuario: null,
+        },
+      ),
+    },
+    {
+      transaction: {
+        id_transaccion: 42,
+        id_usuario: 7,
+        id_cuenta: 3,
+        id_categoria: 12,
+        id_dispositivo: null,
+        id_ubicacion: null,
+        tipo_movimiento: "GASTO",
+        monto: 50.75,
+        moneda: "COP",
+        descripcion: "Compra",
+        comercio: "Tienda",
+        canal: "web",
+        es_recurrente: false,
+        score_anomalia: 5,
+        estado: "CONFIRMADA",
+        fecha_transaccion: "2026-11-19T10:00:00.000Z",
+      },
+      evaluation: {
+        score_riesgo: 5,
+        nivel_riesgo: "BAJO",
+        estado_evaluacion: "APROBADA",
+        razones: [],
+      },
+      alert: null,
+    },
+  ),
+  TransactionStatusData: objectSchema({
+    id_transaccion: integerSchema(42),
+    id_usuario: integerSchema(7),
+    id_cuenta: integerSchema(3, true),
+    id_categoria: integerSchema(12, true),
+    id_dispositivo: integerSchema(4, true),
+    id_ubicacion: integerSchema(9, true),
+    tipo_movimiento: stringSchema("GASTO"),
+    monto: stringSchema("50.75"),
+    moneda: stringSchema("COP"),
+    descripcion: stringSchema("Compra", true),
+    comercio: stringSchema("Tienda", true),
+    canal: stringSchema("web"),
+    es_recurrente: booleanSchema(false),
+    score_anomalia: stringSchema("5.00", true),
+    estado: stringSchema("CONFIRMADA"),
+    fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+  }),
+  TransactionIdData: objectSchema({ id_transaccion: integerSchema(42) }, { id_transaccion: 42 }),
+  RiskCountsData: {
+    type: "object",
+    additionalProperties: { type: "integer", minimum: 0 },
+    example: { BAJO: 3, MEDIO: 2, ALTO: 1, CRITICO: 0 },
+  },
+  DeviceData: objectSchema(
+    {
+      id_dispositivo: integerSchema(4),
+      id_usuario: integerSchema(7),
+      tipo_dispositivo: stringSchema("MOBILE"),
+      identificador_unico: stringSchema("device-fingerprint-abc123"),
+      sistema_operativo: stringSchema("iOS 18", true),
+      navegador: stringSchema("Safari", true),
+      confiable: booleanSchema(true),
+      fecha_primer_uso: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      fecha_ultimo_uso: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_dispositivo: 4,
+      id_usuario: 7,
+      tipo_dispositivo: "MOBILE",
+      identificador_unico: "device-fingerprint-abc123",
+      sistema_operativo: "iOS 18",
+      navegador: "Safari",
+      confiable: true,
+      fecha_primer_uso: "2026-11-19T10:00:00.000Z",
+      fecha_ultimo_uso: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  DeviceListData: arraySchema(schemaRef("DeviceData")),
+  AlertData: objectSchema({
+    id_alerta: integerSchema(6),
+    id_usuario: integerSchema(7),
+    id_transaccion: integerSchema(42),
+    severidad: stringSchema("MEDIA"),
+    motivo: stringSchema("Revisar movimiento"),
+    estado: stringSchema("PENDIENTE"),
+    fecha_detectada: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    fecha_resuelta: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
+    accion_usuario: stringSchema("FUI_YO", true),
+  }),
+  AlertListItem: objectSchema({
+    id_alerta: integerSchema(6),
+    id_usuario: integerSchema(7),
+    id_transaccion: integerSchema(42),
+    severidad: stringSchema("MEDIA"),
+    motivo: stringSchema("Revisar movimiento"),
+    estado: stringSchema("PENDIENTE"),
+    fecha_detectada: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    fecha_resuelta: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
+    accion_usuario: stringSchema("FUI_YO", true),
+    transaccion: objectSchema({
+      id_transaccion: integerSchema(42),
+      monto: numberSchema(50.75),
+      tipo_movimiento: stringSchema("GASTO"),
+      descripcion: stringSchema("Compra", true),
+      comercio: stringSchema("Tienda", true),
+      fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      ubicacion: {
+        ...objectSchema({ ciudad: stringSchema("Caracas", true) }),
+        nullable: true,
+      },
+    }),
+  }),
+  AlertListData: objectSchema(
+    {
+      items: arraySchema(schemaRef("AlertListItem")),
+      pagination: objectSchema({
+        total: integerSchema(1),
+        limit: integerSchema(20),
+        offset: integerSchema(0),
+      }),
+    },
+    {
+      items: [
+        {
+          id_alerta: 6,
+          id_usuario: 7,
+          id_transaccion: 42,
+          severidad: "MEDIA",
+          motivo: "Revisar movimiento",
+          estado: "PENDIENTE",
+          fecha_detectada: "2026-11-19T10:00:00.000Z",
+          fecha_resuelta: null,
+          accion_usuario: null,
+          transaccion: {
+            id_transaccion: 42,
+            monto: 50.75,
+            tipo_movimiento: "GASTO",
+            descripcion: "Compra",
+            comercio: "Tienda",
+            fecha_transaccion: "2026-11-19T10:00:00.000Z",
+            ubicacion: { ciudad: "Caracas" },
+          },
+        },
+      ],
+      pagination: { total: 1, limit: 20, offset: 0 },
+    },
+  ),
+  AlertDetailData: objectSchema({
+    id_alerta: integerSchema(6),
+    id_usuario: integerSchema(7),
+    id_transaccion: integerSchema(42),
+    severidad: stringSchema("MEDIA"),
+    motivo: stringSchema("Revisar movimiento"),
+    estado: stringSchema("PENDIENTE"),
+    fecha_detectada: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    fecha_resuelta: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
+    accion_usuario: stringSchema("FUI_YO", true),
+    transaccion: objectSchema({
+      id_transaccion: integerSchema(42),
+      id_usuario: integerSchema(7),
+      id_cuenta: integerSchema(3, true),
+      id_categoria: integerSchema(12, true),
+      id_dispositivo: integerSchema(4, true),
+      id_ubicacion: integerSchema(9, true),
+      tipo_movimiento: stringSchema("GASTO"),
+      monto: numberSchema(50.75),
+      moneda: stringSchema("COP"),
+      descripcion: stringSchema("Compra", true),
+      comercio: stringSchema("Tienda", true),
+      canal: stringSchema("web"),
+      es_recurrente: booleanSchema(false),
+      score_anomalia: stringSchema("5.00", true),
+      estado: stringSchema("CONFIRMADA"),
+      fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    }),
+  }),
+  AlertCountsData: {
+    type: "object",
+    additionalProperties: { type: "integer", minimum: 0 },
+    example: { BAJA: 3, MEDIA: 2, ALTA: 1, CRITICA: 0 },
+  },
+  DashboardStatsData: objectSchema(
+    {
+      saldo_total: numberSchema(1500),
+      mes_actual: objectSchema({
+        ingresos: numberSchema(2000),
+        gastos: numberSchema(500),
+        ahorros: numberSchema(250),
+        balance_neto: numberSchema(1500),
+      }),
+      alertas: objectSchema({
+        activas: integerSchema(2),
+        criticas: integerSchema(1),
+      }),
+    },
+    {
+      saldo_total: 1500,
+      mes_actual: { ingresos: 2000, gastos: 500, ahorros: 250, balance_neto: 1500 },
+      alertas: { activas: 2, criticas: 1 },
+    },
+  ),
+  DashboardRecentAlertData: arraySchema(
+    objectSchema({
+      id_alerta: integerSchema(6),
+      id_transaccion: integerSchema(42),
+      severidad: stringSchema("MEDIA"),
+      fecha_detectada: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      motivo: stringSchema("Revisar movimiento"),
+      accion_usuario: stringSchema("FUI_YO", true),
+      estado: stringSchema("PENDIENTE"),
+      monto: numberSchema(50.75),
+      comercio: stringSchema("Tienda", true),
+      estado_transaccion: stringSchema("PENDIENTE"),
+    }),
+  ),
+  DashboardRecentTransactionData: arraySchema(
+    objectSchema({
+      id_transaccion: integerSchema(42),
+      monto: numberSchema(50.75),
+      tipo_movimiento: stringSchema("GASTO"),
+      fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      comercio: stringSchema("Tienda", true),
+      estado: stringSchema("CONFIRMADA"),
+      score_anomalia: numberSchema(5),
+      categoria: objectSchema({
+        nombre: stringSchema("Alimentación"),
+        icono: stringSchema("utensils", true),
+        color: stringSchema("#2563eb", true),
+      }),
+    }),
+  ),
+  AdviceData: arraySchema(
+    objectSchema({
+      id_consejo: integerSchema(2),
+      tipo: stringSchema("PRESUPUESTO"),
+      titulo: stringSchema("Presupuesto al 80%"),
+      descripcion: stringSchema("Has usado el 80% de tu presupuesto."),
+      prioridad: stringSchema("MEDIA"),
+      fecha_generado: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    }),
+  ),
+  AdviceReadData: objectSchema(
+    {
+      id_consejo: integerSchema(2),
+      leido: booleanSchema(true),
+      fecha_leido: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
+    },
+    { id_consejo: 2, leido: true, fecha_leido: "2026-11-19T10:00:00.000Z" },
+  ),
+  BudgetListItem: objectSchema({
+    id_presupuesto: integerSchema(5),
+    id_categoria: integerSchema(12, true),
+    limite_mensual: numberSchema(300),
+    mes: integerSchema(11),
+    anio: integerSchema(2026),
+    fecha_creacion: dateTimeSchema("2026-11-01T10:00:00.000Z"),
+    gastado: numberSchema(175.5),
+    categoria: objectSchema({
+      nombre: stringSchema("Alimentación", true),
+      icono: stringSchema("utensils", true),
+      color: stringSchema("#2563eb", true),
+    }),
+  }),
+  BudgetListData: arraySchema(schemaRef("BudgetListItem")),
+  BudgetCreatedData: objectSchema({
+    id_presupuesto: integerSchema(5),
+    id_categoria: integerSchema(12, true),
+    limite_mensual: numberSchema(300),
+    mes: integerSchema(11),
+    anio: integerSchema(2026),
+    fecha_creacion: dateTimeSchema("2026-11-01T10:00:00.000Z"),
+  }),
+  BudgetUpdatedData: objectSchema({
+    id_presupuesto: integerSchema(5),
+    limite_mensual: numberSchema(350),
+    mes: integerSchema(11),
+    anio: integerSchema(2026),
+  }),
+  BudgetDeletedData: objectSchema({ id_presupuesto: integerSchema(5) }, { id_presupuesto: 5 }),
+  SavingsGoalData: objectSchema(
+    {
+      id_meta: integerSchema(8),
+      nombre: stringSchema("Fondo de emergencia"),
+      monto_objetivo: numberSchema(1000),
+      monto_actual: numberSchema(250),
+      progreso: numberSchema(25),
+      fecha_limite: dateTimeSchema("2027-06-30T00:00:00.000Z", true),
+      estado: stringSchema("ACTIVA"),
+      fecha_creacion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_meta: 8,
+      nombre: "Fondo de emergencia",
+      monto_objetivo: 1000,
+      monto_actual: 250,
+      progreso: 25,
+      fecha_limite: "2027-06-30",
+      estado: "ACTIVA",
+      fecha_creacion: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  SavingsListData: arraySchema(schemaRef("SavingsGoalData")),
+  SavingsDeletedData: objectSchema({ id_meta: integerSchema(8) }, { id_meta: 8 }),
+  BehaviorPatternData: objectSchema(
+    {
+      id_usuario: integerSchema(7),
+      total_transacciones: integerSchema(32),
+      monto_promedio: numberSchema(75.5),
+      monto_maximo: numberSchema(450),
+      transacciones_sospechosas: integerSchema(1),
+      categorias_frecuentes: arraySchema(
+        objectSchema({
+          id_categoria: integerSchema(12),
+          nombre: stringSchema("Alimentación"),
+          cantidad: integerSchema(12),
+        }),
+      ),
+      patron_evaluado_en: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    },
+    {
+      id_usuario: 7,
+      total_transacciones: 32,
+      monto_promedio: 75.5,
+      monto_maximo: 450,
+      transacciones_sospechosas: 1,
+      categorias_frecuentes: [{ id_categoria: 12, nombre: "Alimentación", cantidad: 12 }],
+      patron_evaluado_en: "2026-11-19T10:00:00.000Z",
+    },
+  ),
+  InsightsData: objectSchema(
+    {
+      periodo_dias: integerSchema(30),
+      resumen: objectSchema({
+        ingresos: numberSchema(2000),
+        gastos: numberSchema(1200),
+        ahorros: numberSchema(250),
+        balance: numberSchema(800),
+        tasa_ahorro: numberSchema(12.5),
+        total_transacciones: integerSchema(25),
+        score_riesgo_promedio: numberSchema(8.5),
+        total_alertas: integerSchema(2),
+        alertas_criticas: integerSchema(0),
+      }),
+      top_categorias: arraySchema(
+        objectSchema({
+          nombre: stringSchema("Alimentación"),
+          icono: stringSchema("utensils", true),
+          color: stringSchema("#2563eb", true),
+          total: numberSchema(500),
+          cantidad: integerSchema(8),
+        }),
+      ),
+      top_comercios: arraySchema(
+        objectSchema({
+          comercio: stringSchema("Tienda"),
+          total: numberSchema(300),
+          cantidad: integerSchema(4),
+        }),
+      ),
+      consejos: arraySchema(stringSchema()),
+    },
+    {
+      periodo_dias: 30,
+      resumen: {
+        ingresos: 2000,
+        gastos: 1200,
+        ahorros: 250,
+        balance: 800,
+        tasa_ahorro: 12.5,
+        total_transacciones: 25,
+        score_riesgo_promedio: 8.5,
+        total_alertas: 2,
+        alertas_criticas: 0,
+      },
+      top_categorias: [
+        { nombre: "Alimentación", icono: "utensils", color: "#2563eb", total: 500, cantidad: 8 },
+      ],
+      top_comercios: [{ comercio: "Tienda", total: 300, cantidad: 4 }],
+      consejos: ["Revisa tus gastos del periodo."],
+    },
+  ),
+  ReportSummaryData: objectSchema(
+    {
+      periodo: objectSchema({
+        fecha_inicio: dateTimeSchema("2026-11-01T00:00:00.000Z"),
+        fecha_fin: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      }),
+      totales: objectSchema({
+        ingresos: numberSchema(2000),
+        gastos: numberSchema(1200),
+        ahorros: numberSchema(250),
+        balance: numberSchema(800),
+      }),
+      transacciones: objectSchema({
+        total: integerSchema(25),
+        aprobadas: integerSchema(23),
+        alertadas: integerSchema(2),
+        bloqueadas: integerSchema(0),
+      }),
+    },
+    {
+      periodo: {
+        fecha_inicio: "2026-11-01T00:00:00.000Z",
+        fecha_fin: "2026-11-19T10:00:00.000Z",
+      },
+      totales: { ingresos: 2000, gastos: 1200, ahorros: 250, balance: 800 },
+      transacciones: { total: 25, aprobadas: 23, alertadas: 2, bloqueadas: 0 },
+    },
+  ),
+  ReportByCategoryData: objectSchema(
+    {
+      periodo: objectSchema({
+        fecha_inicio: dateTimeSchema("2026-11-01T00:00:00.000Z"),
+        fecha_fin: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      }),
+      tipo_movimiento: stringSchema("GASTO"),
+      categorias: arraySchema(
+        objectSchema({
+          id_categoria: integerSchema(12),
+          nombre: stringSchema("Alimentación"),
+          icono: stringSchema("utensils", true),
+          color: stringSchema("#2563eb", true),
+          total: numberSchema(500),
+          cantidad: integerSchema(8),
+        }),
+      ),
+    },
+    {
+      periodo: {
+        fecha_inicio: "2026-11-01T00:00:00.000Z",
+        fecha_fin: "2026-11-19T10:00:00.000Z",
+      },
+      tipo_movimiento: "GASTO",
+      categorias: [
+        {
+          id_categoria: 12,
+          nombre: "Alimentación",
+          icono: "utensils",
+          color: "#2563eb",
+          total: 500,
+          cantidad: 8,
+        },
+      ],
+    },
+  ),
+  ReportTransactionsData: objectSchema(
+    {
+      periodo: objectSchema({
+        fecha_inicio: dateTimeSchema("2026-11-01T00:00:00.000Z"),
+        fecha_fin: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      }),
+      total: integerSchema(25),
+      truncated: booleanSchema(false),
+      top_comercios: arraySchema(
+        objectSchema({
+          comercio: stringSchema("Tienda"),
+          total: numberSchema(300),
+          numero_transacciones: integerSchema(4),
+        }),
+      ),
+      items: arraySchema(
+        objectSchema({
+          id_transaccion: integerSchema(42),
+          fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+          tipo_movimiento: stringSchema("GASTO"),
+          monto: numberSchema(50.75),
+          comercio: stringSchema("Tienda", true),
+          descripcion: stringSchema("Compra", true),
+          estado: stringSchema("CONFIRMADA"),
+          score_anomalia: numberSchema(5),
+          ciudad: stringSchema("Caracas", true),
+          nombre_cuenta: stringSchema("Cuenta principal", true),
+          nombre_categoria: stringSchema("Alimentación", true),
+        }),
+      ),
+    },
+    {
+      periodo: {
+        fecha_inicio: "2026-11-01T00:00:00.000Z",
+        fecha_fin: "2026-11-19T10:00:00.000Z",
+      },
+      total: 25,
+      truncated: false,
+      top_comercios: [{ comercio: "Tienda", total: 300, numero_transacciones: 4 }],
+      items: [
+        {
+          id_transaccion: 42,
+          fecha_transaccion: "2026-11-19T10:00:00.000Z",
+          tipo_movimiento: "GASTO",
+          monto: 50.75,
+          comercio: "Tienda",
+          descripcion: "Compra",
+          estado: "CONFIRMADA",
+          score_anomalia: 5,
+          ciudad: "Caracas",
+          nombre_cuenta: "Cuenta principal",
+          nombre_categoria: "Alimentación",
+        },
+      ],
+    },
+  ),
+  MapStatsData: objectSchema(
+    {
+      total_geolocalizadas: integerSchema(18),
+      ciudades_distintas: integerSchema(3),
+      paises_distintos: integerSchema(1),
+      transacciones_riesgo_alto: integerSchema(2),
+      score_promedio: numberSchema(7.5),
+    },
+    {
+      total_geolocalizadas: 18,
+      ciudades_distintas: 3,
+      paises_distintos: 1,
+      transacciones_riesgo_alto: 2,
+      score_promedio: 7.5,
+    },
+  ),
+  MapLocationItem: objectSchema({
+    id_transaccion: integerSchema(42),
+    monto: numberSchema(50.75),
+    tipo_movimiento: stringSchema("GASTO"),
+    comercio: stringSchema("Tienda", true),
+    estado: stringSchema("CONFIRMADA"),
+    score_anomalia: numberSchema(5),
+    es_sospechosa: booleanSchema(false),
+    nivel_riesgo: stringSchema("BAJO"),
+    ciudad: stringSchema("Caracas", true),
+    pais: stringSchema("Venezuela", true),
+    latitud: numberSchema(10.48),
+    longitud: numberSchema(-66.9),
+    fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+    nombre_cuenta: stringSchema("Cuenta principal", true),
+    nombre_categoria: stringSchema("Alimentación", true),
+  }),
+  MapLocationsData: objectSchema(
+    {
+      items: arraySchema(schemaRef("MapLocationItem")),
+      total: integerSchema(18),
+      truncated: booleanSchema(false),
+    },
+    {
+      items: [
+        {
+          id_transaccion: 42,
+          monto: 50.75,
+          tipo_movimiento: "GASTO",
+          comercio: "Tienda",
+          estado: "CONFIRMADA",
+          score_anomalia: 5,
+          es_sospechosa: false,
+          nivel_riesgo: "BAJO",
+          ciudad: "Caracas",
+          pais: "Venezuela",
+          latitud: 10.48,
+          longitud: -66.9,
+          fecha_transaccion: "2026-11-19T10:00:00.000Z",
+          nombre_cuenta: "Cuenta principal",
+          nombre_categoria: "Alimentación",
+        },
+      ],
+      total: 18,
+      truncated: false,
+    },
+  ),
+};
+
+const successSchemaByOperation: Record<string, Record<string, string>> = {
+  "/api/v2/audit": { get: "AuditHistoryData" },
+  "/api/v2/auth/register": { post: "RegistrationData" },
+  "/api/v2/auth/login": { post: "LoginData" },
+  "/api/v2/auth/verify-email": { post: "MessageData" },
+  "/api/v2/auth/forgot-password": { post: "MessageData" },
+  "/api/v2/auth/verify-reset-token": { post: "ResetTokenData" },
+  "/api/v2/auth/reset-password": { post: "MessageData" },
+  "/api/v2/auth/me": { get: "UserProfileData", patch: "UserProfileData" },
+  "/api/v2/auth/change-password": { post: "MessageData" },
+  "/api/v2/accounts": { get: "AccountListData", post: "AccountData" },
+  "/api/v2/accounts/{id}": {
+    get: "AccountData",
+    patch: "AccountData",
+    delete: "AccountDeletedData",
+  },
+  "/api/v2/categories": { get: "CategoryListData", post: "CategoryData" },
+  "/api/v2/categories/{id}": {
+    get: "CategoryData",
+    patch: "CategoryData",
+    delete: "CategoryDeletedData",
+  },
+  "/api/v2/transactions": { get: "TransactionListData", post: "TransactionCreateData" },
+  "/api/v2/transactions/counts-by-level": { get: "RiskCountsData" },
+  "/api/v2/transactions/{id}": {
+    get: "TransactionData",
+    delete: "TransactionRawData",
+  },
+  "/api/v2/transactions/{id}/status": { patch: "TransactionStatusData" },
+  "/api/v2/devices": { get: "DeviceListData", post: "DeviceData" },
+  "/api/v2/devices/{id}": { get: "DeviceData", delete: "DeviceData" },
+  "/api/v2/devices/{id}/trust": { patch: "DeviceData" },
+  "/api/v2/alerts": { get: "AlertListData" },
+  "/api/v2/alerts/counts-by-level": { get: "AlertCountsData" },
+  "/api/v2/alerts/{id}": { get: "AlertDetailData" },
+  "/api/v2/alerts/{id}/status": { patch: "AlertData" },
+  "/api/v2/dashboard/stats": { get: "DashboardStatsData" },
+  "/api/v2/dashboard/estadisticas": { get: "DashboardStatsData" },
+  "/api/v2/dashboard/recent-alerts": { get: "DashboardRecentAlertData" },
+  "/api/v2/dashboard/alertas-recientes": { get: "DashboardRecentAlertData" },
+  "/api/v2/dashboard/recent-transactions": { get: "DashboardRecentTransactionData" },
+  "/api/v2/dashboard/transacciones-recientes": { get: "DashboardRecentTransactionData" },
+  "/api/v2/dashboard/advice": { get: "AdviceData" },
+  "/api/v2/dashboard/advice/{id}/read": { patch: "AdviceReadData" },
+  "/api/v2/budgets": { get: "BudgetListData", post: "BudgetCreatedData" },
+  "/api/v2/budgets/{id}": {
+    patch: "BudgetUpdatedData",
+    delete: "BudgetDeletedData",
+  },
+  "/api/v2/savings": { get: "SavingsListData", post: "SavingsGoalData" },
+  "/api/v2/savings/{id}": {
+    patch: "SavingsGoalData",
+    delete: "SavingsDeletedData",
+  },
+  "/api/v2/savings/{id}/funds": { post: "SavingsGoalData" },
+  "/api/v2/profile": { get: "UserProfileData", patch: "UserProfileData" },
+  "/api/v2/profile/behavior-pattern": { get: "BehaviorPatternData" },
+  "/api/v2/insights": { get: "InsightsData" },
+  "/api/v2/reports/summary": { get: "ReportSummaryData" },
+  "/api/v2/reports/by-category": { get: "ReportByCategoryData" },
+  "/api/v2/reports/transactions": { get: "ReportTransactionsData" },
+  "/api/v2/map/stats": { get: "MapStatsData" },
+  "/api/v2/map/locations": { get: "MapLocationsData" },
+  "/api/v2/map/ubicaciones": { get: "MapLocationsData" },
+};
+
+const strongPasswordOpenApiSchema = {
+  type: "string",
+  minLength: 10,
+  maxLength: 72,
+  pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)",
+  description: "10–72 caracteres, con al menos una mayúscula, una minúscula y un número.",
+};
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.3",
@@ -117,6 +1183,7 @@ const options: swaggerJsdoc.Options = {
     ],
     tags: [
       { name: "Health", description: "Estado del servicio" },
+      { name: "Audit", description: "Historial de seguridad personal, de solo lectura" },
       { name: "Auth", description: "Registro, login y contraseñas" },
       { name: "Accounts", description: "Cuentas financieras" },
       { name: "Categories", description: "Categorías INGRESO/GASTO/AHORRO" },
@@ -175,15 +1242,6 @@ const options: swaggerJsdoc.Options = {
         RateLimitErrorResponse: {
           allOf: [{ $ref: "#/components/schemas/ErrorResponse" }],
         },
-        SuccessResponse: {
-          type: "object",
-          required: ["success", "data"],
-          properties: {
-            success: { type: "boolean", enum: [true] },
-            message: { type: "string" },
-            data: {},
-          },
-        },
         VerifyResetTokenRequest: {
           type: "object",
           required: ["token"],
@@ -201,10 +1259,8 @@ const options: swaggerJsdoc.Options = {
             nombre_completo: { type: "string", example: "Ana Pérez" },
             email: { type: "string", format: "email", example: "ana@email.com" },
             password: {
-              type: "string",
-              minLength: 10,
+              ...strongPasswordOpenApiSchema,
               example: "ClaveSegura1",
-              description: "Mín. 10 caracteres, mayúscula, minúscula y número",
             },
             telefono: {
               type: "string",
@@ -234,11 +1290,7 @@ const options: swaggerJsdoc.Options = {
           required: ["token", "password_nueva"],
           properties: {
             token: { type: "string" },
-            password_nueva: {
-              type: "string",
-              minLength: 10,
-              description: "Mín. 10 caracteres, mayúscula, minúscula y número",
-            },
+            password_nueva: { ...strongPasswordOpenApiSchema },
           },
         },
         ChangePasswordRequest: {
@@ -246,7 +1298,7 @@ const options: swaggerJsdoc.Options = {
           required: ["password_actual", "password_nueva"],
           properties: {
             password_actual: { type: "string" },
-            password_nueva: { type: "string", minLength: 10 },
+            password_nueva: { ...strongPasswordOpenApiSchema },
           },
         },
         CreateAccountRequest: {
@@ -262,6 +1314,7 @@ const options: swaggerJsdoc.Options = {
             numero_enmascarado: { type: "string", example: "****1234" },
             color: { type: "string", maxLength: 20, example: "#6366F1" },
             saldo_inicial: { type: "number", example: 1000 },
+            saldo_actual: { type: "number", example: 1000, readOnly: true },
             estado: { type: "boolean", default: true },
           },
         },
@@ -301,11 +1354,6 @@ const options: swaggerJsdoc.Options = {
             pais: { type: "string", example: "Venezuela" },
             latitud: { type: "number", example: 10.48 },
             longitud: { type: "number", example: -66.9 },
-            ip_origen: {
-              type: "string",
-              description: "Dirección IPv4 o IPv6 válida",
-              example: "192.168.1.10",
-            },
             fecha_transaccion: { type: "string", format: "date-time" },
             es_recurrente: { type: "boolean", default: false },
           },
@@ -545,6 +1593,60 @@ const options: swaggerJsdoc.Options = {
         },
       },
 
+      // ───────────── AUDIT ─────────────
+      "/api/v2/audit": {
+        get: {
+          tags: ["Audit"],
+          summary: "Consultar el historial de seguridad propio",
+          description:
+            "Devuelve eventos de la cuenta autenticada en orden descendente. No expone direcciones IP y no permite modificar ni eliminar registros.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "limit",
+              in: "query",
+              schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+            },
+            {
+              name: "before_id",
+              in: "query",
+              description: "ID del último evento visto para cargar eventos anteriores.",
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Historial del usuario autenticado.",
+              content: {
+                "application/json": {
+                  example: {
+                    success: true,
+                    data: {
+                      items: [
+                        {
+                          id_log: 42,
+                          tipo_accion: "INICIO_SESION_EXITOSO",
+                          entidad_afectada: "usuarios",
+                          id_entidad: 7,
+                          descripcion: "Inicio de sesión exitoso.",
+                          fecha_accion: "2026-11-19T15:00:00.000Z",
+                        },
+                      ],
+                      has_more: false,
+                      next_cursor: null,
+                    },
+                  },
+                },
+              },
+            },
+            "401": {
+              description: "No autenticado",
+              content: errorContentByStatus["401"],
+            },
+          },
+        },
+      },
+
       // ───────────── AUTH ─────────────
       "/api/v2/auth/register": {
         post: {
@@ -561,11 +1663,13 @@ const options: swaggerJsdoc.Options = {
           },
           responses: {
             "201": {
-              description: "Registro recibido; el inicio de sesión puede requerir verificación por correo",
+              description:
+                "Registro recibido; el inicio de sesión puede requerir verificación por correo",
               content: {
                 "application/json": {
                   example: {
-                    status: "success",
+                    success: true,
+                    message: "Registro completado con éxito",
                     data: {
                       message: "Si el correo puede registrarse, ya puedes intentar iniciar sesión",
                       emailVerificationRequired: false,
@@ -880,7 +1984,9 @@ const options: swaggerJsdoc.Options = {
                       tipo: "GASTO",
                       icono: "utensils",
                       color: "#2563eb",
+                      es_default: false,
                       estado: true,
+                      fecha_creacion: "2026-11-19T10:00:00.000Z",
                       es_personalizada: true,
                     },
                   },
@@ -945,7 +2051,17 @@ const options: swaggerJsdoc.Options = {
                   example: {
                     success: true,
                     message: "Categoría eliminada exitosamente",
-                    data: { id_categoria: 12 },
+                    data: {
+                      id_categoria: 12,
+                      id_usuario: 7,
+                      nombre: "Alimentación",
+                      tipo: "GASTO",
+                      icono: "utensils",
+                      color: "#2563eb",
+                      es_default: false,
+                      estado: false,
+                      fecha_creacion: "2026-11-19T10:00:00.000Z",
+                    },
                   },
                 },
               },
@@ -1405,7 +2521,11 @@ const options: swaggerJsdoc.Options = {
           parameters: [
             { name: "id_cuenta", in: "query", schema: { type: "integer", minimum: 1 } },
             { name: "mes", in: "query", schema: { type: "integer", minimum: 1, maximum: 12 } },
-            { name: "anio", in: "query", schema: { type: "integer", minimum: 2020, maximum: 2100 } },
+            {
+              name: "anio",
+              in: "query",
+              schema: { type: "integer", minimum: 2020, maximum: 2100 },
+            },
           ],
           responses: { "200": { description: "Lista de presupuestos" } },
         },
@@ -1693,7 +2813,8 @@ const options: swaggerJsdoc.Options = {
           ],
           responses: {
             "200": {
-              description: "Listado paginado con total real, truncated y cinco comercios principales",
+              description:
+                "Listado paginado con total real, truncated y cinco comercios principales",
             },
           },
         },
@@ -1818,10 +2939,47 @@ type SwaggerOperation = {
 };
 
 const generatedSwaggerSpec = swaggerJsdoc(options);
-const paths = (
-  generatedSwaggerSpec as unknown as { paths?: Record<string, Record<string, unknown>> }
-).paths;
+type SwaggerDocument = {
+  components?: { schemas?: Record<string, OpenApiSchema> };
+  paths?: Record<string, Record<string, unknown>>;
+};
+const swaggerDocument = generatedSwaggerSpec as unknown as SwaggerDocument;
+const componentSchemas = swaggerDocument.components?.schemas;
+if (!componentSchemas) {
+  throw new Error("OpenAPI component schemas were not generated");
+}
+Object.assign(componentSchemas, responseDataSchemas);
+const paths = swaggerDocument.paths;
 const httpMethods = new Set(["get", "post", "put", "patch", "delete", "options", "head", "trace"]);
+
+function getExample(schema: OpenApiSchema, depth = 0): unknown {
+  if (depth > 8) return null;
+  if (typeof schema.$ref === "string") {
+    const componentName = schema.$ref.split("/").pop();
+    const referencedSchema = componentName ? componentSchemas?.[componentName] : undefined;
+    return referencedSchema ? getExample(referencedSchema, depth + 1) : null;
+  }
+  if ("example" in schema) return schema.example;
+  if (schema.nullable === true) return null;
+  if (schema.type === "array") {
+    return [getExample(schema.items as OpenApiSchema, depth + 1)];
+  }
+  if (schema.type === "object") {
+    const properties = schema.properties as Record<string, OpenApiSchema> | undefined;
+    return Object.fromEntries(
+      Object.entries(properties ?? {}).map(([name, property]) => [
+        name,
+        getExample(property, depth + 1),
+      ]),
+    );
+  }
+  if (schema.type === "string") {
+    return schema.format === "date-time" ? "2026-11-19T10:00:00.000Z" : "string";
+  }
+  if (schema.type === "integer" || schema.type === "number") return 1;
+  if (schema.type === "boolean") return true;
+  return null;
+}
 
 for (const [path, pathItem] of Object.entries(paths ?? {})) {
   for (const [method, rawOperation] of Object.entries(pathItem)) {
@@ -1874,7 +3032,13 @@ for (const [path, pathItem] of Object.entries(paths ?? {})) {
 
     if (path.startsWith("/api/v2/")) {
       for (const [status, response] of Object.entries(responses)) {
-        if (!/^2\d\d$/.test(status) || response.$ref) continue;
+        if (!/^2\d\d$/.test(status)) continue;
+
+        const schemaName = successSchemaByOperation[path]?.[method];
+        const dataSchema = schemaName ? componentSchemas[schemaName] : undefined;
+        if (!schemaName || !dataSchema) {
+          throw new Error(`Missing response schema for ${method.toUpperCase()} ${path}`);
+        }
 
         const content =
           typeof response.content === "object" && response.content !== null
@@ -1884,13 +3048,27 @@ for (const [path, pathItem] of Object.entries(paths ?? {})) {
               >)
             : {};
         const jsonContent = content["application/json"] ?? {};
+        const responseExample = jsonContent.example ?? {
+          success: true,
+          message: "Operación exitosa",
+          data: getExample(schemaRef(schemaName)),
+        };
         responses[status] = {
           ...response,
           content: {
             ...content,
             "application/json": {
               ...jsonContent,
-              schema: { $ref: "#/components/schemas/SuccessResponse" },
+              schema: {
+                type: "object",
+                required: ["success", "data"],
+                properties: {
+                  success: { type: "boolean", enum: [true] },
+                  message: { type: "string" },
+                  data: schemaRef(schemaName),
+                },
+              },
+              example: responseExample,
             },
           },
         };

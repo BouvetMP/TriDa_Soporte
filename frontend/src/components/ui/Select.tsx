@@ -42,7 +42,9 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           ref={ref}
           id={selectId}
           disabled={disabled}
-          aria-label={props["aria-label"] ?? (label ? undefined : "Seleccionar opción")}
+          aria-label={
+            props["aria-label"] ?? (label ? undefined : "Seleccionar opción")
+          }
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={error ? errorId : helperText ? helperId : undefined}
           className={cn(

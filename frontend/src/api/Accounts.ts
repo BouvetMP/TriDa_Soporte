@@ -49,9 +49,10 @@ export const AccountsApi = {
   /**
    * DELETE /api/v2/accounts/:id
    */
-  async deleteAccount(id_cuenta: number): Promise<void> {
-    await apiClient.delete<ApiSuccess<null>>(
+  async deleteAccount(id_cuenta: number): Promise<{ id_cuenta: number }> {
+    const response = await apiClient.delete<ApiSuccess<{ id_cuenta: number }>>(
       `${API_ENDPOINTS.ACCOUNTS}/${id_cuenta}`,
     );
+    return response.data.data;
   },
 };

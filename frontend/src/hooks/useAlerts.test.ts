@@ -21,11 +21,6 @@ vi.mock("@/components/ui/Toast", () => ({
   useToast: () => ({ showToast: mocks.showToast }),
 }));
 
-type PendingCountResponse = {
-  success: true;
-  data: { count: number };
-};
-
 afterEach(() => {
   cleanup();
 });
@@ -34,8 +29,8 @@ describe("useAlerts", () => {
   beforeEach(() => {
     mocks.getAll.mockReset();
     mocks.getAll.mockResolvedValue({
-      success: true,
-      data: { items: [], pagination: { total: 0, limit: 15, offset: 0 } },
+      items: [],
+      pagination: { total: 0, limit: 15, offset: 0 },
     });
     mocks.getPendingCount.mockReset();
     mocks.updateStatus.mockReset();
@@ -43,16 +38,15 @@ describe("useAlerts", () => {
   });
 
   it("ignores an older pending-count response after a newer request", async () => {
-    const pendingCountResolvers: Array<
-      (response: PendingCountResponse) => void
-    > = [];
+    const pendingCountResolvers: Array<(response: { count: number }) => void> =
+      [];
     mocks.getPendingCount.mockImplementation(
       () =>
-        new Promise<PendingCountResponse>((resolve) => {
+        new Promise<{ count: number }>((resolve) => {
           pendingCountResolvers.push(resolve);
         }),
     );
-    mocks.updateStatus.mockResolvedValue({ success: true, data: {} });
+    mocks.updateStatus.mockResolvedValue({});
 
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => {
@@ -67,14 +61,14 @@ describe("useAlerts", () => {
     });
 
     await act(async () => {
-      pendingCountResolvers[1]({ success: true, data: { count: 2 } });
+      pendingCountResolvers[1]({ count: 2 });
     });
     await waitFor(() => {
       expect(result.current.pendingCount).toBe(2);
     });
 
     await act(async () => {
-      pendingCountResolvers[0]({ success: true, data: { count: 1 } });
+      pendingCountResolvers[0]({ count: 1 });
     });
     expect(result.current.pendingCount).toBe(2);
   });

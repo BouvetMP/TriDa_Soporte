@@ -2,6 +2,7 @@ import React from "react";
 import { useProfile } from "@/hooks/useProfile";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { ChangePasswordForm } from "@/components/profile/ChangePasswordForm";
+import { SecurityHistory } from "@/components/profile/SecurityHistory";
 import { UserCheck } from "lucide-react";
 
 export const ProfilePage: React.FC = () => {
@@ -39,6 +40,8 @@ export const ProfilePage: React.FC = () => {
           isLoading={isChangingPassword}
         />
       </div>
+
+      <SecurityHistory />
     </div>
   );
 };

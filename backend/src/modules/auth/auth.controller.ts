@@ -14,7 +14,8 @@ import {
   verifyResetTokenSchema,
   verifyEmailSchema,
 } from "./auth.schemas.js";
-import { sendError, sendSuccess } from "../../utils/apiResponse.js";
+import { sendSuccess } from "../../utils/apiResponse.js";
+import { AppError } from "../../utils/AppError.js";
 import { profileService } from "../profile/profile.service.js";
 
 export const authController = {
@@ -63,7 +64,7 @@ export const authController = {
       const { token } = verifyResetTokenSchema.parse(req.body);
       const result = await authService.verifyResetToken(token);
       if (!result.valid) {
-        sendError(res, result.error || "Token inválido", 401);
+        throw new AppError(result.error || "Token inválido", 401, "INVALID_RESET_TOKEN");
         return;
       }
       sendSuccess(res, result);

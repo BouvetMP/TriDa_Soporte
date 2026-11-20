@@ -1,7 +1,15 @@
 /**
  * ¿Qué? Sistema global de notificaciones Flotantes (Toast Provider + Hook).
  */
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -31,25 +39,46 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const removeToast = useCallback((id: string) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timers.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  useEffect(
+    () => () => {
+      timers.current.forEach((timer) => clearTimeout(timer));
+      timers.current.clear();
+    },
+    [],
+  );
 
   const showToast = useCallback(
     ({ type, title, message }: Omit<ToastItem, "id">) => {
       const id = Math.random().toString(36).substring(2, 9);
       setToasts((prev) => [...prev, { id, type, title, message }]);
 
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        timers.current.delete(id);
         removeToast(id);
       }, 4000);
+      timers.current.set(id, timer);
     },
     [removeToast],
   );
 
+  const contextValue = useMemo(
+    () => ({ showToast, removeToast }),
+    [removeToast, showToast],
+  );
+
   return (
-    <ToastContext.Provider value={{ showToast, removeToast }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       {/* Contenedor de flotantes */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0">

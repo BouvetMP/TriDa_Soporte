@@ -9,6 +9,7 @@ import type {
   UpdateBudgetPayload,
 } from "@/types";
 import { useAccount } from "@/hooks/useAccount";
+import { dateOnlyInBogota } from "@/utils/Date";
 
 export function useBudgets(initialFilters?: BudgetFilters) {
   const { showToast } = useToast();
@@ -17,10 +18,11 @@ export function useBudgets(initialFilters?: BudgetFilters) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const currentDate = new Date();
+  const todayInBogota = dateOnlyInBogota(new Date());
+  const [currentYear, currentMonth] = todayInBogota.split("-").map(Number);
   const [filters, setFilters] = useState<BudgetFilters>({
-    mes: initialFilters?.mes ?? currentDate.getMonth() + 1,
-    anio: initialFilters?.anio ?? currentDate.getFullYear(),
+    mes: initialFilters?.mes ?? currentMonth,
+    anio: initialFilters?.anio ?? currentYear,
     ...initialFilters,
   });
 
@@ -51,7 +53,8 @@ export function useBudgets(initialFilters?: BudgetFilters) {
 
   const budgets = allBudgets.filter((budget) => {
     if (filters.mes !== undefined && budget.mes !== filters.mes) return false;
-    if (filters.anio !== undefined && budget.anio !== filters.anio) return false;
+    if (filters.anio !== undefined && budget.anio !== filters.anio)
+      return false;
     if (
       filters.id_categoria !== undefined &&
       budget.id_categoria !== filters.id_categoria
@@ -65,7 +68,10 @@ export function useBudgets(initialFilters?: BudgetFilters) {
     (total, budget) => total + budget.limite_mensual,
     0,
   );
-  const totalGastado = budgets.reduce((total, budget) => total + budget.gastado, 0);
+  const totalGastado = budgets.reduce(
+    (total, budget) => total + budget.gastado,
+    0,
+  );
   const summary: BudgetSummary = {
     total_presupuestado: totalPresupuestado,
     total_gastado: totalGastado,

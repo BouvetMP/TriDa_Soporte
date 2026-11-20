@@ -129,11 +129,15 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold tracking-wide text-text-secondary uppercase mb-1.5">
+          <label
+            htmlFor="edit-account-color"
+            className="block text-xs font-semibold tracking-wide text-text-secondary uppercase mb-1.5"
+          >
             Color distintivo
           </label>
           <div className="flex items-center gap-2">
             <input
+              id="edit-account-color"
               type="color"
               value={color}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>

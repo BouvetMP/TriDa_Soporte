@@ -48,9 +48,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     if (!isOpen) return;
     const defaultAccount = selectedAccount?.estado
       ? selectedAccount
-      : activeAccounts[0];
+      : accounts.find((account) => account.estado);
     setIdCuenta(defaultAccount ? String(defaultAccount.id_cuenta) : "");
-  }, [isOpen, selectedAccount?.id_cuenta, accounts]);
+  }, [isOpen, selectedAccount, accounts]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +104,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       const payload: CreateTransactionPayload = {
         id_cuenta: accountId,
         id_dispositivo: user
-          ? getCurrentDeviceRecordId(user.id_usuario) ?? undefined
+          ? (getCurrentDeviceRecordId(user.id_usuario) ?? undefined)
           : undefined,
         monto: numericMonto,
         tipo_movimiento: tipoMovimiento,
@@ -140,13 +140,18 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     ...categories
       .filter((category) => category.tipo === tipoMovimiento)
       .map((c) => ({
-      value: String(c.id_categoria),
-      label: c.nombre,
+        value: String(c.id_categoria),
+        label: c.nombre,
       })),
   ];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Nueva Transacción" isSubmitting={isSubmitting}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Nueva Transacción"
+      isSubmitting={isSubmitting}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="p-3 bg-risk-critical/10 border border-risk-critical/20 text-risk-critical rounded-lg text-sm">
@@ -155,10 +160,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         )}
 
         <div>
-          <label className="block text-sm font-medium text-[var(--color-text-subtle)] mb-1">
-            Cuenta
-          </label>
           <Select
+            label="Cuenta"
             value={idCuenta}
             onChange={(event) => setIdCuenta(event.target.value)}
             options={[
@@ -173,15 +176,19 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-[var(--color-text-subtle)] mb-1">
-              Tipo de Movimiento
-            </label>
             <Select
+              label="Tipo de Movimiento"
               value={tipoMovimiento}
               onChange={(e) => {
                 const nextType = e.target.value as TipoMovimiento;
                 setTipoMovimiento(nextType);
-                if (!categories.some((category) => category.id_categoria === Number(idCategoria) && category.tipo === nextType)) {
+                if (
+                  !categories.some(
+                    (category) =>
+                      category.id_categoria === Number(idCategoria) &&
+                      category.tipo === nextType,
+                  )
+                ) {
                   setIdCategoria("");
                 }
               }}
@@ -201,10 +208,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[var(--color-text-subtle)] mb-1">
-            Categoría
-          </label>
           <Select
+            label="Categoría"
             value={idCategoria}
             onChange={(e) => setIdCategoria(e.target.value)}
             options={categoryOptions}
@@ -233,8 +238,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             className="mt-1"
           />
           <span>
-            Compartir mi ubicación para esta transacción (opcional). El navegador
-            solicitará permiso.
+            Compartir mi ubicación para esta transacción (opcional). El
+            navegador solicitará permiso.
           </span>
         </label>
 

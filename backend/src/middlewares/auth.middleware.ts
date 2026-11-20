@@ -5,19 +5,19 @@
 import { Request, Response, NextFunction } from "express";
 import { prisma } from "../db/prisma.js";
 import { verifyToken, JwtPayload } from "../utils/jwt.js";
-import { sendError } from "../utils/apiResponse.js";
+import { AppError } from "../utils/AppError.js";
 
 /**
  * Middleware principal: Verifica el JWT y confirma que el usuario existe y está activo.
  */
 export const requireAuth = async (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ): Promise<void> => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    sendError(res, "Token no proporcionado.", 401);
+    next(new AppError("Token no proporcionado.", 401, "TOKEN_MISSING"));
     return;
   }
 
@@ -26,7 +26,7 @@ export const requireAuth = async (
   try {
     decoded = verifyToken<JwtPayload & { purpose?: string }>(token);
   } catch {
-    sendError(res, "Token inválido o expirado.", 401);
+    next(new AppError("Token inválido o expirado.", 401, "INVALID_TOKEN"));
     return;
   }
 
@@ -38,7 +38,7 @@ export const requireAuth = async (
     (decoded.token_version !== undefined &&
       (!Number.isSafeInteger(decoded.token_version) || decoded.token_version < 0))
   ) {
-    sendError(res, "Token inválido o mal formado.", 401);
+    next(new AppError("Token inválido o mal formado.", 401, "INVALID_TOKEN"));
     return;
   }
 
@@ -61,17 +61,17 @@ export const requireAuth = async (
   }
 
   if (!usuario) {
-    sendError(res, "Usuario no encontrado en la base de datos.", 401);
+    next(new AppError("Usuario no encontrado en la base de datos.", 401, "USER_NOT_FOUND"));
     return;
   }
 
   if (!usuario.estado) {
-    sendError(res, "Cuenta de usuario desactivada.", 403);
+    next(new AppError("Cuenta de usuario desactivada.", 403, "USER_INACTIVE"));
     return;
   }
 
   if ((decoded.token_version ?? 0) !== usuario.token_version) {
-    sendError(res, "Token inválido o expirado.", 401);
+    next(new AppError("Token inválido o expirado.", 401, "INVALID_TOKEN"));
     return;
   }
 
@@ -89,12 +89,12 @@ export const requireAuth = async (
 export const requireRoles = (rolesPermitidos: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      sendError(res, "Acceso denegado: No autenticado.", 401);
+      next(new AppError("Acceso denegado: No autenticado.", 401, "UNAUTHENTICATED"));
       return;
     }
 
     if (!rolesPermitidos.includes(req.user.rol)) {
-      sendError(res, "Permisos insuficientes para esta acción.", 403);
+      next(new AppError("Permisos insuficientes para esta acción.", 403, "FORBIDDEN"));
       return;
     }
 

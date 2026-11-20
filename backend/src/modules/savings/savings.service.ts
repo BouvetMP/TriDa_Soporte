@@ -1,6 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma.js";
+import { calculatePercentage } from "../../utils/decimal-money.js";
 import type { AddFundsInput, CreateSavingsInput, UpdateSavingsInput } from "./savings.schemas.js";
 import { AppError } from "../../utils/AppError.js";
+import { deriveSavingsState, type SavingsState } from "./savings.state.js";
 
 type SavingRecord = {
   id_meta: number;
@@ -13,23 +16,30 @@ type SavingRecord = {
 };
 
 function formatSaving(item: SavingRecord) {
-  const monto_objetivo = Number(item.monto_objetivo);
-  const monto_actual = Number(item.monto_actual);
-  const progreso = monto_objetivo > 0 ? (monto_actual / monto_objetivo) * 100 : 0;
+  const objetivo = new Prisma.Decimal(item.monto_objetivo.toString());
+  const actual = new Prisma.Decimal(item.monto_actual.toString());
+  const progreso = calculatePercentage(actual, objetivo);
+  const progresoLimitado = progreso.greaterThan(100) ? new Prisma.Decimal(100) : progreso;
 
   return {
     id_meta: item.id_meta,
     nombre: item.nombre,
-    monto_objetivo,
-    monto_actual,
-    progreso: Math.min(Math.round(progreso * 100) / 100, 100),
+    monto_objetivo: objetivo.toNumber(),
+    monto_actual: actual.toNumber(),
+    progreso: progresoLimitado
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+      .toNumber(),
     fecha_limite: item.fecha_limite,
     estado: item.estado,
     fecha_creacion: item.fecha_creacion,
   };
 }
 
-class SavingsError extends AppError {}
+class SavingsError extends AppError {
+  constructor(message: string, statusCode = 400, code = "SAVINGS_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 export const savingsService = {
   async list(userId: number) {
@@ -86,6 +96,7 @@ export const savingsService = {
       select: {
         id_meta: true,
         monto_actual: true,
+        monto_objetivo: true,
         estado: true,
         fecha_completada: true,
       },
@@ -94,6 +105,17 @@ export const savingsService = {
     if (!existing) {
       throw new SavingsError("Meta de ahorro no encontrada", 404);
     }
+
+    const montoObjetivo =
+      data.monto_objetivo !== undefined
+        ? new Prisma.Decimal(data.monto_objetivo)
+        : existing.monto_objetivo;
+    const estado = deriveSavingsState(
+      existing.monto_actual,
+      montoObjetivo,
+      existing.estado as SavingsState,
+      data.estado,
+    );
 
     const meta = await prisma.meta_ahorro.update({
       where: { id_meta: metaId },
@@ -106,23 +128,11 @@ export const savingsService = {
             : data.fecha_limite
               ? new Date(data.fecha_limite)
               : undefined,
-        estado:
-          data.estado ??
-          (data.monto_objetivo !== undefined
-            ? existing.monto_actual.greaterThanOrEqualTo(data.monto_objetivo)
-              ? "COMPLETADA"
-              : "ACTIVA"
-            : undefined),
+        estado,
         fecha_completada:
-          data.estado === "COMPLETADA" ||
-          (data.estado === undefined &&
-            data.monto_objetivo !== undefined &&
-            existing.monto_actual.greaterThanOrEqualTo(data.monto_objetivo))
-            ? new Date()
-            : data.estado !== undefined ||
-                (data.monto_objetivo !== undefined && existing.estado === "COMPLETADA")
-              ? null
-              : undefined,
+          estado === "COMPLETADA"
+            ? existing.fecha_completada ?? new Date()
+            : null,
       },
     });
 

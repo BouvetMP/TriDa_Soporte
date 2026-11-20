@@ -30,5 +30,11 @@ export function useInsights() {
     fetchOverview();
   }, [fetchOverview]);
 
-  return { overview, periodDays, setPeriodDays, loading, refreshInsights: fetchOverview };
+  return {
+    overview,
+    periodDays,
+    setPeriodDays,
+    loading,
+    refreshInsights: fetchOverview,
+  };
 }

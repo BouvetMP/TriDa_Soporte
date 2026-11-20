@@ -48,6 +48,12 @@ export interface FinancialAdvice {
   fecha_generado: string;
 }
 
+export interface FinancialAdviceReadResult {
+  id_consejo: number;
+  leido: boolean;
+  fecha_leido: string | null;
+}
+
 export interface CategoryExpense {
   id_categoria: number;
   nombre_categoria: string;

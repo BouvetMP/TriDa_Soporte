@@ -25,7 +25,8 @@ export function InsightsPage() {
             <Sparkles className="h-5 w-5 text-[var(--color-primary)]" />
           </h1>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            Resumen y consejos calculados a partir de tus movimientos registrados.
+            Resumen y consejos calculados a partir de tus movimientos
+            registrados.
           </p>
         </div>
         <div className="w-48">
@@ -49,9 +50,15 @@ export function InsightsPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard label="Ingresos" value={formatCurrency(summary.ingresos)} />
+            <MetricCard
+              label="Ingresos"
+              value={formatCurrency(summary.ingresos)}
+            />
             <MetricCard label="Gastos" value={formatCurrency(summary.gastos)} />
-            <MetricCard label="Ahorros" value={formatCurrency(summary.ahorros)} />
+            <MetricCard
+              label="Ahorros"
+              value={formatCurrency(summary.ahorros)}
+            />
             <MetricCard
               label="Tasa de ahorro"
               value={`${summary.tasa_ahorro.toFixed(1)}%`}
@@ -110,7 +117,8 @@ export function InsightsPage() {
                         {category.nombre}
                       </span>
                       <span className="shrink-0 font-semibold text-[var(--color-text-primary)]">
-                        {formatCurrency(category.total)} · {category.cantidad} mov.
+                        {formatCurrency(category.total)} · {category.cantidad}{" "}
+                        mov.
                       </span>
                     </li>
                   ))}
@@ -138,7 +146,8 @@ export function InsightsPage() {
                       {merchant.comercio}
                     </p>
                     <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                      {formatCurrency(merchant.total)} · {merchant.cantidad} mov.
+                      {formatCurrency(merchant.total)} · {merchant.cantidad}{" "}
+                      mov.
                     </p>
                   </li>
                 ))}

@@ -1,4 +1,6 @@
-# Auditoría técnica — TriDa v2
+# Auditoría técnica — TriDa v2 (histórica)
+
+> **Este documento es la auditoría inicial y ya no representa el estado actual del código.** Varios hallazgos que aparecen abajo ya se corrigieron y no deben usarse como lista de trabajo. La lista vigente, revisada el 19 de noviembre de 2026 y organizada por prioridad, está en [ERRORES_ACTUALES_TRIDA.md](./ERRORES_ACTUALES_TRIDA.md). Mantener este archivo únicamente como referencia histórica de los hallazgos originales.
 
 **Alcance:** únicamente lo que existe hoy en el repositorio (frontend React/Vite, backend Express/Prisma, `schema.sql`, tests y documentación). No se proponen funcionalidades nuevas; solo correcciones, cambios y mejoras sobre lo ya construido.
 **Método:** revisión estática del código entregado. Los puntos marcados con *(verificar)* dependen del comportamiento en ejecución/build y conviene confirmarlos.
@@ -72,10 +74,10 @@
   - `fecha_limite` no se puede borrar (`undefined`/falsy se ignora).
   - `useSavings` incluye metas `CANCELADA`/`PAUSADA` en `total_objetivo` y `porcentaje_general`.
   - El `monto_actual` inicial no genera un `aporte_meta`, por lo que no coincide con la suma de aportes.
-- **F17 — Tarjetas/maquetación incompletas.** `MapSummaryCards` repite la misma métrica dos veces ("Ubicaciones registradas" y "Puntos registrados", ambas `total_geolocalizadas`) y pinta 5 tarjetas en un grid de 4. `ReportsPage` define un grid de 12 columnas con solo un hijo `col-span-7` (comentario "Categorías y Comercios", pero `top_comercios` nunca se muestra).
-- **F18 — `PasswordStrengthMeter` engañoso.** Con 3 de 4 reglas muestra "Aceptable", pero el backend exige las 4. *Corrección:* mostrar "Válida" solo con 4/4.
-- **F19 — Redondeo de montos.** `z.coerce.number().positive()` admite más de 2 decimales y valores enormes. El monto se redondea al guardarse (`NUMERIC(15,2)`), pero el `increment` del saldo usa el valor sin redondear → posible deriva de centavos; valores > 10¹³ producen error de BD. *Corrección:* `.multipleOf(0.01)` (o redondeo explícito) y `.max(…)` en transacciones, presupuestos, metas y aportes.
-- **F20 — Filtro de cuenta y periodos inconsistentes.** El selector global de cuenta solo afecta a Transacciones; Dashboard, Reportes, Presupuestos y Mapa lo ignoran. `dashboardService.getStats` usa `fecha_transaccion >= inicioMes` **sin límite superior** (incluye fechas futuras permitidas por `fecha_transaccion` libre) y la hora local del servidor.
+- **F17 — Tarjetas/maquetación incompletas — CORREGIDO.** `MapSummaryCards` muestra cuatro métricas distintas; ya no existe una quinta tarjeta duplicada. `ReportsPage` usa una grilla de 12 columnas con categorías y comercios y muestra `top_comercios`.
+- **F18 — `PasswordStrengthMeter` engañoso — CORREGIDO.** Las validaciones de registro, recuperación y cambio de contraseña comparten las mismas reglas: 10–72 caracteres, mayúscula, minúscula y número. Solo se marca "Válida" cuando pasan todas las reglas.
+- **F19 — Redondeo de montos — CORREGIDO.** Los montos usan un helper decimal con redondeo a dos decimales (`ROUND_HALF_UP`) y límite compatible con `NUMERIC(15,2)` en transacciones, presupuestos, metas, aportes y saldo inicial. Los campos monetarios del frontend usan incrementos de `0.01`.
+- **F20 — Filtro de cuenta y periodos inconsistentes — CORREGIDO.** Dashboard, Reportes, Presupuestos y Mapa reciben `id_cuenta` del selector global. El mes del dashboard usa inicio y fin exclusivos en `America/Bogota`; reportes usa rangos que incluyen toda la fecha final y presupuestos usan mes/año calendarizados. Las cuentas desactivadas eliminan la selección global obsoleta.
 
 ---
 
@@ -110,8 +112,8 @@
 
 ### 🟠 P1
 
-- **B1 — Manejo de errores heterogéneo.** Hay clases `AccountError`, `CategoryError`, `AuthError`, `BudgetError`, `SavingsError`, `TransactionError`, `AlertError`, `DeviceError`, `ProfileError`; algunos controladores las capturan (`handleAccountError`), otros las dejan pasar al `errorHandler` por la propiedad `statusCode`. `DevicesController.getById` tiene ramas muertas (`!device`) porque el servicio lanza. *Corrección:* una sola `AppError(statusCode, code, message)` y tratarla solo en `errorHandler`; códigos de error propios (no solo por status).
-- **B2 — Lógica duplicada servicio ↔ triggers.** `trg_alerta_feedback` (BD) y `alerts.service` actualizan ambos el estado de la transacción; el trigger exige `FUI_YO AND estado='CONFIRMADA'` (el servicio envía `DESCARTADA`), no contempla `BLOQUEAR_TARJETA` y marca `APROBADA`. Igual con la finalización de metas (trigger + comprobación en `addFunds`). *Corrección:* elegir una sola fuente de verdad (recomendado: servicio) y eliminar el trigger redundante.
+- **B1 — Manejo de errores heterogéneo — CORREGIDO.** Las clases de dominio conservan `AppError` y asignan códigos propios por módulo. El middleware de autenticación y los límites de tasa usan los mismos formatos/códigos. `budget` usa 400 para una categoría inválida.
+- **B2 — Lógica duplicada servicio ↔ triggers — CORREGIDO EN EL ESQUEMA UNIFICADO.** `alerts.service` es la fuente de verdad para resolver alertas, transacciones y saldos; el backend también decide el estado final de las metas. `schema.sql` desconecta los triggers legacy `trg_alerta_feedback` y `trg_meta_completada`, sin borrar sus funciones si ya existen en la base; estas quedan disponibles para integraciones externas futuras. `trg_aporte_meta` sigue sumando el monto del aporte; el servicio relee ese total y no lo vuelve a incrementar. En la base local inspeccionada no estaban instalados los dos triggers legacy.
 - **B3 — Umbrales de riesgo repetidos y dispares.** `>=30/70/95` aparece en `risk.service`, SQL de transacciones (×3), SQL del mapa (×2) y `Map.ts` del frontend; "riesgo alto" es `>=50` en `maps.getStats`, `profile` e `insights`, pero `ALTO` es `>=70` en el resto. *Corrección:* constantes únicas (`RISK_THRESHOLDS`) y una función SQL/TS compartida.
 - **B4 — Zona horaria y rangos de fecha.** `resolveDateRange` (reports), `listTransactions`, `maps.getLocations` y `dashboard` reimplementan la lógica; mezclan UTC, hora local del servidor y `America/Bogota` del frontend. `new Date("2026-11-01")` es medianoche UTC, no Bogotá. *Corrección:* util único `dateRange.ts` con zona configurable (`APP_TIMEZONE`).
 - **B5 — Serialización de `Decimal`.** `getById` y `create` de transacciones, y `alerts` devuelven `monto` como string (Prisma `Decimal`) mientras los tipos del frontend dicen `number`. *Corrección:* serializadores por módulo (como ya hacen accounts/savings/budgets).
@@ -129,7 +131,7 @@
 - **B14 — Reportes.** `getTransactionsReport` devuelve `total: rows.length` (no el total real) sin indicador de truncado; el frontend pide 5000 y calcula `top_comercios` en el cliente (mejor en SQL).
 - **B15 — Listado de transacciones.** `ORDER BY` sin desempate (`id_transaccion`) → paginación inestable; `sort_by=nivel_riesgo` ordena por `score_anomalia`, no por el nivel mostrado (que prioriza la alerta); `ILIKE` no escapa `%`/`_`; el `COUNT` hace el `LATERAL JOIN` aun sin filtrar riesgo.
 - **B16 — Conceptos duplicados.** `AHORRO` (transacción que resta saldo) y *metas de ahorro* (aportes que no tocan ninguna cuenta) son dos mecanismos sin relación. Documentar o conectar (aporte → transacción AHORRO opcional).
-- **B17 — Operación.** `shutdown` no cierra el servidor HTTP (corta peticiones en vuelo); `/health` no comprueba la BD (añadir `/health/ready` con `SELECT 1`); no hay `request-id`/logging estructurado; `mailer` crea un transporte por envío (reutilizar/pool).
+- **B17 — Operación — RESUELTO.** El apagado ordenado deja de aceptar peticiones y espera las solicitudes HTTP en curso antes de cerrar SMTP y Prisma; `/health/ready` comprueba PostgreSQL con `SELECT 1`; el middleware asigna `request-id` y registra metadatos estructurados sin query strings; `mailer` reutiliza un transporte SMTP con pool y espera los envíos activos antes de cerrarlo. Las pruebas contractuales cubren el logger y la privacidad de sus registros; no se probó el envío contra un servidor SMTP real.
 - **B18 — Insights.** Texto "Asesor IA" pero es lógica por reglas; los consejos formatean `$${total.toFixed(2)}` (no COP ni locale). La URL de IA se retiró de `.env.example`; la integración con IA sigue fuera del alcance actual.
 - **B19 — Consejos del trigger invisibles.** El trigger de presupuesto inserta en `consejos_financieros`, pero ningún endpoint la lee: las alertas de umbral 80 %/100 % nunca llegan al usuario.
 
@@ -145,7 +147,7 @@
   - `transacciones(id_usuario, id_categoria, fecha_transaccion)` para el subselect de `gastado` en presupuestos.
 - **DB2 — Unicidad de categorías con `NULL`.** `UNIQUE (id_usuario, nombre)` no protege las categorías del sistema (`id_usuario IS NULL`, los NULL son distintos) ni evita que un usuario duplique el nombre de una del sistema. *Corrección:* índice único parcial para `id_usuario IS NULL` y comprobación contra las del sistema (o `NULLS NOT DISTINCT` en PG 15+).
 - **DB3 — Rol.** `CHECK (rol IN ('USER'))` mientras backend y frontend contemplan `ADMIN` (`ProtectedRoute.allowedRoles`). Ampliar el `CHECK` o eliminar el soporte de `ADMIN`.
-- **DB4 — Sin migraciones.** `schema.sql` y `schema.prisma` se mantienen a mano → riesgo de deriva. **Decisión:** se conserva el flujo SQL manual solicitado: `schema.sql` para bases nuevas y `update_existing.sql` para bases existentes; no se usa Prisma Migrate. Sigue pendiente automatizar la comparación de ambos esquemas.
+- **DB4 — Sin migraciones.** `schema.sql` y `schema.prisma` se mantienen a mano → riesgo de deriva. **Decisión:** se conserva el flujo SQL manual solicitado: `schema.sql` idempotente para bases nuevas y existentes; no se usa Prisma Migrate. Sigue pendiente automatizar la comparación de ambos esquemas.
 - **DB5 — Funciones SQL no usadas.** Casi todas las `trida.fn_*` (login, register, dashboard, presupuestos, metas…) no las llama el backend y ya divergen (p. ej. `fn_presupuestos` no filtra `estado`; `fn_categorias` sí filtra `estado`). **Decisión:** conservarlas para no romper consumidores SQL externos no identificados; los triggers `fn_trg_*` también se conservan. Evitar mantener dos implementaciones requiere revisar compatibilidad y acordar pruebas.
 
 ### 🟡 P2
@@ -168,7 +170,7 @@
 
 - **UI1 — Tema.** `ThemeContext` marca `class="dark"` en oscuro y `data-theme="light"` en claro, pero `tailwind.config` usa `darkMode: ["class", '[data-theme="dark"]']` (inconsistente; además no hay utilidades `dark:` en uso). No hay script inline en `index.html` → parpadeo de tema al cargar. *Corrección:* una convención (`data-theme`) y un script antes del bundle.
 - **UI2 — Colores "hardcoded".** Se usan `emerald-500`, `red-500`, `amber-500` en `MetricsCards`, `DeviceCard`, `TransactionsTable`, `AlertBadge`, `Risk.ts`, `AlertActionModal`… ignorando `income/expense/risk-*` ya definidos (regla RC-004 declarada). En tema claro `amber-500` sobre blanco tiene bajo contraste.
-- **UI3 — Capa de API inconsistente.** `savingsApi`/`budgetsApi`/`reportsApi` (camelCase) devuelven el payload ya desenvuelto; `AccountsApi`, `TransactionsApi`, `DevicesApi`, `AlertsApi` (PascalCase) mezclan `ApiSuccess<T>` y `T`. Los hooks por eso comprueban `response.success` en unos casos y no en otros. *Corrección:* un estilo (devolver `data`) y nombres homogéneos.
+- **UI3 — Capa de API inconsistente — RESUELTO EN CONTRATOS.** Los métodos extraen y devuelven `data` (o un resultado derivado explícito), incluidos mensajes, borrados y cambios de estado; los errores siguen propagándose por Axios. Se conserva la mezcla histórica de nombres de exportación, que no cambia el contrato ni el comportamiento de los consumidores.
 - **UI4 — Hooks de datos.** Sin cancelación ni control de respuestas obsoletas (`AbortController`/id de petición) → condiciones de carrera al cambiar filtros rápido. `useCategories` se instancia en varias pantallas/modales y repite la petición. *Corrección:* contexto/caché compartido (o React Query/SWR).
 - **UI5 — `Modal`.** El `useEffect` depende de `onClose` (lambda nueva en cada render) y su cleanup pone `body.style.overflow = "unset"`: con varios modales montados, uno cerrado puede liberar el bloqueo de scroll de otro abierto. Falta focus-trap, `aria-labelledby`, retorno de foco y no deberían cerrarse (Esc/backdrop) durante `isSubmitting`.
 - **UI6 — Accesibilidad.** `Input`/`Select` generan `id` desde el label (colisiones posibles; usar `useId`); muchos `Select` sin label ni `aria-label`; `AlertsPage` usa `<li onClick>` no navegable por teclado; botones de icono (`Trash2`) sin `aria-label`; `Toast` sin `role="status"/aria-live`.
@@ -177,7 +179,7 @@
 
 ### 🟡 P2
 
-- **UI9 — Rendimiento/estructura.** Sin `React.lazy` por ruta; sin `ErrorBoundary`; `ToastProvider` crea `value` nuevo en cada render (memoizar) y no limpia `setTimeout` al desmontar; `h-screen` en `AppLayout` → `h-dvh` en móvil.
+- **UI9 — Rendimiento/estructura — parcialmente resuelto.** **Pendiente:** `React.lazy` por ruta para dividir el bundle. **Corregido:** `ErrorBoundary` con recuperación accesible; `ToastProvider` memoriza el contexto y limpia los temporizadores al cerrar notificaciones o desmontarse; `AppLayout` usa `h-dvh` en móvil.
 - **UI10 — Componentes duplicados.** Paginación idéntica en `AlertsPage` y `TransactionsPage` (extraer `<Pagination>`); reglas de contraseña repetidas en `RegisterForm`, `ResetPasswordPage`, `ChangePasswordForm` y `PasswordStrengthMeter` (extraer `validatePassword`); tarjetas resumen casi iguales en 4 módulos.
 - **UI11 — `RiskBadge`.** Muestra `Math.round(score*100)%` pero `score_anomalia` va de 0 a 100 (daría 5000 %); hoy no se ve porque el listado no devuelve `score_anomalia`. Unificar escala.
 - **UI12 — Filtros del mapa.** `riskOptions` tiene dos opciones con la misma etiqueta ("" y `"ALL"`); retirar una.
@@ -194,12 +196,11 @@
 
 ### 🟠 P1
 
-- **D1 — `$ref` rotos en Swagger (`config/swagger.ts`).**
-  - `VerifyResetTokenRequest` está dentro del objeto `errorContentByStatus` (no en `components.schemas`).
-  - `UpdateTransactionStatusRequest` está anidado dentro de `UpdateAlertStatusRequest`.
-  Ambos `$ref` de `requestBody` quedan sin resolver y los tests actuales no lo detectan. *Corrección:* moverlos a `components.schemas` y añadir un test con `@apidevtools/swagger-parser` (`validate(spec)`, ya presente en el lockfile).
+- **D1 — `$ref` rotos en Swagger (`config/swagger.ts`) — RESUELTO.**
+  - La revisión original encontró `VerifyResetTokenRequest` y `UpdateTransactionStatusRequest` mal ubicados.
+  - **Corrección verificada:** ambos esquemas están disponibles en `components.schemas`; `SwaggerParser.validate` se ejecuta en la suite contractual y confirma que no quedan referencias rotas.
 - **D2 — Guía de integración desactualizada** (`docs/GUIA_INTEGRACION_FRONTEND.md`): **corregido**; la guía ahora incluye la pantalla y el endpoint de categorías, el filtro vigente del trigger, y aclara que las categorías se desactivan lógicamente.
-- **D3 — Swagger incompleto/inexacto.** **Parcialmente corregido:** se añadió `GET /categories/{id}`, se aclaró la desactivación y se documentaron ejemplos con las claves reales para conteos de transacciones y alertas. El servidor es relativo (`/`); las respuestas 2xx de otros endpoints aún usan el sobre genérico `SuccessResponse` y requieren documentar sus datos específicos.
+- **D3 — Swagger incompleto/inexacto — RESUELTO.** Se documentaron esquemas y ejemplos específicos para cada respuesta 2xx de `/api/v2/`, incluidas rutas alias y las respuestas con decimales serializados como texto. Se eliminó el sobre genérico `SuccessResponse`; las pruebas exigen el esquema por operación y validan el documento completo con `SwaggerParser`. El servidor sigue siendo relativo (`/`).
 
 ### 🟡 P2
 
@@ -214,19 +215,19 @@
 
 ### 🟠 P1
 
-- **T1 — Archivos generados en el repo.** `frontend/vite.config.js` y `vite.config.d.ts` son salida de `tsc -b` (porque `tsconfig.node.json` es `composite` sin `noEmit`/`emitDeclarationOnly`) y conviven con `vite.config.ts` (Vite puede cargar el `.js` en lugar del `.ts`). Eliminarlos, configurar el `tsconfig.node.json` y añadirlos al `.gitignore`.
+- **T1 — Archivos generados en el repo — CORREGIDO.** `tsconfig.node.json` usa `noEmit`; `.gitignore` excluye las salidas generadas y `coverage/`. `frontend/vite.config.js` y `vite.config.d.ts` no están presentes.
 - **T2 — Desalineación de versiones.** **Corregido:** TS, `@types/node` y `eslint-config-prettier` están alineados; Express 4 usa `@types/express` 4; el frontend no instala Zod (no lo usa); se quitó el stub `@types/bcryptjs` y se añadieron `engines` y `.nvmrc` para Node 22.13+.
 - **T3 — Cobertura de tests insuficiente.** El script `test` solo ejecuta `contracts.test.ts`; la integración cubre solo transacciones. Faltan: alertas (flujo de saldos), ahorros/aportes, presupuestos, auth (reset/reenvío), `requireAuth`, y **ningún** test de frontend. *Corrección:* añadir tests de integración por módulo y Vitest + Testing Library para hooks/formularios críticos; script `test` con glob.
 - **T4 — Scripts.** Backend sin `typecheck` (`tsc --noEmit`); `build` no ejecuta `prisma generate`; no hay CI (lint + typecheck + test + `swagger validate`).
 
 ### 🟡 P2
 
-- **T5 — ESLint frontend:** añade `globals.node` a un proyecto de navegador y carece de `eslint-plugin-react-hooks` y `jsx-a11y` (los `useEffect` con dependencias inestables, UI4/UI5, pasarían desapercibidos).
-- **T6 — Prettier** configurado solo en backend (frontend tiene dependencia pero sin `.prettierrc`/script).
-- **T7 — Alias de rutas:** `vite.config.ts` define `@types` (choca conceptualmente con `node_modules/@types`) y `tsconfig` no lo declara; se mezclan `@/…` y `@components/…` (`NewAccountModal`). Mantener solo `@/`.
-- **T8 — `env.d.ts`** está en la raíz de `frontend/` y `tsconfig` solo incluye `src`: mover a `src/vite-env.d.ts`.
-- **T9 — `.gitignore`:** añadir `.env.*` (excepto `.example`), `*.tsbuildinfo`, `coverage/`, `vite.config.js`, `vite.config.d.ts`.
-- **T10 — Dependencias sin uso:** frontend `zod`, `leaflet`, `react-leaflet`, `@types/leaflet` (si no se implementa el mapa); backend `utils/password.ts`, alias `calcularDistancia`.
+- **T5 — ESLint frontend — CORREGIDO.** Globals de navegador se aplican al código de aplicación, los de Node solo a configuración; se habilitaron `react-hooks` y `jsx-a11y`.
+- **T6 — Prettier frontend — CORREGIDO.** `format` y `format:check` cubren el frontend y omiten archivos generados/ignorados.
+- **T7 — Alias de rutas — CORREGIDO.** Vite y TypeScript declaran solo `@`; `NewAccountModal` ya no mezcla `@components`.
+- **T8 — Tipos de Vite — CORREGIDO.** `vite-env.d.ts` se encuentra en `src/`, incluido por `tsconfig`.
+- **T9 — `.gitignore` — CORREGIDO.** Se ignoran `.env.*` salvo `.env.example`, `*.tsbuildinfo`, `coverage/` y archivos generados de Vite.
+- **T10 — Dependencias/código sin uso — CORREGIDO.** Se quitó Zod del frontend y el alias sin uso `calcularDistancia`; Leaflet se usa en el mapa y `utils/password.ts` en autenticación.
 
 ---
 
@@ -261,6 +262,6 @@ F5, F12–F16, F19–F20, S1–S6, B2, B3, B4, DB1–DB3, errores unificados (B1
 UI1–UI8, B5–B9, B10–B19, DB4–DB5, T2–T4, D2–D3, README y `.env.example`.
 
 **Fase 4 — Limpieza**
-Sección 8 (código muerto), UI9–UI18, T5–T10, DB6–DB10.
+Sección 8 (código muerto), UI9–UI18, DB6–DB10. T5–T10 están corregidos.
 
 > Sugerencia de verificación continua: añadir al CI `tsc --noEmit` (front y back), `eslint`, `prisma validate`, `swagger-parser validate` y los tests de integración contra `TEST_DATABASE_URL`.

@@ -1,6 +1,7 @@
 import { apiClient } from "./Client";
 import { API_ENDPOINTS } from "@/constants/Api";
 import {
+  ApiMessageData,
   ApiSuccess,
   AuthResponseData,
   RegisterResponseData,
@@ -39,7 +40,9 @@ export const AuthApi = {
   /**
    * POST /api/v2/auth/register
    */
-  async register(credentials: RegisterCredentials): Promise<RegisterResponseData> {
+  async register(
+    credentials: RegisterCredentials,
+  ): Promise<RegisterResponseData> {
     const response = await apiClient.post<ApiSuccess<RegisterResponseData>>(
       API_ENDPOINTS.AUTH.REGISTER,
       credentials,
@@ -47,11 +50,12 @@ export const AuthApi = {
     return response.data.data;
   },
 
-  async verifyEmail(payload: VerifyEmailPayload): Promise<void> {
-    await apiClient.post<ApiSuccess<{ message: string }>>(
+  async verifyEmail(payload: VerifyEmailPayload): Promise<ApiMessageData> {
+    const response = await apiClient.post<ApiSuccess<ApiMessageData>>(
       API_ENDPOINTS.AUTH.VERIFY_EMAIL,
       payload,
     );
+    return response.data.data;
   },
 
   /**
@@ -78,40 +82,48 @@ export const AuthApi = {
   /**
    * POST /api/v2/auth/change-password
    */
-  async changePassword(payload: ChangePasswordPayload): Promise<void> {
-    await apiClient.post<ApiSuccess<null>>(
+  async changePassword(
+    payload: ChangePasswordPayload,
+  ): Promise<ApiMessageData> {
+    const response = await apiClient.post<ApiSuccess<ApiMessageData>>(
       API_ENDPOINTS.AUTH.CHANGE_PASSWORD,
       payload,
     );
+    return response.data.data;
   },
 
   /**
    * POST /api/v2/auth/forgot-password
    */
-  async forgotPassword(payload: ForgotPasswordPayload): Promise<void> {
-    await apiClient.post<ApiSuccess<null>>(
+  async forgotPassword(
+    payload: ForgotPasswordPayload,
+  ): Promise<ApiMessageData> {
+    const response = await apiClient.post<ApiSuccess<ApiMessageData>>(
       API_ENDPOINTS.AUTH.FORGOT_PASSWORD,
       payload,
     );
+    return response.data.data;
   },
 
   /**
    * POST /api/v2/auth/verify-reset-token
    */
   async verifyResetToken(payload: VerifyResetTokenPayload): Promise<boolean> {
-    const response = await apiClient.post<
-      ApiSuccess<{ valid: boolean }>
-    >(API_ENDPOINTS.AUTH.VERIFY_RESET_TOKEN, payload);
+    const response = await apiClient.post<ApiSuccess<{ valid: boolean }>>(
+      API_ENDPOINTS.AUTH.VERIFY_RESET_TOKEN,
+      payload,
+    );
     return response.data.data.valid;
   },
 
   /**
    * POST /api/v2/auth/reset-password
    */
-  async resetPassword(payload: ResetPasswordPayload): Promise<void> {
-    await apiClient.post<ApiSuccess<null>>(
+  async resetPassword(payload: ResetPasswordPayload): Promise<ApiMessageData> {
+    const response = await apiClient.post<ApiSuccess<ApiMessageData>>(
       API_ENDPOINTS.AUTH.RESET_PASSWORD,
       payload,
     );
+    return response.data.data;
   },
 };

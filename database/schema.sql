@@ -1,6 +1,10 @@
 -- Canonical schema for new databases.
+-- Idempotent installer and updater for supported existing TriDa databases.
+-- Back up an existing database before applying this file.
 -- Keep Prisma-supported tables and indexes aligned with backend/prisma/schema.prisma;
 -- custom checks, partial/expression indexes, rules, triggers, and functions live here.
+
+BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -8,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE SCHEMA IF NOT EXISTS trida;
 SET search_path TO trida, public;
 
-CREATE TABLE trida.usuarios (
+CREATE TABLE IF NOT EXISTS trida.usuarios (
     id_usuario       SERIAL PRIMARY KEY,
     nombre_completo  VARCHAR(150) NOT NULL,
     email            VARCHAR(254) NOT NULL UNIQUE,
@@ -30,7 +34,7 @@ CREATE TABLE trida.usuarios (
 -- perfil_financiero
 -- Datos financieros clave del usuario (1:1).
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.perfil_financiero (
+CREATE TABLE IF NOT EXISTS trida.perfil_financiero (
     id_perfil            SERIAL PRIMARY KEY,
     id_usuario           INTEGER NOT NULL UNIQUE
                          REFERENCES trida.usuarios (id_usuario)
@@ -51,7 +55,7 @@ CREATE TABLE trida.perfil_financiero (
 -- Cada cuenta financiera del usuario (banco, tarjeta, billetera, efectivo).
 -- NUEVA en v2 — reemplaza al antiguo concepto de "banco global".
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.cuentas (
+CREATE TABLE IF NOT EXISTS trida.cuentas (
     id_cuenta          SERIAL PRIMARY KEY,
     id_usuario         INTEGER NOT NULL
                        REFERENCES trida.usuarios (id_usuario)
@@ -62,6 +66,7 @@ CREATE TABLE trida.cuentas (
     numero_enmascarado VARCHAR(20),
     color              VARCHAR(20) NOT NULL DEFAULT '#6366F1',
     saldo_inicial      NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    saldo_actual       NUMERIC(15, 2) NOT NULL DEFAULT 0,
     estado             BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_cuenta_tipo CHECK (tipo IN ('BANCO', 'TARJETA', 'BILLETERA', 'EFECTIVO'))
@@ -71,7 +76,7 @@ CREATE TABLE trida.cuentas (
 -- categorias
 -- Catálogo de gasto/ingreso. es_default = TRUE son del sistema.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.categorias (
+CREATE TABLE IF NOT EXISTS trida.categorias (
     id_categoria   SERIAL PRIMARY KEY,
     id_usuario     INTEGER REFERENCES trida.usuarios (id_usuario)
                    ON UPDATE CASCADE ON DELETE CASCADE,
@@ -90,7 +95,7 @@ CREATE TABLE trida.categorias (
 -- dispositivos
 -- Dispositivos del usuario para detección de accesos inusuales.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.dispositivos (
+CREATE TABLE IF NOT EXISTS trida.dispositivos (
     id_dispositivo      SERIAL PRIMARY KEY,
     id_usuario          INTEGER NOT NULL
                         REFERENCES trida.usuarios (id_usuario)
@@ -110,7 +115,7 @@ CREATE TABLE trida.dispositivos (
 -- ubicaciones
 -- Histórico de ubicaciones asociadas a transacciones.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.ubicaciones (
+CREATE TABLE IF NOT EXISTS trida.ubicaciones (
     id_ubicacion   SERIAL PRIMARY KEY,
     id_dispositivo INTEGER REFERENCES trida.dispositivos (id_dispositivo)
                    ON UPDATE CASCADE ON DELETE SET NULL,
@@ -130,7 +135,7 @@ CREATE TABLE trida.ubicaciones (
 -- monto siempre positivo (RF-004 adaptado: el tipo indica la dirección).
 -- NUEVO: id_cuenta vincula cada movimiento a una cuenta del usuario.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.transacciones (
+CREATE TABLE IF NOT EXISTS trida.transacciones (
     id_transaccion    SERIAL PRIMARY KEY,
     id_usuario        INTEGER NOT NULL
                       REFERENCES trida.usuarios (id_usuario)
@@ -166,7 +171,7 @@ CREATE TABLE trida.transacciones (
 -- Snapshot 1:1 del perfil conductual del usuario (simple).
 -- El backend recalcula periódicamente; el trigger solo marca la fecha.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.patron_comportamiento (
+CREATE TABLE IF NOT EXISTS trida.patron_comportamiento (
     id_patron              SERIAL PRIMARY KEY,
     id_usuario             INTEGER NOT NULL UNIQUE
                            REFERENCES trida.usuarios (id_usuario)
@@ -184,7 +189,7 @@ CREATE TABLE trida.patron_comportamiento (
 -- presupuestos
 -- Límites de gasto por categoría y mes. NUEVA en v2.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.presupuestos (
+CREATE TABLE IF NOT EXISTS trida.presupuestos (
     id_presupuesto SERIAL PRIMARY KEY,
     id_usuario     INTEGER NOT NULL
                    REFERENCES trida.usuarios (id_usuario)
@@ -205,7 +210,7 @@ CREATE TABLE trida.presupuestos (
 -- metas_ahorro
 -- Objetivos financieros del usuario.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.metas_ahorro (
+CREATE TABLE IF NOT EXISTS trida.metas_ahorro (
     id_meta          SERIAL PRIMARY KEY,
     id_usuario       INTEGER NOT NULL
                      REFERENCES trida.usuarios (id_usuario)
@@ -227,7 +232,7 @@ CREATE TABLE trida.metas_ahorro (
 -- aportes_meta
 -- Movimientos hacia una meta de ahorro. NUEVA en v2.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.aportes_meta (
+CREATE TABLE IF NOT EXISTS trida.aportes_meta (
     id_aporte    SERIAL PRIMARY KEY,
     id_meta      INTEGER NOT NULL
                  REFERENCES trida.metas_ahorro (id_meta)
@@ -241,7 +246,7 @@ CREATE TABLE trida.aportes_meta (
 -- consejos_financieros
 -- Recomendaciones de la IA basadas en hábitos del usuario.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.consejos_financieros (
+CREATE TABLE IF NOT EXISTS trida.consejos_financieros (
     id_consejo     SERIAL PRIMARY KEY,
     id_usuario     INTEGER NOT NULL
                    REFERENCES trida.usuarios (id_usuario)
@@ -261,7 +266,7 @@ CREATE TABLE trida.consejos_financieros (
 -- alertas_fraude
 -- Alertas que el propio usuario confirma o descarta.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.alertas_fraude (
+CREATE TABLE IF NOT EXISTS trida.alertas_fraude (
     id_alerta       SERIAL PRIMARY KEY,
     id_usuario      INTEGER NOT NULL
                     REFERENCES trida.usuarios (id_usuario)
@@ -285,7 +290,7 @@ CREATE TABLE trida.alertas_fraude (
 -- analisis_gastos
 -- Snapshots precalculados por período.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.analisis_gastos (
+CREATE TABLE IF NOT EXISTS trida.analisis_gastos (
     id_analisis          SERIAL PRIMARY KEY,
     id_usuario           INTEGER NOT NULL
                          REFERENCES trida.usuarios (id_usuario)
@@ -308,7 +313,7 @@ CREATE TABLE trida.analisis_gastos (
 -- reportes_mensuales
 -- Reportes consolidados con score de salud financiera.
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.reportes_mensuales (
+CREATE TABLE IF NOT EXISTS trida.reportes_mensuales (
     id_reporte     SERIAL PRIMARY KEY,
     id_usuario     INTEGER NOT NULL
                    REFERENCES trida.usuarios (id_usuario)
@@ -329,7 +334,7 @@ CREATE TABLE trida.reportes_mensuales (
 -- logs_auditoria
 -- Bitácora inmutable (append-only).
 -- ----------------------------------------------------------------------------
-CREATE TABLE trida.logs_auditoria (
+CREATE TABLE IF NOT EXISTS trida.logs_auditoria (
     id_log           SERIAL PRIMARY KEY,
     id_usuario       INTEGER REFERENCES trida.usuarios (id_usuario)
                      ON UPDATE CASCADE ON DELETE SET NULL,
@@ -341,74 +346,213 @@ CREATE TABLE trida.logs_auditoria (
     fecha_accion     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Upgrade additive changes for databases created by earlier TriDa schemas.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM trida.usuarios
+        WHERE rol NOT IN ('USER', 'ADMIN')
+    ) THEN
+        RAISE EXCEPTION
+            'Hay usuarios con un rol distinto de USER o ADMIN; corrígelos antes de actualizar.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM trida.dispositivos
+        GROUP BY id_usuario, identificador_unico
+        HAVING COUNT(*) > 1
+    ) THEN
+        RAISE EXCEPTION
+            'Hay identificadores de dispositivo repetidos para un usuario; resuélvelos antes de actualizar.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM trida.categorias
+        WHERE id_usuario IS NULL
+        GROUP BY LOWER(nombre)
+        HAVING COUNT(*) > 1
+    ) THEN
+        RAISE EXCEPTION
+            'Hay categorías del sistema con nombres duplicados ignorando mayúsculas; resuélvelos antes de actualizar.';
+    END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_alerta_feedback ON trida.alertas_fraude;
+DROP TRIGGER IF EXISTS trg_meta_completada ON trida.metas_ahorro;
+
+ALTER TABLE trida.usuarios
+    ADD COLUMN IF NOT EXISTS email_verificado_en TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE trida.usuarios
+    ALTER COLUMN email_verificado_en SET DEFAULT NOW(),
+    ALTER COLUMN token_version SET DEFAULT 0;
+
+UPDATE trida.usuarios
+SET token_version = 0
+WHERE token_version IS NULL;
+
+ALTER TABLE trida.usuarios
+    ALTER COLUMN token_version SET NOT NULL;
+
+ALTER TABLE trida.cuentas
+    ADD COLUMN IF NOT EXISTS saldo_actual NUMERIC(15, 2);
+
+UPDATE trida.cuentas
+SET saldo_actual = saldo_inicial
+WHERE saldo_actual IS NULL;
+
+ALTER TABLE trida.cuentas
+    ALTER COLUMN saldo_actual SET DEFAULT 0,
+    ALTER COLUMN saldo_actual SET NOT NULL;
+
+ALTER TABLE trida.usuarios
+    DROP CONSTRAINT IF EXISTS chk_usuarios_rol;
+
+ALTER TABLE trida.usuarios
+    ADD CONSTRAINT chk_usuarios_rol
+    CHECK (rol IN ('USER', 'ADMIN')) NOT VALID;
+
+ALTER TABLE trida.usuarios
+    VALIDATE CONSTRAINT chk_usuarios_rol;
+
+INSERT INTO trida.perfil_financiero (id_usuario)
+SELECT u.id_usuario
+FROM trida.usuarios AS u
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM trida.perfil_financiero AS p
+    WHERE p.id_usuario = u.id_usuario
+);
+
+ALTER TABLE trida.dispositivos
+    DROP CONSTRAINT IF EXISTS dispositivos_identificador_unico_key;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'trida.dispositivos'::regclass
+          AND conname = 'uq_dispositivo_user_identifier'
+    ) THEN
+        ALTER TABLE trida.dispositivos
+            ADD CONSTRAINT uq_dispositivo_user_identifier
+            UNIQUE (id_usuario, identificador_unico);
+    END IF;
+END;
+$$;
+
 -- ============================================================================
 -- 2. REGLAS (logs inmutables)
 -- ============================================================================
 
+DROP RULE IF EXISTS logs_no_update ON trida.logs_auditoria;
 CREATE RULE logs_no_update AS ON UPDATE TO trida.logs_auditoria DO INSTEAD NOTHING;
+DROP RULE IF EXISTS logs_no_delete ON trida.logs_auditoria;
 CREATE RULE logs_no_delete AS ON DELETE TO trida.logs_auditoria DO INSTEAD NOTHING;
 
 -- ============================================================================
 -- 3. ÍNDICES
 -- ============================================================================
 
-CREATE INDEX idx_usuarios_estado      ON trida.usuarios (estado);
-CREATE INDEX idx_usuarios_nombre_trgm ON trida.usuarios USING gin (nombre_completo gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_usuarios_estado
+    ON trida.usuarios (estado);
+CREATE INDEX IF NOT EXISTS idx_usuarios_nombre_trgm
+    ON trida.usuarios USING gin (nombre_completo gin_trgm_ops);
 
-CREATE INDEX idx_cuentas_usuario      ON trida.cuentas (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_cuentas_usuario
+    ON trida.cuentas (id_usuario);
 
-CREATE INDEX idx_categorias_usuario   ON trida.categorias (id_usuario);
-CREATE INDEX idx_categorias_tipo      ON trida.categorias (tipo);
-CREATE INDEX idx_categories_owner_state
+CREATE INDEX IF NOT EXISTS idx_categorias_usuario
+    ON trida.categorias (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_categorias_tipo
+    ON trida.categorias (tipo);
+CREATE INDEX IF NOT EXISTS idx_categories_owner_state
     ON trida.categorias (id_usuario, estado);
-CREATE UNIQUE INDEX uq_categories_system_name
+CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_system_name
     ON trida.categorias (LOWER(nombre))
     WHERE id_usuario IS NULL;
 
-CREATE INDEX idx_dispositivos_usuario ON trida.dispositivos (id_usuario);
-CREATE INDEX idx_dispositivos_conf    ON trida.dispositivos (confiable);
+CREATE INDEX IF NOT EXISTS idx_dispositivos_usuario
+    ON trida.dispositivos (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_dispositivos_conf
+    ON trida.dispositivos (confiable);
 
-CREATE INDEX idx_ubicaciones_disp     ON trida.ubicaciones (id_dispositivo);
-CREATE INDEX idx_ubicaciones_ciudad   ON trida.ubicaciones (ciudad);
+CREATE INDEX IF NOT EXISTS idx_ubicaciones_disp
+    ON trida.ubicaciones (id_dispositivo);
+CREATE INDEX IF NOT EXISTS idx_ubicaciones_ciudad
+    ON trida.ubicaciones (ciudad);
 
-CREATE INDEX idx_tx_usuario           ON trida.transacciones (id_usuario);
-CREATE INDEX idx_tx_cuenta            ON trida.transacciones (id_cuenta);
-CREATE INDEX idx_tx_categoria         ON trida.transacciones (id_categoria);
-CREATE INDEX idx_tx_ubicacion         ON trida.transacciones (id_ubicacion);
-CREATE INDEX idx_tx_dispositivo       ON trida.transacciones (id_dispositivo);
-CREATE INDEX idx_tx_fecha             ON trida.transacciones (fecha_transaccion DESC);
-CREATE INDEX idx_tx_usuario_fecha     ON trida.transacciones (id_usuario, fecha_transaccion DESC);
-CREATE INDEX idx_tx_user_cat_fecha    ON trida.transacciones (id_usuario, id_categoria, fecha_transaccion);
-CREATE INDEX idx_tx_tipo              ON trida.transacciones (tipo_movimiento);
-CREATE INDEX idx_tx_estado            ON trida.transacciones (estado);
-CREATE INDEX idx_tx_score             ON trida.transacciones (score_anomalia DESC)
-                                       WHERE score_anomalia IS NOT NULL;
-CREATE INDEX idx_tx_recurrente        ON trida.transacciones (id_usuario, es_recurrente)
-                                       WHERE es_recurrente = TRUE;
+CREATE INDEX IF NOT EXISTS idx_tx_usuario
+    ON trida.transacciones (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_tx_cuenta
+    ON trida.transacciones (id_cuenta);
+CREATE INDEX IF NOT EXISTS idx_tx_categoria
+    ON trida.transacciones (id_categoria);
+CREATE INDEX IF NOT EXISTS idx_tx_ubicacion
+    ON trida.transacciones (id_ubicacion);
+CREATE INDEX IF NOT EXISTS idx_tx_dispositivo
+    ON trida.transacciones (id_dispositivo);
+CREATE INDEX IF NOT EXISTS idx_tx_fecha
+    ON trida.transacciones (fecha_transaccion DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_usuario_fecha
+    ON trida.transacciones (id_usuario, fecha_transaccion DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_user_cat_fecha
+    ON trida.transacciones (id_usuario, id_categoria, fecha_transaccion);
+CREATE INDEX IF NOT EXISTS idx_tx_tipo
+    ON trida.transacciones (tipo_movimiento);
+CREATE INDEX IF NOT EXISTS idx_tx_estado
+    ON trida.transacciones (estado);
+CREATE INDEX IF NOT EXISTS idx_tx_score
+    ON trida.transacciones (score_anomalia DESC)
+    WHERE score_anomalia IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tx_recurrente
+    ON trida.transacciones (id_usuario, es_recurrente)
+    WHERE es_recurrente = TRUE;
 
-CREATE INDEX idx_presup_usuario       ON trida.presupuestos (id_usuario, anio, mes);
+CREATE INDEX IF NOT EXISTS idx_presup_usuario
+    ON trida.presupuestos (id_usuario, anio, mes);
 
-CREATE INDEX idx_metas_usuario        ON trida.metas_ahorro (id_usuario);
-CREATE INDEX idx_metas_estado         ON trida.metas_ahorro (estado);
+CREATE INDEX IF NOT EXISTS idx_metas_usuario
+    ON trida.metas_ahorro (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_metas_estado
+    ON trida.metas_ahorro (estado);
 
-CREATE INDEX idx_aportes_meta         ON trida.aportes_meta (id_meta);
+CREATE INDEX IF NOT EXISTS idx_aportes_meta
+    ON trida.aportes_meta (id_meta);
 
-CREATE INDEX idx_consejos_usuario     ON trida.consejos_financieros (id_usuario);
-CREATE INDEX idx_consejos_no_leidos   ON trida.consejos_financieros (id_usuario, leido)
-                                       WHERE leido = FALSE;
+CREATE INDEX IF NOT EXISTS idx_consejos_usuario
+    ON trida.consejos_financieros (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_consejos_no_leidos
+    ON trida.consejos_financieros (id_usuario, leido)
+    WHERE leido = FALSE;
 
-CREATE INDEX idx_alertas_usuario      ON trida.alertas_fraude (id_usuario);
-CREATE INDEX idx_alertas_estado       ON trida.alertas_fraude (estado);
-CREATE INDEX idx_alertas_severidad    ON trida.alertas_fraude (severidad);
-CREATE INDEX idx_alertas_tx_fecha     ON trida.alertas_fraude (id_transaccion, fecha_detectada DESC);
+CREATE INDEX IF NOT EXISTS idx_alertas_usuario
+    ON trida.alertas_fraude (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_alertas_estado
+    ON trida.alertas_fraude (estado);
+CREATE INDEX IF NOT EXISTS idx_alertas_severidad
+    ON trida.alertas_fraude (severidad);
+CREATE INDEX IF NOT EXISTS idx_alertas_tx_fecha
+    ON trida.alertas_fraude (id_transaccion, fecha_detectada DESC);
 
-CREATE INDEX idx_analisis_user_per    ON trida.analisis_gastos (id_usuario, periodo, fecha_inicio DESC);
+CREATE INDEX IF NOT EXISTS idx_analisis_user_per
+    ON trida.analisis_gastos (id_usuario, periodo, fecha_inicio DESC);
 
-CREATE INDEX idx_reportes_usuario     ON trida.reportes_mensuales (id_usuario, anio DESC, mes DESC);
+CREATE INDEX IF NOT EXISTS idx_reportes_usuario
+    ON trida.reportes_mensuales (id_usuario, anio DESC, mes DESC);
 
-CREATE INDEX idx_logs_usuario         ON trida.logs_auditoria (id_usuario);
-CREATE INDEX idx_logs_fecha           ON trida.logs_auditoria (fecha_accion DESC);
-CREATE INDEX idx_logs_tipo            ON trida.logs_auditoria (tipo_accion);
+CREATE INDEX IF NOT EXISTS idx_logs_usuario
+    ON trida.logs_auditoria (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_logs_fecha
+    ON trida.logs_auditoria (fecha_accion DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_tipo
+    ON trida.logs_auditoria (tipo_accion);
 
 -- ============================================================================
 -- 4. TRIGGERS
@@ -428,6 +572,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_actualizar_dispositivo ON trida.transacciones;
 CREATE TRIGGER trg_actualizar_dispositivo
 AFTER INSERT ON trida.transacciones
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_actualizar_dispositivo();
@@ -443,6 +588,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_consejo_leido ON trida.consejos_financieros;
 CREATE TRIGGER trg_consejo_leido
 BEFORE UPDATE OF leido ON trida.consejos_financieros
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_consejo_leido();
@@ -468,6 +614,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_auditar_usuarios ON trida.usuarios;
 CREATE TRIGGER trg_auditar_usuarios
 AFTER UPDATE ON trida.usuarios
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_auditar_usuarios();
@@ -486,6 +633,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_marcar_patron ON trida.transacciones;
 CREATE TRIGGER trg_marcar_patron
 AFTER INSERT ON trida.transacciones
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_marcar_patron();
@@ -583,6 +731,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_presupuesto_umbral ON trida.transacciones;
 CREATE TRIGGER trg_presupuesto_umbral
 AFTER INSERT OR UPDATE OF estado ON trida.transacciones
 FOR EACH ROW
@@ -599,6 +748,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_aporte_meta ON trida.aportes_meta;
 CREATE TRIGGER trg_aporte_meta
 AFTER INSERT ON trida.aportes_meta
 FOR EACH ROW EXECUTE FUNCTION trida.fn_trg_aporte_meta();
@@ -760,11 +910,11 @@ CREATE OR REPLACE FUNCTION trida.fn_cuentas(p_id_usuario INTEGER)
 RETURNS TABLE (
     id_cuenta INTEGER, nombre VARCHAR(100), entidad VARCHAR(100),
     tipo VARCHAR(20), numero_enmascarado VARCHAR(20), color VARCHAR(20),
-    saldo_inicial NUMERIC(15,2), estado BOOLEAN
+    saldo_inicial NUMERIC(15,2), saldo_actual NUMERIC(15,2), estado BOOLEAN
 )
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
     SELECT id_cuenta, nombre, entidad, tipo, numero_enmascarado,
-           color, saldo_inicial, estado
+           color, saldo_inicial, saldo_actual, estado
     FROM trida.cuentas
     WHERE id_usuario = p_id_usuario AND estado = TRUE
     ORDER BY nombre;
@@ -989,33 +1139,40 @@ CREATE OR REPLACE FUNCTION trida.fn_presupuestos(
     p_anio       INTEGER DEFAULT NULL
 )
 RETURNS TABLE (
-    id_presupuesto INTEGER, id_categoria INTEGER, categoria VARCHAR(80),
-    limite_mensual NUMERIC(15,2), mes SMALLINT, anio SMALLINT,
-    gastado NUMERIC(15,2), porcentaje NUMERIC(5,2)
+    id_presupuesto INTEGER,
+    id_categoria INTEGER,
+    categoria VARCHAR(80),
+    limite_mensual NUMERIC(15, 2),
+    mes SMALLINT,
+    anio SMALLINT,
+    gastado NUMERIC(15, 2),
+    porcentaje NUMERIC(5, 2)
 )
-LANGUAGE sql STABLE PARALLEL SAFE AS $$
-    SELECT p.id_presupuesto, p.id_categoria, c.nombre,
-           p.limite_mensual, p.mes, p.anio,
-           COALESCE((SELECT SUM(t.monto) FROM trida.transacciones t
-                     WHERE t.id_usuario = p.id_usuario
-                       AND t.id_categoria = p.id_categoria
-                       AND t.tipo_movimiento = 'GASTO'
-                       AND t.estado IN ('CONFIRMADA', 'APROBADA')
-                       AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
-                       AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio), 0) AS gastado,
-           ROUND(COALESCE((SELECT SUM(t.monto) FROM trida.transacciones t
-                     WHERE t.id_usuario = p.id_usuario
-                       AND t.id_categoria = p.id_categoria
-                       AND t.tipo_movimiento = 'GASTO'
-                       AND t.estado IN ('CONFIRMADA', 'APROBADA')
-                       AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
-                       AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio), 0)
-                 / NULLIF(p.limite_mensual, 0) * 100, 2) AS porcentaje
-    FROM trida.presupuestos p
-    LEFT JOIN trida.categorias c ON c.id_categoria = p.id_categoria
+LANGUAGE sql STABLE PARALLEL SAFE
+AS $$
+    SELECT
+        p.id_presupuesto,
+        p.id_categoria,
+        c.nombre,
+        p.limite_mensual,
+        p.mes,
+        p.anio,
+        COALESCE(SUM(t.monto), 0)::NUMERIC(15, 2) AS gastado,
+        ROUND(COALESCE(SUM(t.monto), 0) / NULLIF(p.limite_mensual, 0) * 100, 2) AS porcentaje
+    FROM trida.presupuestos AS p
+    LEFT JOIN trida.categorias AS c ON c.id_categoria = p.id_categoria
+    LEFT JOIN trida.transacciones AS t
+      ON t.id_usuario = p.id_usuario
+     AND t.id_categoria = p.id_categoria
+     AND t.tipo_movimiento = 'GASTO'
+     AND t.estado IN ('CONFIRMADA', 'APROBADA')
+     AND EXTRACT(MONTH FROM t.fecha_transaccion) = p.mes
+     AND EXTRACT(YEAR FROM t.fecha_transaccion) = p.anio
     WHERE p.id_usuario = p_id_usuario
       AND (p_mes IS NULL OR p.mes = p_mes)
       AND (p_anio IS NULL OR p.anio = p_anio)
+    GROUP BY p.id_presupuesto, p.id_categoria, c.nombre,
+             p.limite_mensual, p.mes, p.anio
     ORDER BY p.mes DESC, c.nombre;
 $$;
 
@@ -1134,3 +1291,5 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     ORDER BY fecha_inicio DESC
     LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 12), 60));
 $$;
+
+COMMIT;

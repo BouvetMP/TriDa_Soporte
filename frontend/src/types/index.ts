@@ -11,3 +11,4 @@ export * from "./Savings";
 export * from "./Insight";
 export * from "./Report";
 export * from "./Map";
+export * from "./Audit";

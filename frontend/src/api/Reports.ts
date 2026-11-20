@@ -3,7 +3,12 @@ import type { ApiSuccess, FinancialReportData, ReportFilters } from "@/types";
 
 interface ApiReportSummary {
   periodo: { fecha_inicio: string; fecha_fin: string };
-  totales: { ingresos: number; gastos: number; ahorros: number; balance: number };
+  totales: {
+    ingresos: number;
+    gastos: number;
+    ahorros: number;
+    balance: number;
+  };
 }
 
 interface ApiCategoryReport {
@@ -33,19 +38,25 @@ export const reportsApi = {
       fecha_fin: filters.fecha_fin,
       id_cuenta: filters.id_cuenta,
     };
-    const [summaryResponse, expenseResponse, incomeResponse, transactionResponse] =
-      await Promise.all([
-        apiClient.get<ApiSuccess<ApiReportSummary>>("/reports/summary", { params }),
-        apiClient.get<ApiSuccess<ApiCategoryReport>>("/reports/by-category", {
-          params: { ...params, tipo_movimiento: "GASTO" },
-        }),
-        apiClient.get<ApiSuccess<ApiCategoryReport>>("/reports/by-category", {
-          params: { ...params, tipo_movimiento: "INGRESO" },
-        }),
-        apiClient.get<ApiSuccess<ApiTransactionReport>>("/reports/transactions", {
-          params: { ...params, limit: 5000 },
-        }),
-      ]);
+    const [
+      summaryResponse,
+      expenseResponse,
+      incomeResponse,
+      transactionResponse,
+    ] = await Promise.all([
+      apiClient.get<ApiSuccess<ApiReportSummary>>("/reports/summary", {
+        params,
+      }),
+      apiClient.get<ApiSuccess<ApiCategoryReport>>("/reports/by-category", {
+        params: { ...params, tipo_movimiento: "GASTO" },
+      }),
+      apiClient.get<ApiSuccess<ApiCategoryReport>>("/reports/by-category", {
+        params: { ...params, tipo_movimiento: "INGRESO" },
+      }),
+      apiClient.get<ApiSuccess<ApiTransactionReport>>("/reports/transactions", {
+        params: { ...params, limit: 5000 },
+      }),
+    ]);
 
     const summary = summaryResponse.data.data;
     const gastos = expenseResponse.data.data.categorias;

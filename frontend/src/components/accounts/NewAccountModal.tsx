@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@components/ui/Select";
+import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { CreateAccountPayload, AccountType } from "@/types";
 import { useToast } from "@/components/ui/Toast";
@@ -132,7 +132,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
             label="Saldo Inicial (COP)"
             type="number"
             min="0"
-            step="1000"
+            step="0.01"
             placeholder="0"
             value={saldoInicial}
             onChange={(e) => setSaldoInicial(e.target.value)}
@@ -149,11 +149,15 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold tracking-wide text-text-secondary uppercase mb-1.5">
+          <label
+            htmlFor="new-account-color"
+            className="block text-xs font-semibold tracking-wide text-text-secondary uppercase mb-1.5"
+          >
             Color distintivo
           </label>
           <div className="flex items-center gap-2">
             <input
+              id="new-account-color"
               type="color"
               value={color}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>

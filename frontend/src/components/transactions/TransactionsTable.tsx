@@ -93,7 +93,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               </td>
               <td className="py-3.5 px-4 whitespace-nowrap">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--color-bg-surface-hover)] text-[var(--color-text-subtle)] border border-[var(--color-border-subtle)]">
-                  {tx.nombre_categoria || tx.categoria?.nombre || "Sin categoría"}
+                  {tx.nombre_categoria ||
+                    tx.categoria?.nombre ||
+                    "Sin categoría"}
                 </span>
               </td>
               <td className="py-3.5 px-4 whitespace-nowrap">

@@ -49,19 +49,15 @@ export function EditBudgetModal({
       title={`Editar Presupuesto: ${budget?.categoria?.nombre || ""}`}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-            Monto Límite (COP) *
-          </label>
-          <Input
-            type="number"
-            min="1"
-            step="1000"
-            value={montoLimite}
-            onChange={(e) => setMontoLimite(e.target.value)}
-            required
-          />
-        </div>
+        <Input
+          label="Monto Límite (COP) *"
+          type="number"
+          min="1"
+          step="0.01"
+          value={montoLimite}
+          onChange={(e) => setMontoLimite(e.target.value)}
+          required
+        />
 
         <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border)]">
           <Button

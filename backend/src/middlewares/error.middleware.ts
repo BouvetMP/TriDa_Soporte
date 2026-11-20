@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from "express";
 import { ZodError, ZodIssue } from "zod";
 import { sendError } from "../utils/apiResponse.js";
 import { AppError } from "../utils/AppError.js";
+import { logger } from "../utils/logger.js";
 
 type PrismaKnownRequestErrorLike = {
   name: "PrismaClientKnownRequestError";
@@ -63,18 +64,29 @@ export const errorHandler = (
       code = "NOT_FOUND";
     }
 
-    console.error("Prisma request failed", { code: err.code, path: req.originalUrl });
+    logger.error("request.database_error", err, {
+      requestId: res.locals.requestId ?? "unknown",
+      method: req.method,
+      path: req.path,
+      prismaCode: err.code,
+    });
     sendError(res, message, statusCode, null, code);
     return;
   }
 
   if (err instanceof AppError) {
+    if (err.statusCode >= 500) {
+      logger.error("request.application_error", err, {
+        requestId: res.locals.requestId ?? "unknown",
+        method: req.method,
+        path: req.path,
+        statusCode: err.statusCode,
+        errorCode: err.code ?? "APP_ERROR",
+      });
+    }
     sendError(res, err.message, err.statusCode, null, err.code);
     return;
   }
-
-  // 3. Manejo de Errores Genéricos del Sistema (RS-007)
-  console.error(`💥 [ERROR UNHANDLED] ${req.method} ${req.originalUrl}:`, err);
 
   const errorRecord =
     typeof err === "object" && err !== null
@@ -85,6 +97,12 @@ export const errorHandler = (
     typeof statusValue === "number" && statusValue >= 400 && statusValue < 600
       ? statusValue
       : 500;
+  logger.error("request.unhandled_error", err, {
+    requestId: res.locals.requestId ?? "unknown",
+    method: req.method,
+    path: req.path,
+    statusCode,
+  });
   const clientMessage =
     statusCode < 500 && errorRecord.expose === true
       ? err instanceof Error

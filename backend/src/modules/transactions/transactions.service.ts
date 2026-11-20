@@ -8,7 +8,11 @@ import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
 import { RISK_THRESHOLDS, riskLevelSql, riskRankSql } from "../../utils/risk.js";
 import type { CreateTransactionInput, ListTransactionsQueryInput } from "./transactions.schemas.js";
 
-export class TransactionError extends AppError {}
+export class TransactionError extends AppError {
+  constructor(message: string, statusCode = 400, code = "TRANSACTION_ERROR") {
+    super(message, statusCode, code);
+  }
+}
 
 export type TransactionQueryParams = ListTransactionsQueryInput;
 
@@ -268,7 +272,6 @@ export class TransactionsService {
       ? new Date(data.fecha_transaccion)
       : new Date();
     const variacion_saldo = getTransactionBalanceDelta(data.tipo_movimiento, data.monto);
-    const direccion_ip = data.ip_origen ?? null;
 
     return prisma.$transaction(async (transaction) => {
       const cuentaTransaccion = await transaction.cuenta.findFirst({
@@ -318,13 +321,12 @@ export class TransactionsService {
         data.latitud !== undefined ||
         data.longitud !== undefined ||
         data.ciudad ||
-        data.pais ||
-        direccion_ip
+        data.pais
       ) {
         const ubicacion = await transaction.ubicacion.create({
           data: {
             id_dispositivo,
-            direccion_ip,
+            direccion_ip: null,
             ciudad: data.ciudad ?? null,
             pais: data.pais ?? null,
             latitud: data.latitud ?? null,
@@ -357,7 +359,7 @@ export class TransactionsService {
         await transaction.cuenta.update({
           where: { id_cuenta: data.id_cuenta },
           data: {
-            saldo_inicial: { increment: variacion_saldo },
+            saldo_actual: { increment: variacion_saldo },
           },
         });
       }
@@ -422,7 +424,7 @@ export class TransactionsService {
         await client.cuenta.update({
           where: { id_cuenta: transaction.id_cuenta },
           data: {
-            saldo_inicial: {
+            saldo_actual: {
               decrement: getTransactionBalanceDelta(
                 transaction.tipo_movimiento,
                 transaction.monto,
@@ -475,7 +477,7 @@ export class TransactionsService {
         await client.cuenta.update({
           where: { id_cuenta: transaction.id_cuenta },
           data: {
-            saldo_inicial: {
+            saldo_actual: {
               increment: getTransactionBalanceDelta(
                 transaction.tipo_movimiento,
                 transaction.monto,

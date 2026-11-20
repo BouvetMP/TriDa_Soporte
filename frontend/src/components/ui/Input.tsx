@@ -58,7 +58,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             type={type}
             disabled={disabled}
             aria-invalid={Boolean(error) || undefined}
-            aria-describedby={error ? errorId : helperText ? helperId : undefined}
+            aria-describedby={
+              error ? errorId : helperText ? helperId : undefined
+            }
             className={cn(
               "w-full rounded-lg bg-surface border border-border px-3.5 py-2 text-sm text-text-primary placeholder:text-text-muted transition-all duration-200",
               "focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary",

@@ -18,7 +18,17 @@ export type SessionUser = Pick<
   User,
   "id_usuario" | "nombre_completo" | "email" | "rol"
 > &
-  Partial<Pick<User, "telefono" | "pais" | "ciudad" | "estado" | "fecha_registro" | "ultimo_acceso">>;
+  Partial<
+    Pick<
+      User,
+      | "telefono"
+      | "pais"
+      | "ciudad"
+      | "estado"
+      | "fecha_registro"
+      | "ultimo_acceso"
+    >
+  >;
 
 /**
  * ¿Qué? Interfaces de payloads para peticiones de Auth (coinciden con auth.schemas.ts).

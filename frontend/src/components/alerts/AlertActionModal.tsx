@@ -32,7 +32,12 @@ export const AlertActionModal: React.FC<AlertActionModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Revisión de Seguridad" isSubmitting={isSubmitting}>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Revisión de Seguridad"
+      isSubmitting={isSubmitting}
+    >
       <div className="space-y-4">
         <div className="p-4 bg-[var(--color-bg-surface-hover)] border border-[var(--color-border-subtle)] rounded-xl space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-subtle)]">

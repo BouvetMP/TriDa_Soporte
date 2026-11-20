@@ -23,8 +23,8 @@ type BudgetRow = {
 };
 
 class BudgetError extends AppError {
-  constructor(message: string, statusCode = 400) {
-    super(message, statusCode);
+  constructor(message: string, statusCode = 400, code = "BUDGET_ERROR") {
+    super(message, statusCode, code);
   }
 }
 
@@ -101,7 +101,11 @@ export const budgetsService = {
     });
 
     if (!category) {
-      throw new BudgetError("Categoría inválida o no pertenece al usuario");
+      throw new BudgetError(
+        "La categoría debe existir, pertenecer al usuario y ser de tipo GASTO",
+        400,
+        "INVALID_BUDGET_CATEGORY",
+      );
     }
 
     const budget = await prisma.presupuesto.create({
