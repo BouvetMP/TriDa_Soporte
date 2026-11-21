@@ -25,4 +25,5 @@ describe("Colombia date helpers", () => {
     expect(monthStartDateInBogota(instant)).toBe("2026-02-01");
     expect(monthStartDateInBogota(instant, -2)).toBe("2025-12-01");
   });
+
 });

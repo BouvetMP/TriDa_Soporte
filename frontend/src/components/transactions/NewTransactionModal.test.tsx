@@ -9,7 +9,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NewTransactionModal } from "./NewTransactionModal";
 
 vi.mock("@/hooks/useAccount", () => ({
-  useAccount: () => ({ accounts: [], selectedAccount: null }),
+  useAccount: () => ({
+    accounts: [
+      {
+        id_cuenta: 1,
+        nombre: "Cuenta de efectivo",
+        tipo: "EFECTIVO",
+        estado: true,
+      },
+    ],
+    selectedAccount: null,
+  }),
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -36,12 +46,20 @@ describe("NewTransactionModal", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "Monto (COP)" }), {
       target: { value: "25" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Guardar Transacción" }),
-    );
+    fireEvent.change(screen.getByLabelText("Cuenta"), {
+      target: { value: "1" },
+    });
+    fireEvent.change(screen.getByLabelText("Fecha y hora de la transacción"), {
+      target: { value: "2999-01-01T10:00" },
+    });
+    const form = screen
+      .getByRole("button", { name: "Guardar Transacción" })
+      .closest("form");
+    if (!form) throw new Error("No se encontró el formulario de transacción");
+    fireEvent.submit(form);
 
     const validationMessage =
-      "Debes seleccionar una cuenta para registrar la transacción.";
+      "La fecha de efectivo no puede estar vacía ni ser futura.";
     expect(await screen.findByText(validationMessage)).toBeTruthy();
 
     rerender(<NewTransactionModal {...props} isOpen={false} />);

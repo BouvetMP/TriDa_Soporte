@@ -1,4 +1,4 @@
-export type TipoMovimiento = "INGRESO" | "GASTO" | "AHORRO";
+export type TipoMovimiento = "INGRESO" | "GASTO" | "AHORRO" | "TRANSFERENCIA";
 export type TransactionType = TipoMovimiento;
 
 export type NivelRiesgo = "BAJO" | "MEDIO" | "ALTO" | "CRITICO";
@@ -13,10 +13,13 @@ export interface TransactionCategoryInfo {
 
 export interface Transaction {
   id_transaccion: number;
-  id_cuenta: number;
+  id_cuenta: number | null;
+  id_cuenta_destino?: number | null;
+  canal?: string;
   id_usuario?: number;
   id_categoria?: number | null;
   nombre_cuenta?: string | null;
+  nombre_cuenta_destino?: string | null;
   nombre_categoria?: string | null;
   icono_categoria?: string | null;
   color_categoria?: string | null;
@@ -71,6 +74,34 @@ export interface CreateTransactionResult {
   alert: unknown;
 }
 
-export interface DeleteTransactionResult {
+export interface TransactionArchivePreparation {
+  id_exportacion: number | null;
+  total: number;
+  fecha_corte: string;
+  expira_en: string | null;
+}
+
+export interface TransactionArchivePurgeResult {
+  eliminadas: number;
+  omitidas: number;
+  fecha_corte: string;
+  saldos_modificados: false;
+}
+
+export interface EmailTransactionConfirmation {
   id_transaccion: number;
+  monto: number;
+  comercio: string | null;
+  descripcion: string | null;
+  fecha_transaccion: string;
+  nombre_cuenta: string | null;
+  estado: string;
+  puede_responder: boolean;
+}
+
+export interface EmailTransactionConfirmationResult {
+  id_transaccion: number;
+  decision: "FUI_YO" | "NO_FUI_YO";
+  estado: "CONFIRMADA" | "RECHAZADA";
+  alerta_critica_creada: boolean;
 }

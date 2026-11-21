@@ -25,33 +25,33 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ metrics }) => {
         </div>
       </div>
 
-      {/* Ingresos del Mes */}
+      {/* Ingresos del periodo */}
       <div className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
-            Ingresos del Mes
+            Ingresos del periodo
           </span>
           <div className="p-2 bg-income/10 text-income rounded-lg">
             <TrendingUp className="w-5 h-5" />
           </div>
         </div>
         <div className="text-2xl font-bold font-mono text-income">
-          + {formatCurrency(metrics.mes_actual.ingresos)}
+          + {formatCurrency(metrics.periodo.ingresos)}
         </div>
       </div>
 
-      {/* Gastos del Mes */}
+      {/* Gastos del periodo */}
       <div className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-medium text-[var(--color-text-subtle)] uppercase tracking-wider">
-            Gastos del Mes
+            Gastos del periodo
           </span>
           <div className="p-2 bg-expense/10 text-expense rounded-lg">
             <TrendingDown className="w-5 h-5" />
           </div>
         </div>
         <div className="text-2xl font-bold font-mono text-expense">
-          - {formatCurrency(metrics.mes_actual.gastos)}
+          - {formatCurrency(metrics.periodo.gastos)}
         </div>
       </div>
 

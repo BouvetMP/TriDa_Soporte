@@ -18,10 +18,13 @@ interface ApiCategoryReport {
 }
 
 export const DashboardApi = {
-  getStats: async (id_cuenta?: number): Promise<DashboardData> => {
+  getStats: async (
+    id_cuenta?: number,
+    periodo_dias = 30,
+  ): Promise<DashboardData> => {
     const response = await apiClient.get<ApiSuccess<DashboardData>>(
       "/dashboard/stats",
-      { params: id_cuenta ? { id_cuenta } : undefined },
+      { params: { id_cuenta, periodo_dias } },
     );
     return response.data.data;
   },
@@ -47,6 +50,7 @@ export const DashboardApi = {
 
   getCategoryExpenses: async (
     id_cuenta?: number,
+    periodo?: Pick<DashboardData["periodo"], "fecha_inicio" | "fecha_fin">,
   ): Promise<CategoryExpense[]> => {
     const response = await apiClient.get<ApiSuccess<ApiCategoryReport>>(
       "/reports/by-category",
@@ -54,6 +58,8 @@ export const DashboardApi = {
         params: {
           tipo_movimiento: "GASTO",
           id_cuenta,
+          fecha_inicio: periodo?.fecha_inicio,
+          fecha_fin: periodo?.fecha_fin,
         },
       },
     );

@@ -38,7 +38,9 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const [error, setError] = useState<string>("");
   const [shareLocation, setShareLocation] = useState(false);
 
-  const activeAccounts = accounts.filter((account) => account.estado);
+  const activeAccounts = accounts.filter(
+    (account) => account.estado && account.tipo === "EFECTIVO",
+  );
   const selectedAccountForForm = activeAccounts.find(
     (account) => account.id_cuenta === Number(idCuenta),
   );
@@ -53,9 +55,12 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const defaultAccount = selectedAccount?.estado
+    const defaultAccount =
+      selectedAccount?.estado && selectedAccount.tipo === "EFECTIVO"
       ? selectedAccount
-      : accounts.find((account) => account.estado);
+      : accounts.find(
+          (account) => account.estado && account.tipo === "EFECTIVO",
+        );
     setIdCuenta(defaultAccount ? String(defaultAccount.id_cuenta) : "");
   }, [isOpen, selectedAccount, accounts]);
 
@@ -189,6 +194,12 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             {error}
           </div>
         )}
+        {activeAccounts.length === 0 && (
+          <p role="status" className="text-sm text-text-secondary">
+            Los movimientos manuales requieren una cuenta de efectivo. Los
+            movimientos de otras cuentas se recibirán automáticamente.
+          </p>
+        )}
 
         <div>
           <Select
@@ -202,6 +213,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                 label: account.nombre,
               })),
             ]}
+            disabled={activeAccounts.length === 0}
           />
         </div>
 
@@ -298,7 +310,11 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           >
             Cancelar
           </Button>
-          <Button type="submit" isLoading={isSubmitting}>
+          <Button
+            type="submit"
+            isLoading={isSubmitting}
+            disabled={activeAccounts.length === 0}
+          >
             Guardar Transacción
           </Button>
         </div>

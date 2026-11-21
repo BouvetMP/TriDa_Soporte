@@ -5,27 +5,30 @@ import { useAccount } from "@/hooks/useAccount";
 import { TransactionFiltersBar } from "@/components/transactions/TransactionsFilterBar";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
 import { NewTransactionModal } from "@/components/transactions/NewTransactionModal";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { TransactionRetentionPanel } from "@/components/transactions/TransactionRetentionPanel";
 import { Button } from "@/components/ui/Button";
 import { Plus, ArrowLeft, ArrowRight } from "lucide-react";
 
 export const TransactionsPage: React.FC = () => {
-  const { selectedAccount } = useAccount();
+  const { selectedAccount, accounts } = useAccount();
   const { categories } = useCategories();
   const {
     transactions,
     pagination,
     filters,
     isLoading,
+    refresh,
     updateFilters,
     changePage,
     createTransaction,
-    deleteTransaction,
     updateTransactionStatus,
+    updateTransactionCategory,
   } = useTransactions();
 
   const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
-  const [deleteTxId, setDeleteTxId] = useState<number | null>(null);
+  const hasCashAccount = accounts.some(
+    (account) => account.estado && account.tipo === "EFECTIVO",
+  );
 
   const handleResetFilters = () => {
     updateFilters({
@@ -35,13 +38,6 @@ export const TransactionsPage: React.FC = () => {
       estado: undefined,
       search: undefined,
     });
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (deleteTxId !== null) {
-      await deleteTransaction(deleteTxId);
-      setDeleteTxId(null);
-    }
   };
 
   return (
@@ -60,12 +56,22 @@ export const TransactionsPage: React.FC = () => {
 
         <Button
           onClick={() => setIsNewModalOpen(true)}
+          disabled={!hasCashAccount}
           className="flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
           Nueva Transacción
         </Button>
       </div>
+      {!hasCashAccount && (
+        <p role="status" className="text-sm text-text-secondary">
+          Para registrar movimientos manualmente, primero agrega una cuenta de
+          efectivo. Las demás cuentas recibirán movimientos desde la
+          integración.
+        </p>
+      )}
+
+      <TransactionRetentionPanel onPurged={refresh} />
 
       <TransactionFiltersBar
         filters={filters}
@@ -77,8 +83,11 @@ export const TransactionsPage: React.FC = () => {
       <TransactionsTable
         transactions={transactions}
         isLoading={isLoading}
-        onDelete={(id) => setDeleteTxId(id)}
+        categories={categories}
         onResolve={(id, estado) => void updateTransactionStatus(id, estado)}
+        onUpdateCategory={(id, categoryId) =>
+          void updateTransactionCategory(id, categoryId)
+        }
       />
 
       {pagination.total_pages > 1 && (
@@ -116,16 +125,6 @@ export const TransactionsPage: React.FC = () => {
         onClose={() => setIsNewModalOpen(false)}
         categories={categories}
         onSubmit={createTransaction}
-      />
-
-      <ConfirmDialog
-        isOpen={deleteTxId !== null}
-        title="Eliminar Transacción"
-        description="¿Estás seguro de que deseas eliminar este registro? Esta acción afectará el historial."
-        confirmText="Eliminar"
-        variant="danger"
-        onConfirm={handleDeleteConfirm}
-        onClose={() => setDeleteTxId(null)}
       />
     </div>
   );

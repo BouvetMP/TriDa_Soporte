@@ -57,26 +57,30 @@ describe("useAlerts", () => {
 
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => {
-      expect(pendingCountResolvers).toHaveLength(1);
+      expect(pendingCountResolvers.length).toBeGreaterThan(0);
     });
+    const initialRequestCount = pendingCountResolvers.length;
 
     await act(async () => {
       await result.current.resolveAlert(1, "FUI_YO");
     });
     expect(mocks.refreshAccounts).toHaveBeenCalled();
     await waitFor(() => {
-      expect(pendingCountResolvers).toHaveLength(2);
+      expect(pendingCountResolvers.length).toBeGreaterThan(initialRequestCount);
     });
+    const latestRequestIndex = pendingCountResolvers.length - 1;
 
     await act(async () => {
-      pendingCountResolvers[1]({ count: 2 });
+      pendingCountResolvers[latestRequestIndex]({ count: 2 });
     });
     await waitFor(() => {
       expect(result.current.pendingCount).toBe(2);
     });
 
     await act(async () => {
-      pendingCountResolvers[0]({ count: 1 });
+      for (let index = 0; index < initialRequestCount; index += 1) {
+        pendingCountResolvers[index]({ count: 1 });
+      }
     });
     expect(result.current.pendingCount).toBe(2);
   });

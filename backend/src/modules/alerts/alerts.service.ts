@@ -13,11 +13,9 @@ export class AlertError extends AppError {
 export const getAlertTransactionDecision = (
   data: Pick<UpdateAlertStatusInput, "estado" | "accion_usuario">,
 ) => ({
-  confirmsTransaction:
-    data.accion_usuario === "FUI_YO" && data.estado === "DESCARTADA",
+  confirmsTransaction: data.accion_usuario === "FUI_YO" && data.estado === "DESCARTADA",
   rejectsTransaction:
-    (data.accion_usuario === "NO_FUI_YO" ||
-      data.accion_usuario === "BLOQUEAR_TARJETA") &&
+    (data.accion_usuario === "NO_FUI_YO" || data.accion_usuario === "BLOQUEAR_TARJETA") &&
     data.estado === "CONFIRMADA",
 });
 
@@ -39,7 +37,13 @@ export class AlertsService {
       estado: options.estado,
       severidad: options.severidad,
       ...(options.id_cuenta !== undefined
-        ? { transaccion: { is: { id_cuenta: options.id_cuenta } } }
+        ? {
+            transaccion: {
+              is: {
+                OR: [{ id_cuenta: options.id_cuenta }, { id_cuenta_destino: options.id_cuenta }],
+              },
+            },
+          }
         : {}),
     };
     const [alerts, total] = await Promise.all([
@@ -87,7 +91,7 @@ export class AlertsService {
        WHERE a.id_usuario = $1
          AND ($2::text IS NULL OR a.estado = $2)
          AND ($3::text IS NULL OR a.severidad = $3)
-         AND ($6::int IS NULL OR t.id_cuenta = $6)
+         AND ($6::int IS NULL OR t.id_cuenta = $6 OR t.id_cuenta_destino = $6)
        ORDER BY CASE a.severidad
          WHEN 'CRITICA' THEN 4
          WHEN 'ALTA' THEN 3
@@ -127,8 +131,7 @@ export class AlertsService {
     });
 
     return alerts.sort(
-      (left, right) =>
-        (order.get(left.id_alerta) ?? 0) - (order.get(right.id_alerta) ?? 0),
+      (left, right) => (order.get(left.id_alerta) ?? 0) - (order.get(right.id_alerta) ?? 0),
     );
   }
 
@@ -175,8 +178,18 @@ export class AlertsService {
       }
 
       const currentTransaction = alert.transaccion;
-      const { confirmsTransaction, rejectsTransaction } =
-        getAlertTransactionDecision(data);
+      const { confirmsTransaction, rejectsTransaction } = getAlertTransactionDecision(data);
+      if (
+        currentTransaction.canal === "webhook" &&
+        currentTransaction.tipo_movimiento === "GASTO" &&
+        currentTransaction.estado === "PENDIENTE" &&
+        (confirmsTransaction || rejectsTransaction)
+      ) {
+        throw new AlertError(
+          "Los gastos automáticos deben resolverse desde el enlace enviado por correo",
+          409,
+        );
+      }
 
       const systemBlocked =
         currentTransaction.estado === "RECHAZADA" &&
@@ -227,6 +240,16 @@ export class AlertsService {
             },
           });
         }
+        if (
+          (currentTransaction.estado === "PENDIENTE" || systemBlocked) &&
+          currentTransaction.tipo_movimiento === "TRANSFERENCIA" &&
+          currentTransaction.id_cuenta_destino !== null
+        ) {
+          await transaction.cuenta.update({
+            where: { id_cuenta: currentTransaction.id_cuenta_destino },
+            data: { saldo_actual: { increment: currentTransaction.monto } },
+          });
+        }
       } else if (
         rejectsTransaction &&
         ["PENDIENTE", "CONFIRMADA", "APROBADA"].includes(currentTransaction.estado)
@@ -254,6 +277,16 @@ export class AlertsService {
                 ),
               },
             },
+          });
+        }
+        if (
+          currentTransaction.estado !== "PENDIENTE" &&
+          currentTransaction.tipo_movimiento === "TRANSFERENCIA" &&
+          currentTransaction.id_cuenta_destino !== null
+        ) {
+          await transaction.cuenta.update({
+            where: { id_cuenta: currentTransaction.id_cuenta_destino },
+            data: { saldo_actual: { decrement: currentTransaction.monto } },
           });
         }
       }
@@ -302,7 +335,7 @@ export class AlertsService {
       FROM trida.alertas_fraude a
       LEFT JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
-        AND ($2::int IS NULL OR t.id_cuenta = $2)
+        AND ($2::int IS NULL OR t.id_cuenta = $2 OR t.id_cuenta_destino = $2)
       GROUP BY a.severidad
       `,
       userId,

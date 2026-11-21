@@ -116,28 +116,6 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     return false;
   };
 
-  const deleteTransaction = async (id: number): Promise<boolean> => {
-    try {
-      await TransactionsApi.delete(id);
-      showToast({
-        type: "success",
-        title: "Eliminada",
-        message: "La transacción fue eliminada del registro.",
-      });
-      await Promise.all([fetchTransactions(), refreshAccounts()]);
-      window.dispatchEvent(new Event("trida-alerts-updated"));
-      return true;
-    } catch (error) {
-      const err = error as Error;
-      showToast({
-        type: "error",
-        title: "Error",
-        message: err.message || "No se pudo eliminar el movimiento.",
-      });
-    }
-    return false;
-  };
-
   const updateTransactionStatus = async (
     id: number,
     estado: "CONFIRMADA" | "RECHAZADA",
@@ -166,6 +144,30 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     return false;
   };
 
+  const updateTransactionCategory = async (
+    id: number,
+    categoryId: number | null,
+  ): Promise<boolean> => {
+    try {
+      await TransactionsApi.updateCategory(id, categoryId);
+      showToast({
+        type: "success",
+        title: "Categoría actualizada",
+        message: "La categoría del movimiento fue actualizada.",
+      });
+      await fetchTransactions();
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      showToast({
+        type: "error",
+        title: "No se pudo categorizar",
+        message: err.message || "No se pudo actualizar la categoría.",
+      });
+      return false;
+    }
+  };
+
   return {
     transactions,
     pagination,
@@ -174,8 +176,8 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
     updateFilters,
     changePage,
     createTransaction,
-    deleteTransaction,
     updateTransactionStatus,
+    updateTransactionCategory,
     refresh: fetchTransactions,
   };
 };

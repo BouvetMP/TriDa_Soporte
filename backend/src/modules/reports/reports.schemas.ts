@@ -9,7 +9,9 @@ export const reportQuerySchema = z
     id_cuenta: z.coerce.number().int().positive().max(MAX_POSTGRES_INT).optional(),
     fecha_inicio: z.iso.datetime().or(z.iso.date()).optional(),
     fecha_fin: z.iso.datetime().or(z.iso.date()).optional(),
-    tipo_movimiento: z.enum(["INGRESO", "GASTO", "AHORRO"]).optional(),
+    tipo_movimiento: z
+      .enum(["INGRESO", "GASTO", "AHORRO", "TRANSFERENCIA"])
+      .optional(),
     limit: z.coerce.number().int().min(1).max(5000).default(500),
   })
   .superRefine((data, ctx) => {

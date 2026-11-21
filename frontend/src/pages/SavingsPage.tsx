@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Target } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
@@ -13,6 +14,12 @@ import { ContributeSavingsModal } from "@/components/savings/ContributeSavingsMo
 import type { SavingsGoal, EstadoMeta } from "@/types";
 
 export function SavingsPage() {
+  const [searchParams] = useSearchParams();
+  const requestedEstado = searchParams.get("estado");
+  const initialEstado: EstadoMeta | undefined =
+    requestedEstado === "ACTIVA" || requestedEstado === "COMPLETADA"
+      ? requestedEstado
+      : undefined;
   const {
     goals,
     summary,
@@ -23,7 +30,7 @@ export function SavingsPage() {
     updateGoal,
     deleteGoal,
     addContribution,
-  } = useSavings();
+  } = useSavings(initialEstado);
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);

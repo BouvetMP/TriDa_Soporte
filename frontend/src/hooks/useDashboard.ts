@@ -7,6 +7,7 @@ import { useAccount } from "@/hooks/useAccount";
 export const useDashboard = () => {
   const [data, setData] = useState<DashboardViewData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [periodDays, setPeriodDays] = useState(30);
   const { showToast } = useToast();
   const { selectedAccount } = useAccount();
   const requestId = useRef(0);
@@ -15,12 +16,19 @@ export const useDashboard = () => {
     const currentRequestId = ++requestId.current;
     setIsLoading(true);
     try {
-      const [metrics, recentAlerts, recentTransactions, categories, advice] =
+      const metrics = await DashboardApi.getStats(
+        selectedAccount?.id_cuenta,
+        periodDays,
+      );
+      if (currentRequestId !== requestId.current) return;
+      const [recentAlerts, recentTransactions, categories, advice] =
         await Promise.all([
-          DashboardApi.getStats(selectedAccount?.id_cuenta),
           DashboardApi.getRecentAlerts(selectedAccount?.id_cuenta),
           DashboardApi.getRecentTransactions(selectedAccount?.id_cuenta),
-          DashboardApi.getCategoryExpenses(selectedAccount?.id_cuenta),
+          DashboardApi.getCategoryExpenses(
+            selectedAccount?.id_cuenta,
+            metrics.periodo,
+          ),
           DashboardApi.getAdvice(selectedAccount?.id_cuenta),
         ]);
       if (currentRequestId !== requestId.current) return;
@@ -43,7 +51,7 @@ export const useDashboard = () => {
     } finally {
       if (currentRequestId === requestId.current) setIsLoading(false);
     }
-  }, [selectedAccount?.id_cuenta, showToast]);
+  }, [periodDays, selectedAccount?.id_cuenta, showToast]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -81,6 +89,8 @@ export const useDashboard = () => {
   return {
     data,
     isLoading,
+    periodDays,
+    setPeriodDays,
     refreshDashboard: fetchDashboardData,
     markAdviceRead,
   };

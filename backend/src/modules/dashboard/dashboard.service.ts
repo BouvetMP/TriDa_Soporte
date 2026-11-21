@@ -7,19 +7,16 @@ import {
 } from "../../utils/decimal-money.js";
 import { prisma } from "../../db/prisma.js";
 import { queryRaw } from "../../db/queryRaw.js";
-import { config } from "../../config.js";
-import { startOfMonth, startOfNextMonth } from "../../utils/dateRange.js";
 import { AppError } from "../../utils/AppError.js";
 import { getUnifiedRiskLevel } from "../../utils/risk.js";
 
 export const dashboardService = {
-  async getStats(userId: number, accountId?: number) {
-    const ahora = new Date();
-    const inicioMes = startOfMonth(ahora, config.APP_TIMEZONE);
-    const inicioMesSiguiente = startOfNextMonth(ahora, config.APP_TIMEZONE);
+  async getStats(userId: number, accountId?: number, periodoDias = 30) {
+    const fechaFin = new Date();
+    const fechaInicio = new Date(fechaFin.getTime() - periodoDias * 24 * 60 * 60 * 1000);
 
     // 1. Saldo Total acumulado de las cuentas del usuario
-    const [saldoRows, resumenMesRows, alertasRows] = await Promise.all([
+    const [saldoRows, resumenPeriodoRows, alertasRows] = await Promise.all([
       queryRaw<{ saldo_total: DecimalValue }[]>(
       `
       SELECT COALESCE(SUM(saldo_actual), 0)::numeric AS saldo_total
@@ -46,13 +43,13 @@ export const dashboardService = {
       FROM trida.transacciones
       WHERE id_usuario = $1
         AND fecha_transaccion >= $2
-        AND fecha_transaccion < $3
+        AND fecha_transaccion <= $3
         AND estado IN ('CONFIRMADA', 'APROBADA')
         AND ($4::int IS NULL OR id_cuenta = $4)
       `,
       userId,
-      inicioMes,
-      inicioMesSiguiente,
+      fechaInicio,
+      fechaFin,
       accountId ?? null,
       ),
 
@@ -71,7 +68,7 @@ export const dashboardService = {
       FROM trida.alertas_fraude a
       JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
-        AND ($2::int IS NULL OR t.id_cuenta = $2)
+        AND ($2::int IS NULL OR t.id_cuenta = $2 OR t.id_cuenta_destino = $2)
       `,
       userId,
       accountId ?? null,
@@ -79,22 +76,33 @@ export const dashboardService = {
     ]);
 
     const saldoTotal = Number(saldoRows[0]?.saldo_total ?? 0);
-    const rMes = resumenMesRows[0] ?? { ingresos: 0, gastos: 0, ahorros: 0 };
+    const resumenPeriodo = resumenPeriodoRows[0] ?? {
+      ingresos: 0,
+      gastos: 0,
+      ahorros: 0,
+    };
     const rAlertas = alertasRows[0] ?? {
       alertas_activas: 0,
       alertas_criticas: 0,
     };
 
-    const ingresos = rMes.ingresos;
-    const gastos = rMes.gastos;
+    const ingresos = resumenPeriodo.ingresos;
+    const gastos = resumenPeriodo.gastos;
 
     return {
       saldo_total: saldoTotal,
-      mes_actual: {
+      periodo: {
+        dias: periodoDias,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
         ingresos: Number(ingresos),
         gastos: Number(gastos),
-        ahorros: Number(rMes.ahorros),
-        balance_neto: calculateNetBalance(ingresos, gastos, rMes.ahorros).toNumber(),
+        ahorros: Number(resumenPeriodo.ahorros),
+        balance_neto: calculateNetBalance(
+          ingresos,
+          gastos,
+          resumenPeriodo.ahorros,
+        ).toNumber(),
       },
       alertas: {
         activas: Number(rAlertas.alertas_activas),
@@ -205,7 +213,7 @@ export const dashboardService = {
         LIMIT 1
       ) a ON TRUE
       WHERE t.id_usuario = $1
-        AND ($3::int IS NULL OR t.id_cuenta = $3)
+        AND ($3::int IS NULL OR t.id_cuenta = $3 OR t.id_cuenta_destino = $3)
       ORDER BY t.fecha_transaccion DESC
       LIMIT $2
       `,

@@ -8,10 +8,22 @@ import { swaggerSpec } from "../config/swagger.js";
 import { createAccountSchema, updateAccountSchema } from "../modules/account/accounts.schemas.js";
 import {
   createTransactionSchema,
+  emailTransactionConfirmationSchema,
+  externalTransactionSchema,
   listTransactionsQuerySchema,
+  updateTransactionCategorySchema,
   updateTransactionStatusSchema,
 } from "../modules/transactions/transactions.schemas.js";
 import { getTransactionBalanceDelta } from "../modules/transactions/transaction-balance.js";
+import {
+  createTransactionConfirmationToken,
+  TRANSACTION_CONFIRMATION_TTL_SECONDS,
+  verifyTransactionConfirmationToken,
+} from "../modules/transactions/transaction-confirmation-token.js";
+import {
+  buildTransactionArchiveCsv,
+  fingerprintExternalEvent,
+} from "../modules/transactions/transaction-archive.js";
 import { queryRaw } from "../db/queryRaw.js";
 import {
   changePasswordSchema,
@@ -30,10 +42,7 @@ import { getAlertTransactionDecision } from "../modules/alerts/alerts.service.js
 import { getUnifiedRiskLevel } from "../utils/risk.js";
 import { updateCategorySchema } from "../modules/categories/category.schemas.js";
 import { AUDIT_RETENTION_DAYS } from "../modules/auth/auth.service.js";
-import {
-  getAuthenticatedUserKey,
-  getEmailKey,
-} from "../middlewares/rateLimit.middleware.js";
+import { getAuthenticatedUserKey, getEmailKey } from "../middlewares/rateLimit.middleware.js";
 import { config } from "../config.js";
 import {
   MIN_HISTORICAL_TRANSACTIONS_FOR_AVERAGE,
@@ -41,10 +50,7 @@ import {
   RiskService,
 } from "../modules/alerts/risk.service.js";
 import { registerDeviceSchema, updateTrustSchema } from "../modules/devices/devices.schemas.js";
-import {
-  errorHandler,
-  isPrismaKnownRequestError,
-} from "../middlewares/error.middleware.js";
+import { errorHandler, isPrismaKnownRequestError } from "../middlewares/error.middleware.js";
 import { requestLogger } from "../middlewares/requestLogger.middleware.js";
 import {
   addFundsSchema,
@@ -56,6 +62,7 @@ import { deriveSavingsState } from "../modules/savings/savings.state.js";
 import { parseId } from "../utils/params.js";
 import { reportQuerySchema } from "../modules/reports/reports.schemas.js";
 import { mapQuerySchema } from "../modules/maps/maps.schemas.js";
+import { dashboardStatsQuerySchema } from "../modules/dashboard/dashboard.schemas.js";
 import { auditHistoryQuerySchema } from "../modules/audit/audit.schemas.js";
 import {
   calculateNetBalance,
@@ -77,6 +84,7 @@ import {
 } from "../modules/auth/reset-token.js";
 import {
   createEmailVerificationToken,
+  EMAIL_VERIFICATION_TOKEN_TTL_SECONDS,
   getUnverifiedEmailVerificationUserId,
   verifyEmailVerificationToken,
 } from "../modules/auth/email-verification.js";
@@ -240,8 +248,7 @@ test("financial calculations preserve decimal cents and threshold boundaries", (
 });
 
 test("rate limit keys separate users and login emails", () => {
-  const tokenFor = (idUsuario: number) =>
-    jwt.sign({ id_usuario: idUsuario }, config.JWT_SECRET);
+  const tokenFor = (idUsuario: number) => jwt.sign({ id_usuario: idUsuario }, config.JWT_SECRET);
 
   const requestFor = (authorization?: string, email?: string) =>
     ({
@@ -250,14 +257,8 @@ test("rate limit keys separate users and login emails", () => {
       body: email ? { email } : {},
     }) as unknown as Parameters<typeof getAuthenticatedUserKey>[0];
 
-  assert.equal(
-    getAuthenticatedUserKey(requestFor(`Bearer ${tokenFor(1)}`)),
-    "user:1",
-  );
-  assert.equal(
-    getAuthenticatedUserKey(requestFor(`Bearer ${tokenFor(2)}`)),
-    "user:2",
-  );
+  assert.equal(getAuthenticatedUserKey(requestFor(`Bearer ${tokenFor(1)}`)), "user:1");
+  assert.equal(getAuthenticatedUserKey(requestFor(`Bearer ${tokenFor(2)}`)), "user:2");
   assert.notEqual(
     getEmailKey(requestFor(undefined, "Ana@Example.com")),
     getEmailKey(requestFor(undefined, "Otro@Example.com")),
@@ -463,12 +464,126 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
   assert.equal(
     createTransactionSchema.safeParse({
       id_cuenta: 5,
+      id_cuenta_destino: 6,
+      monto: 10,
+      tipo_movimiento: "TRANSFERENCIA",
+    }).success,
+    false,
+  );
+});
+
+test("external movements require idempotency keys and valid transfer accounts", () => {
+  const gasto = externalTransactionSchema.parse({
+    fuente: "SIMULADOR",
+    id_evento: "evt-123",
+    id_cuenta: 5,
+    monto: "30.50",
+    tipo_movimiento: "GASTO",
+  });
+  assert.equal(gasto.fuente, "SIMULADOR");
+  assert.equal(gasto.monto, 30.5);
+
+  assert.equal(
+    externalTransactionSchema.safeParse({
+      fuente: "SIMULADOR",
+      id_evento: "evt-124",
+      id_cuenta: 5,
+      monto: 30,
+      tipo_movimiento: "TRANSFERENCIA",
+    }).success,
+    false,
+  );
+  assert.equal(
+    externalTransactionSchema.safeParse({
+      fuente: "SIMULADOR",
+      id_evento: "evt-125",
+      id_cuenta: 5,
+      id_cuenta_destino: 5,
+      monto: 30,
+      tipo_movimiento: "TRANSFERENCIA",
+    }).success,
+    false,
+  );
+  assert.equal(
+    externalTransactionSchema.safeParse({
+      fuente: "SIMULADOR",
+      id_evento: "evt-126",
+      id_cuenta: 5,
+      id_cuenta_destino: 6,
+      monto: 30,
+      tipo_movimiento: "GASTO",
+    }).success,
+    false,
+  );
+  assert.equal(
+    externalTransactionSchema.safeParse({
+      fuente: "SIMULADOR",
+      id_cuenta: 5,
+      monto: 30,
+      tipo_movimiento: "INGRESO",
+    }).success,
+    false,
+  );
+  assert.equal(updateTransactionCategorySchema.safeParse({ id_categoria: null }).success, true);
+  assert.equal(
+    emailTransactionConfirmationSchema.safeParse({
+      token: "token",
+      decision: "NO_FUI_YO",
+    }).success,
+    true,
+  );
+  assert.equal(
+    createTransactionSchema.safeParse({
+      id_cuenta: 5,
       monto: 10,
       tipo_movimiento: "GASTO",
       ip_origen: "::1",
     }).success,
     false,
   );
+});
+
+test("annual transaction exports preserve CSV values and external event fingerprints", () => {
+  const event = externalTransactionSchema.parse({
+    fuente: "SIMULADOR",
+    id_evento: "evt-archive-1",
+    id_cuenta: 5,
+    monto: "30.50",
+    tipo_movimiento: "GASTO",
+    comercio: "Comercio",
+  });
+  assert.equal(fingerprintExternalEvent(event), fingerprintExternalEvent(event));
+  assert.notEqual(
+    fingerprintExternalEvent(event),
+    fingerprintExternalEvent({ ...event, monto: 31 }),
+  );
+
+  const csv = buildTransactionArchiveCsv([
+    {
+      id_transaccion: 42,
+      id_cuenta: 5,
+      nombre_cuenta: "Cuenta principal",
+      id_cuenta_destino: null,
+      nombre_cuenta_destino: null,
+      fecha_transaccion: new Date("2024-01-01T00:00:00.000Z"),
+      tipo_movimiento: "GASTO",
+      monto: new Prisma.Decimal("30.50"),
+      moneda: "COP",
+      comercio: '=HYPERLINK("https://example.test","click")',
+      descripcion: "Compra, tienda",
+      canal: "webhook",
+      estado: "CONFIRMADA",
+      id_categoria: null,
+      nombre_categoria: null,
+      score_anomalia: null,
+      fuente_externa: "SIMULADOR",
+      id_evento_externo: "evt-archive-1",
+      alertas: [],
+    },
+  ]);
+  assert.ok(csv.startsWith("\uFEFF"));
+  assert.ok(csv.includes('"\'=HYPERLINK(""https://example.test"",""click"")"'));
+  assert.ok(csv.includes('"Compra, tienda"'));
 });
 
 test("failed login audit uses 90-day retention", () => {
@@ -488,9 +603,7 @@ test("route IDs and monetary values are bounded and normalized", () => {
   assert.throws(
     () => parseId("2147483648"),
     (error: unknown) =>
-      error instanceof AppError &&
-      error.statusCode === 404 &&
-      error.code === "NOT_FOUND",
+      error instanceof AppError && error.statusCode === 404 && error.code === "NOT_FOUND",
   );
   assert.equal(addFundsSchema.safeParse({ monto: "1002.345" }).data?.monto, 1002.35);
   assert.equal(addFundsSchema.safeParse({ monto: "1001.005" }).data?.monto, 1001.01);
@@ -613,6 +726,14 @@ test("global account filters are documented for dashboard, reports, budgets and 
   }
 });
 
+test("dashboard period accepts only the supported rolling ranges", () => {
+  assert.equal(dashboardStatsQuerySchema.parse({}).periodo_dias, 30);
+  for (const periodo_dias of [30, 90, 180, 365]) {
+    assert.equal(dashboardStatsQuerySchema.parse({ periodo_dias }).periodo_dias, periodo_dias);
+  }
+  assert.equal(dashboardStatsQuerySchema.safeParse({ periodo_dias: 60 }).success, false);
+});
+
 test("pending transactions can only be resolved to a balance-affecting final state", () => {
   assert.equal(updateTransactionStatusSchema.safeParse({ estado: "CONFIRMADA" }).success, true);
   assert.equal(updateTransactionStatusSchema.safeParse({ estado: "RECHAZADA" }).success, true);
@@ -620,6 +741,7 @@ test("pending transactions can only be resolved to a balance-affecting final sta
   assert.equal(getTransactionBalanceDelta("INGRESO", 25).toString(), "25");
   assert.equal(getTransactionBalanceDelta("GASTO", 25).toString(), "-25");
   assert.equal(getTransactionBalanceDelta("AHORRO", 25).toString(), "-25");
+  assert.equal(getTransactionBalanceDelta("TRANSFERENCIA", 25).toString(), "-25");
   assert.equal(getTransactionBalanceDelta("GASTO", "25.10").toFixed(2), "-25.10");
   assert.throws(() => getTransactionBalanceDelta("INVALIDO", 25), /Tipo de movimiento inválido/);
   assert.throws(
@@ -628,12 +750,27 @@ test("pending transactions can only be resolved to a balance-affecting final sta
   );
 });
 
+test("automatic transaction confirmation tokens are signed and expire after 15 minutes", () => {
+  const secret = "a-secure-test-secret-that-is-at-least-32-characters";
+  const token = createTransactionConfirmationToken({ id_usuario: 42, id_transaccion: 84 }, secret);
+  const claims = jwt.decode(token);
+  assert.equal(
+    typeof claims === "object" && claims !== null ? claims.exp! - claims.iat! : null,
+    TRANSACTION_CONFIRMATION_TTL_SECONDS,
+  );
+  assert.deepEqual(verifyTransactionConfirmationToken(token, secret), {
+    id_usuario: 42,
+    id_transaccion: 84,
+  });
+  assert.equal(verifyTransactionConfirmationToken(token, `${secret}-wrong`), null);
+});
+
 test("auth schemas align with the snake_case OpenAPI fields", () => {
   assert.equal(
     registerSchema.safeParse({
       nombre_completo: "Ana Pérez",
       email: "ana@email.com",
-      password: "ClaveSegura1",
+      password: "ClaveSegura1!",
     }).success,
     true,
   );
@@ -641,7 +778,7 @@ test("auth schemas align with the snake_case OpenAPI fields", () => {
     registerSchema.parse({
       nombre_completo: "Ana Pérez",
       email: "  Ana@EMAIL.COM ",
-      password: "ClaveSegura1",
+      password: "ClaveSegura1!",
     }).email,
     "ana@email.com",
   );
@@ -653,7 +790,47 @@ test("auth schemas align with the snake_case OpenAPI fields", () => {
     telefono: null,
   });
   assert.equal(updateProfileSchema.safeParse({ telefono: "" }).success, true);
-  const maximumLengthPassword = `A1${"a".repeat(70)}`;
+  assert.equal(
+    registerSchema.safeParse({
+      nombre_completo: "Ana Pérez",
+      email: "ana@email.com",
+      password: "Abcdefg!12",
+    }).success,
+    false,
+  );
+  assert.equal(
+    registerSchema.safeParse({
+      nombre_completo: "Ana Pérez",
+      email: "ana@email.com",
+      password: "Abcdefg!hijk",
+    }).success,
+    true,
+  );
+  assert.equal(
+    registerSchema.safeParse({
+      nombre_completo: "Ana Pérez",
+      email: "ana@email.com",
+      password: "SecurePass!word",
+    }).success,
+    true,
+  );
+  assert.equal(
+    registerSchema.safeParse({
+      nombre_completo: "Ana Pérez",
+      email: "ana@email.com",
+      password: "Abcdefghijkl",
+    }).success,
+    false,
+  );
+  assert.equal(
+    registerSchema.safeParse({
+      nombre_completo: "Ana Pérez",
+      email: "ana@email.com",
+      password: "Abcdefg hijk",
+    }).success,
+    false,
+  );
+  const maximumLengthPassword = `A!${"a".repeat(70)}`;
   assert.equal(
     resetPasswordSchema.safeParse({
       token: "reset-token",
@@ -692,9 +869,9 @@ test("auth schemas align with the snake_case OpenAPI fields", () => {
   ]) {
     assert.ok(passwordSchema);
     assert.equal(passwordSchema.type, "string");
-    assert.equal(passwordSchema.minLength, 10);
+    assert.equal(passwordSchema.minLength, 12);
     assert.equal(passwordSchema.maxLength, 72);
-    assert.equal(passwordSchema.pattern, "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)");
+    assert.equal(passwordSchema.pattern, "^(?=.*[a-z])(?=.*[A-Z])(?=.*[^\\p{L}\\p{N}\\s])");
   }
 
   const transactionParameters =
@@ -750,10 +927,7 @@ test("budget, alert and device payloads use database-aligned snake_case fields",
     updateAlertStatusSchema.safeParse({ estado: "PENDIENTE", accion_usuario: "FUI_YO" }).success,
     false,
   );
-  assert.equal(
-    updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA" }).success,
-    false,
-  );
+  assert.equal(updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA" }).success, false);
   assert.deepEqual(
     getAlertTransactionDecision({
       estado: "DESCARTADA",
@@ -905,9 +1079,15 @@ test("password reset tokens are short-lived, purpose-bound and invalidated by pa
 test("email verification tokens bind the user and normalized email", () => {
   const serverSecret = "a-secure-test-secret-that-is-at-least-32-characters";
   const token = createEmailVerificationToken(42, "ana@email.com", serverSecret);
+  const claims = jwt.decode(token);
 
   assert.equal(getUnverifiedEmailVerificationUserId(token), 42);
   assert.equal(jwt.decode(token, { complete: true })?.header.alg, "HS256");
+  assert.equal(
+    typeof claims === "object" && claims !== null ? claims.exp! - claims.iat! : null,
+    EMAIL_VERIFICATION_TOKEN_TTL_SECONDS,
+  );
+  assert.equal(EMAIL_VERIFICATION_TOKEN_TTL_SECONDS, 15 * 60);
   assert.equal(verifyEmailVerificationToken(token, 42, "ana@email.com", serverSecret), true);
   assert.equal(verifyEmailVerificationToken(token, 42, "other@email.com", serverSecret), false);
   assert.equal(
@@ -976,6 +1156,9 @@ test("OpenAPI documents concrete success data and common errors for every API op
           properties?: Record<string, { enum?: unknown[]; $ref?: string }>;
         };
       };
+      "text/csv"?: {
+        schema?: { type?: string; format?: string };
+      };
     };
   };
   type Operation = {
@@ -1014,6 +1197,12 @@ test("OpenAPI documents concrete success data and common errors for every API op
 
       for (const [status, response] of Object.entries(responses)) {
         if (/^2\d\d$/.test(status) && !response.$ref) {
+          const csvSchema = response.content?.["text/csv"]?.schema;
+          if (csvSchema) {
+            assert.equal(csvSchema.type, "string");
+            assert.equal(csvSchema.format, "binary");
+            continue;
+          }
           const jsonContent = response.content?.["application/json"];
           const schema = jsonContent?.schema;
           assert.equal(schema?.type, "object");
@@ -1080,13 +1269,25 @@ test("OpenAPI specification passes Swagger Parser validation", async () => {
 
 test("OpenAPI documents the pending transaction resolution route and response envelopes", () => {
   const spec = swaggerSpec as {
-    paths?: Record<string, { patch?: { requestBody?: unknown } }>;
+    paths?: Record<
+      string,
+      {
+        get?: unknown;
+        post?: unknown;
+        patch?: { requestBody?: unknown };
+      }
+    >;
     components?: {
       responses?: Record<string, unknown>;
       schemas?: Record<string, unknown>;
     };
   };
   assert.ok(spec.paths?.["/api/v2/transactions/{id}/status"]?.patch?.requestBody);
+  assert.ok(spec.paths?.["/api/v2/transactions/{id}/category"]?.patch?.requestBody);
+  assert.ok(spec.paths?.["/api/v2/transactions/email-confirmation"]?.get);
+  assert.ok(spec.paths?.["/api/v2/transactions/email-confirmation"]?.post);
+  assert.ok(spec.paths?.["/api/v2/integrations/transactions/webhook"]?.post);
+  assert.ok(spec.components?.schemas?.ExternalTransactionWebhookRequest);
   assert.ok(spec.components?.schemas?.TransactionStatusData);
   assert.equal(spec.components?.schemas?.SuccessResponse, undefined);
   assert.ok(spec.components?.schemas?.ErrorResponse);

@@ -56,7 +56,7 @@ export const reportsService = {
       WHERE id_usuario = $1
         AND fecha_transaccion >= $2
         AND fecha_transaccion <= $3
-        AND ($4::int IS NULL OR id_cuenta = $4)
+        AND ($4::int IS NULL OR id_cuenta = $4 OR id_cuenta_destino = $4)
       `,
       userId,
       start,
@@ -101,6 +101,13 @@ export const reportsService = {
   async getByCategory(userId: number, query: ReportQueryInput) {
     const { start, end } = resolveDateRange(query);
     const tipo = query.tipo_movimiento ?? "GASTO";
+    if (tipo === "TRANSFERENCIA") {
+      return {
+        periodo: { fecha_inicio: start, fecha_fin: end },
+        tipo_movimiento: tipo,
+        categorias: [],
+      };
+    }
 
     const rows = await queryRaw<
       Array<{
@@ -127,7 +134,7 @@ export const reportsService = {
         AND t.fecha_transaccion >= $3
         AND t.fecha_transaccion <= $4
         AND t.estado IN ('CONFIRMADA', 'APROBADA')
-        AND ($5::int IS NULL OR t.id_cuenta = $5)
+        AND ($5::int IS NULL OR t.id_cuenta = $5 OR t.id_cuenta_destino = $5)
       GROUP BY c.id_categoria, c.nombre, c.icono, c.color
       ORDER BY total DESC
       `,
@@ -161,7 +168,7 @@ export const reportsService = {
       "t.fecha_transaccion >= $2",
       "t.fecha_transaccion <= $3",
       "t.estado IN ('CONFIRMADA', 'APROBADA')",
-      "($4::int IS NULL OR t.id_cuenta = $4)",
+      "($4::int IS NULL OR t.id_cuenta = $4 OR t.id_cuenta_destino = $4)",
     ];
     const params: unknown[] = [userId, start, end, query.id_cuenta ?? null];
     let i = 5;
@@ -184,6 +191,7 @@ export const reportsService = {
         score_anomalia: string | number | null;
         ciudad: string | null;
         nombre_cuenta: string | null;
+        nombre_cuenta_destino: string | null;
         nombre_categoria: string | null;
       }>
     >(
@@ -199,9 +207,11 @@ export const reportsService = {
         t.score_anomalia,
         u.ciudad,
         ct.nombre AS nombre_cuenta,
+        cd.nombre AS nombre_cuenta_destino,
         cat.nombre AS nombre_categoria
       FROM trida.transacciones t
       LEFT JOIN trida.cuentas ct ON ct.id_cuenta = t.id_cuenta
+      LEFT JOIN trida.cuentas cd ON cd.id_cuenta = t.id_cuenta_destino
       LEFT JOIN trida.categorias cat ON cat.id_categoria = t.id_categoria
       LEFT JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
       WHERE ${conditions.join(" AND ")}
@@ -260,6 +270,7 @@ export const reportsService = {
         score_anomalia: r.score_anomalia !== null ? Number(r.score_anomalia) : 0,
         ciudad: r.ciudad ?? null,
         nombre_cuenta: r.nombre_cuenta ?? null,
+        nombre_cuenta_destino: r.nombre_cuenta_destino ?? null,
         nombre_categoria: r.nombre_categoria ?? null,
       })),
     };

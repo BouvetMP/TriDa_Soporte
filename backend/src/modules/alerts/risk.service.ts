@@ -6,7 +6,7 @@ import { getRiskLevel } from "../../utils/risk.js";
 export interface EvaluateRiskInput {
   id_usuario: number;
   monto: number;
-  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO";
+  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO" | "TRANSFERENCIA";
   ubicacion_lat?: number;
   ubicacion_lon?: number;
   id_dispositivo?: number;

@@ -25,7 +25,7 @@ export interface FinancialReportSummary {
 export interface ReportTransaction {
   id_transaccion: number;
   fecha_transaccion: string;
-  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO";
+  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO" | "TRANSFERENCIA";
   monto: number;
   comercio: string | null;
   descripcion: string | null;
@@ -33,6 +33,7 @@ export interface ReportTransaction {
   score_anomalia: number;
   ciudad: string | null;
   nombre_cuenta: string | null;
+  nombre_cuenta_destino?: string | null;
   nombre_categoria: string | null;
 }
 

@@ -53,6 +53,7 @@ const envSchema = z.object({
   // Autenticación (RS-003)
   JWT_SECRET: z.string().min(32, "JWT_SECRET debe tener al menos 32 caracteres"),
   JWT_EXPIRES_IN: z.string().default("8h"),
+  TRANSACTION_WEBHOOK_SECRET: z.string().default(""),
 
   // Correo SMTP (opcionales en desarrollo)
   EMAIL_USER: z.string().optional().default(""),

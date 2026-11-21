@@ -4,8 +4,11 @@ import {
   Transaction,
   CreateTransactionPayload,
   CreateTransactionResult,
-  DeleteTransactionResult,
+  EmailTransactionConfirmation,
+  EmailTransactionConfirmationResult,
   TransactionFilters,
+  TransactionArchivePreparation,
+  TransactionArchivePurgeResult,
 } from "@/types/Transaction";
 
 export const TransactionsApi = {
@@ -48,10 +51,58 @@ export const TransactionsApi = {
     return response.data.data;
   },
 
-  delete: async (id: number): Promise<DeleteTransactionResult> => {
-    const response = await apiClient.delete<
-      ApiSuccess<DeleteTransactionResult>
-    >(`/transactions/${id}`);
+  updateCategory: async (
+    id: number,
+    id_categoria: number | null,
+  ): Promise<Transaction> => {
+    const response = await apiClient.patch<ApiSuccess<Transaction>>(
+      `/transactions/${id}/category`,
+      { id_categoria },
+    );
+    return response.data.data;
+  },
+
+  prepareArchive: async (): Promise<TransactionArchivePreparation> => {
+    const response = await apiClient.post<
+      ApiSuccess<TransactionArchivePreparation>
+    >("/transactions/archive/prepare");
+    return response.data.data;
+  },
+
+  downloadArchive: async (exportId: number): Promise<Blob> => {
+    const response = await apiClient.post<Blob>(
+      `/transactions/archive/${exportId}/download`,
+      {},
+      { responseType: "blob" },
+    );
+    return response.data;
+  },
+
+  purgeArchive: async (
+    exportId: number,
+  ): Promise<TransactionArchivePurgeResult> => {
+    const response = await apiClient.post<
+      ApiSuccess<TransactionArchivePurgeResult>
+    >(`/transactions/archive/${exportId}/purge`);
+    return response.data.data;
+  },
+
+  getEmailConfirmation: async (
+    token: string,
+  ): Promise<EmailTransactionConfirmation> => {
+    const response = await apiClient.get<
+      ApiSuccess<EmailTransactionConfirmation>
+    >("/transactions/email-confirmation", { params: { token } });
+    return response.data.data;
+  },
+
+  resolveEmailConfirmation: async (
+    token: string,
+    decision: "FUI_YO" | "NO_FUI_YO",
+  ): Promise<EmailTransactionConfirmationResult> => {
+    const response = await apiClient.post<
+      ApiSuccess<EmailTransactionConfirmationResult>
+    >("/transactions/email-confirmation", { token, decision });
     return response.data.data;
   },
 };

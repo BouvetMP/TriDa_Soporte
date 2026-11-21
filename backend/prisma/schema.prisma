@@ -13,34 +13,38 @@ datasource db {
 }
 
 model usuario {
-  id_usuario      Int       @id @default(autoincrement())
-  nombre_completo String    @db.VarChar(150)
-  email           String    @unique(map: "usuarios_email_key") @db.VarChar(254)
-  password_hash   String
-  telefono        String?   @db.VarChar(20)
-  pais            String?   @db.VarChar(100)
-  ciudad          String?   @db.VarChar(100)
-  rol             String    @default("USER") @db.VarChar(20)
-  estado          Boolean   @default(true)
-  email_verificado_en DateTime? @default(now()) @db.Timestamptz
-  token_version   Int       @default(0)
-  dispositivo_historial_registrado Boolean @default(false)
-  fecha_registro  DateTime  @default(now()) @db.Timestamptz
-  ultimo_acceso   DateTime? @db.Timestamptz
+  id_usuario                       Int       @id @default(autoincrement())
+  nombre_completo                  String    @db.VarChar(150)
+  email                            String    @unique(map: "usuarios_email_key") @db.VarChar(254)
+  password_hash                    String
+  telefono                         String?   @db.VarChar(20)
+  pais                             String?   @db.VarChar(100)
+  ciudad                           String?   @db.VarChar(100)
+  rol                              String    @default("USER") @db.VarChar(20)
+  estado                           Boolean   @default(true)
+  email_verificado_en              DateTime? @default(now()) @db.Timestamptz
+  token_version                    Int       @default(0)
+  intentos_login_fallidos          Int       @default(0)
+  bloqueado_hasta                  DateTime? @db.Timestamptz
+  dispositivo_historial_registrado Boolean   @default(false)
+  fecha_registro                   DateTime  @default(now()) @db.Timestamptz
+  ultimo_acceso                    DateTime? @db.Timestamptz
 
-  perfil_financiero     perfil_financiero?
-  cuentas               cuenta[]
-  categorias            categoria[]
-  dispositivos          dispositivo[]
-  transacciones         transaccion[]
-  patron_comportamiento patron_comportamiento?
-  presupuestos          presupuesto[]
-  metas_ahorro          meta_ahorro[]
-  consejos_financieros  consejo_financiero[]
-  alertas_fraude        alerta_fraude[]
-  analisis_gastos       analisis_gastos[]
-  reportes_mensuales    reporte_mensual[]
-  logs_auditoria        log_auditoria[]
+  perfil_financiero                   perfil_financiero?
+  cuentas                             cuenta[]
+  categorias                          categoria[]
+  dispositivos                        dispositivo[]
+  transacciones                       transaccion[]
+  patron_comportamiento               patron_comportamiento?
+  presupuestos                        presupuesto[]
+  metas_ahorro                        meta_ahorro[]
+  consejos_financieros                consejo_financiero[]
+  alertas_fraude                      alerta_fraude[]
+  exportaciones_transacciones_archivo transaccion_archivo_exportacion[]
+  eventos_transaccion_archivados      evento_transaccion_archivado[]
+  analisis_gastos                     analisis_gastos[]
+  reportes_mensuales                  reporte_mensual[]
+  logs_auditoria                      log_auditoria[]
 
   @@index([estado], map: "idx_usuarios_estado")
   @@index([nombre_completo(ops: raw("gin_trgm_ops"))], type: Gin, map: "idx_usuarios_nombre_trgm")
@@ -76,9 +80,10 @@ model cuenta {
   estado             Boolean  @default(true)
   fecha_creacion     DateTime @default(now()) @db.Timestamptz
 
-  usuario       usuario       @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
-  transacciones transaccion[]
-  consejos      consejo_financiero[]
+  usuario                 usuario              @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  transacciones           transaccion[]        @relation("CuentaOrigen")
+  transacciones_recibidas transaccion[]        @relation("CuentaDestino")
+  consejos                consejo_financiero[]
 
   @@index([id_usuario], map: "idx_cuentas_usuario")
   @@map("cuentas")
@@ -99,6 +104,7 @@ model categoria {
   usuario       usuario?      @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
   transacciones transaccion[]
   presupuestos  presupuesto[]
+  metas_ahorro  meta_ahorro[]
 
   @@unique([id_usuario, nombre], map: "uq_categoria_user")
   @@index([id_usuario, estado], map: "idx_categories_owner_state")
@@ -123,9 +129,9 @@ model dispositivo {
   ubicaciones   ubicacion[]
   transacciones transaccion[]
 
+  @@unique([id_usuario, identificador_unico], map: "uq_dispositivo_user_identifier")
   @@index([id_usuario], map: "idx_dispositivos_usuario")
   @@index([confiable], map: "idx_dispositivos_conf")
-  @@unique([id_usuario, identificador_unico], map: "uq_dispositivo_user_identifier")
   @@map("dispositivos")
   @@schema("trida")
 }
@@ -150,32 +156,40 @@ model ubicacion {
 }
 
 model transaccion {
-  id_transaccion    Int      @id @default(autoincrement())
-  id_usuario        Int
-  id_cuenta         Int?
-  id_categoria      Int?
-  id_dispositivo    Int?
-  id_ubicacion      Int?
-  tipo_movimiento   String   @db.VarChar(10)
-  monto             Decimal  @db.Decimal(15, 2)
-  moneda            String   @default("COP") @db.Char(3)
-  descripcion       String?  @db.VarChar(255)
-  comercio          String?  @db.VarChar(150)
-  canal             String   @default("web") @db.VarChar(20)
-  es_recurrente     Boolean  @default(false)
-  score_anomalia    Decimal? @db.Decimal(5, 2)
-  estado            String   @default("CONFIRMADA") @db.VarChar(20)
-  fecha_transaccion DateTime @default(now()) @db.Timestamptz
+  id_transaccion                 Int       @id @default(autoincrement())
+  id_usuario                     Int
+  id_cuenta                      Int?
+  id_cuenta_destino              Int?
+  id_categoria                   Int?
+  id_dispositivo                 Int?
+  id_ubicacion                   Int?
+  tipo_movimiento                String    @db.VarChar(15)
+  monto                          Decimal   @db.Decimal(15, 2)
+  moneda                         String    @default("COP") @db.Char(3)
+  descripcion                    String?   @db.VarChar(255)
+  comercio                       String?   @db.VarChar(150)
+  canal                          String    @default("web") @db.VarChar(20)
+  fuente_externa                 String?   @db.VarChar(30)
+  id_evento_externo              String?   @db.VarChar(160)
+  huella_evento_externo          String?   @db.Char(64)
+  confirmacion_correo_enviado_en DateTime? @db.Timestamptz
+  es_recurrente                  Boolean   @default(false)
+  score_anomalia                 Decimal?  @db.Decimal(5, 2)
+  estado                         String    @default("CONFIRMADA") @db.VarChar(20)
+  fecha_transaccion              DateTime  @default(now()) @db.Timestamptz
 
-  usuario     usuario         @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
-  cuenta      cuenta?         @relation(fields: [id_cuenta], references: [id_cuenta], onDelete: SetNull)
-  categoria   categoria?      @relation(fields: [id_categoria], references: [id_categoria], onDelete: SetNull)
-  dispositivo dispositivo?    @relation(fields: [id_dispositivo], references: [id_dispositivo], onDelete: SetNull)
-  ubicacion   ubicacion?      @relation(fields: [id_ubicacion], references: [id_ubicacion], onDelete: SetNull)
-  alertas     alerta_fraude[]
+  usuario        usuario         @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  cuenta         cuenta?         @relation("CuentaOrigen", fields: [id_cuenta], references: [id_cuenta], onDelete: SetNull)
+  cuenta_destino cuenta?         @relation("CuentaDestino", fields: [id_cuenta_destino], references: [id_cuenta], onDelete: Restrict)
+  categoria      categoria?      @relation(fields: [id_categoria], references: [id_categoria], onDelete: SetNull)
+  dispositivo    dispositivo?    @relation(fields: [id_dispositivo], references: [id_dispositivo], onDelete: SetNull)
+  ubicacion      ubicacion?      @relation(fields: [id_ubicacion], references: [id_ubicacion], onDelete: SetNull)
+  alertas        alerta_fraude[]
 
+  @@unique([id_cuenta, fuente_externa, id_evento_externo], map: "uq_tx_external_event")
   @@index([id_usuario], map: "idx_tx_usuario")
   @@index([id_cuenta], map: "idx_tx_cuenta")
+  @@index([id_cuenta_destino], map: "idx_tx_cuenta_destino")
   @@index([id_categoria], map: "idx_tx_categoria")
   @@index([id_ubicacion], map: "idx_tx_ubicacion")
   @@index([id_dispositivo], map: "idx_tx_dispositivo")
@@ -185,6 +199,43 @@ model transaccion {
   @@index([tipo_movimiento], map: "idx_tx_tipo")
   @@index([estado], map: "idx_tx_estado")
   @@map("transacciones")
+  @@schema("trida")
+}
+
+model transaccion_archivo_exportacion {
+  id_exportacion    Int       @id @default(autoincrement())
+  id_usuario        Int
+  ids_transacciones Int[]     @default([])
+  fecha_corte       DateTime  @db.Timestamptz
+  fecha_creacion    DateTime  @default(now()) @db.Timestamptz
+  fecha_expiracion  DateTime  @db.Timestamptz
+  fecha_descarga    DateTime? @db.Timestamptz
+  fecha_eliminacion DateTime? @db.Timestamptz
+
+  usuario usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+
+  @@index([id_usuario, fecha_expiracion], map: "idx_tx_archive_user_expiry")
+  @@map("exportaciones_transacciones_archivo")
+  @@schema("trida")
+}
+
+model evento_transaccion_archivado {
+  id_evento_archivado     Int      @id @default(autoincrement())
+  id_usuario              Int
+  id_cuenta               Int
+  fuente_externa          String   @db.VarChar(30)
+  id_evento_externo       String   @db.VarChar(160)
+  id_transaccion_original Int
+  estado_original         String   @db.VarChar(20)
+  huella_evento           String   @db.Char(64)
+  fecha_archivado         DateTime @default(now()) @db.Timestamptz
+
+  usuario usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+
+  @@unique([id_cuenta, fuente_externa, id_evento_externo], map: "uq_tx_archived_event")
+  @@unique([id_transaccion_original], map: "uq_tx_archived_original")
+  @@index([id_usuario, fecha_archivado], map: "idx_tx_archived_user_date")
+  @@map("eventos_transacciones_archivados")
   @@schema("trida")
 }
 
@@ -226,6 +277,7 @@ model presupuesto {
 model meta_ahorro {
   id_meta          Int       @id @default(autoincrement())
   id_usuario       Int
+  id_categoria     Int?
   nombre           String    @db.VarChar(120)
   descripcion      String?
   monto_objetivo   Decimal   @db.Decimal(15, 2)
@@ -236,10 +288,12 @@ model meta_ahorro {
   fecha_completada DateTime? @db.Timestamptz
 
   usuario usuario       @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  categoria categoria?  @relation(fields: [id_categoria], references: [id_categoria], onDelete: SetNull, map: "metas_ahorro_id_categoria_fkey")
   aportes aporte_meta[]
 
   @@index([id_usuario], map: "idx_metas_usuario")
   @@index([estado], map: "idx_metas_estado")
+  @@index([id_categoria], map: "idx_metas_categoria")
   @@map("metas_ahorro")
   @@schema("trida")
 }

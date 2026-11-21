@@ -3,7 +3,9 @@ import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import { useInsights } from "@/hooks/useInsights";
+import { useSavings } from "@/hooks/useSavings";
 import { formatCurrency } from "@/utils/Formatters";
+import { Link } from "react-router-dom";
 
 const periodOptions = [
   { value: "30", label: "Últimos 30 días" },
@@ -14,6 +16,7 @@ const periodOptions = [
 
 export function InsightsPage() {
   const { overview, periodDays, setPeriodDays, loading } = useInsights();
+  const { summary: savingsSummary, loading: savingsLoading } = useSavings();
   const summary = overview?.resumen;
 
   return (
@@ -78,6 +81,19 @@ export function InsightsPage() {
             <MetricCard
               label="Score de riesgo promedio"
               value={`${summary.score_riesgo_promedio.toFixed(1)} / 100`}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <GoalCountCard
+              label="Metas activas"
+              count={savingsLoading ? null : savingsSummary.metas_activas}
+              estado="ACTIVA"
+            />
+            <GoalCountCard
+              label="Metas completadas"
+              count={savingsLoading ? null : savingsSummary.metas_completadas}
+              estado="COMPLETADA"
             />
           </div>
 
@@ -157,6 +173,33 @@ export function InsightsPage() {
         </>
       )}
     </div>
+  );
+}
+
+function GoalCountCard({
+  label,
+  count,
+  estado,
+}: {
+  label: string;
+  count: number | null;
+  estado: "ACTIVA" | "COMPLETADA";
+}) {
+  return (
+    <Card className="flex items-center justify-between gap-4 p-4">
+      <div>
+        <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
+        <p className="mt-1 text-lg font-bold text-[var(--color-text-primary)]">
+          {count === null ? "Cargando…" : count}
+        </p>
+      </div>
+      <Link
+        to={`/savings?estado=${estado}`}
+        className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+      >
+        Ver metas
+      </Link>
+    </Card>
   );
 }
 

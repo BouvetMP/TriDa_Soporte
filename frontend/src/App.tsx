@@ -17,6 +17,7 @@ import {
   DashboardPage,
   AccountsPage,
   TransactionsPage,
+  TransactionConfirmationPage,
   AlertsPage,
   DevicesPage,
   ProfilePage,
@@ -51,6 +52,10 @@ export default function App() {
                       element={<ResetPasswordPage />}
                     />
                     <Route path="/verify-email" element={<VerifyEmailPage />} />
+                    <Route
+                      path="/transactions/confirm"
+                      element={<TransactionConfirmationPage />}
+                    />
 
                     {/* Rutas Protegidas bajo AppLayout */}
                     <Route

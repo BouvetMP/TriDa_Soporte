@@ -87,6 +87,9 @@ Hay un límite general de 150 solicitudes por IP/minuto y, para rutas de autenti
 | `POST /auth/forgot-password` | Solicitar recuperación | `email` |
 | `POST /auth/verify-reset-token` | Verificar token de recuperación | `{ "token": "..." }` |
 | `POST /auth/reset-password` | Cambiar clave con token de recuperación | `token`, `password_nueva` |
+| `GET /transactions/email-confirmation?token=...` | Consultar un gasto desde el enlace del correo; no lo resuelve | Token de un solo uso, válido 15 minutos |
+| `POST /transactions/email-confirmation` | Confirmar o rechazar el gasto | `token`, `decision` (`FUI_YO` o `NO_FUI_YO`) |
+| `POST /integrations/transactions/webhook` | Recibir un evento del simulador o una fuente externa | Cabecera `X-TriDa-Webhook-Secret` y evento documentado en OpenAPI |
 
 El registro valida una contraseña de 10 a 72 caracteres, con mayúscula, minúscula y número. `SMTP_ENABLED` controla el correo en el backend y está desactivado por defecto temporalmente. Cuando está en `false`, el registro no envía correo, marca las cuentas nuevas como verificadas y permite iniciar sesión también a cuentas previamente no verificadas; la respuesta incluye `emailVerificationRequired: false`. La recuperación por correo responde `503` con un mensaje de indisponibilidad. Cuando se establece `SMTP_ENABLED=true`, deben configurarse `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `EMAIL_USER`, `EMAIL_PASS` y `EMAIL_FROM`; el registro envía un enlace y exige verificar el correo antes de iniciar sesión (`emailVerificationRequired: true`). `FRONTEND_URL` debe apuntar al frontend para construir los enlaces. Las respuestas de registro no revelan si el correo ya tenía una cuenta.
 
@@ -112,7 +115,7 @@ Después del login, enviar el token obtenido en `data.token` como:
 Authorization: Bearer <JWT>
 ```
 
-Todas las rutas de cuentas, categorías, transacciones, dispositivos, alertas, dashboard, presupuestos, ahorros, perfil, insights, reportes y mapa requieren autenticación. No enviar el token en la URL.
+Las rutas de cuentas, categorías, movimientos, dispositivos, alertas, dashboard, presupuestos, ahorros, perfil, insights, reportes y mapa requieren JWT. Las dos rutas `email-confirmation` son públicas y se autorizan con el token de un solo uso; el webhook se autoriza exclusivamente con `X-TriDa-Webhook-Secret`. No enviar el JWT de sesión en la URL.
 
 Centralizar la creación de peticiones HTTP en un cliente API que adjunte el bearer token, serialice JSON y gestione errores. Si una petición devuelve `401`, limpiar el estado de sesión y llevar al usuario al login. El backend usa bearer tokens; no asumir que ya existe una sesión con cookie HttpOnly.
 
@@ -163,7 +166,14 @@ La pantalla de administración está disponible en `/categories`; distingue las 
 | `GET /transactions/counts-by-level` | Conteos por nivel de riesgo |
 | `GET /transactions/:id` | Consultar detalle |
 | `PATCH /transactions/:id/status` | Resolver una transacción `PENDIENTE`: `estado` debe ser `CONFIRMADA` o `RECHAZADA` |
-| `DELETE /transactions/:id` | Eliminar; el backend revierte el saldo cuando aplica |
+| `PATCH /transactions/:id/category` | Asignar o cambiar categoría manualmente |
+| `GET /transactions/email-confirmation?token=...` | Ver los detalles del gasto sin ejecutar una acción |
+| `POST /transactions/email-confirmation` | Responder al correo con `FUI_YO` o `NO_FUI_YO` |
+| `POST /transactions/archive/prepare` | Preparar la exportación de movimientos finalizados de un año o más |
+| `POST /transactions/archive/:exportId/download` | Descargar en CSV el conjunto preparado |
+| `POST /transactions/archive/:exportId/purge` | Eliminar el conjunto exportado tras confirmación explícita |
+| `DELETE /transactions/:id` | Deshabilitado; responde `409` porque la eliminación es anual y por CSV |
+| `POST /integrations/transactions/webhook` | Recibir movimientos automáticos con secreto compartido |
 
 Campos requeridos para `POST /transactions`:
 
@@ -177,13 +187,19 @@ Campos requeridos para `POST /transactions`:
 }
 ```
 
-Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `longitud`, `fecha_transaccion`, `es_recurrente`. `ip_origen` no forma parte del contrato y se rechaza si el cliente lo envía. `monto` debe ser mayor que cero; `tipo_movimiento` acepta `INGRESO`, `GASTO` o `AHORRO`. El backend asigna moneda, estado y canal (`web`) por defecto y determina usuario, ubicación cuando corresponde y evaluación de riesgo; no inventar campos para esos valores.
+Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `longitud`, `fecha_transaccion`, `es_recurrente`. `ip_origen` no forma parte del contrato y se rechaza si el cliente lo envía. `monto` debe ser mayor que cero; `tipo_movimiento` acepta `INGRESO`, `GASTO` o `AHORRO`. La creación manual solo admite cuentas activas de tipo `EFECTIVO`; los movimientos de otras cuentas se reciben por el webhook. El backend asigna moneda, estado y canal, determina el usuario y ejecuta la evaluación de riesgo.
+
+El webhook recibe `fuente`, `id_evento`, `id_cuenta`, `monto` y `tipo_movimiento`; las transferencias también requieren `id_cuenta_destino`. Ambos IDs de cuenta deben pertenecer al mismo usuario y estar activos. Los eventos se deduplican por cuenta, fuente e ID externo. No se asigna categoría durante la ingesta: debe elegirse después con `PATCH /transactions/:id/category`. Una transferencia debita la cuenta de origen y acredita la cuenta destino en una operación atómica, y no se cuenta como ingreso o gasto.
+
+Los gastos recibidos por webhook se guardan como `PENDIENTE` y no afectan el saldo hasta que el usuario los confirme. TriDa envía un enlace de un solo uso válido por 15 minutos; un `GET` solo muestra el movimiento y no lo confirma, para evitar que los escáneres de correo consuman el enlace. `NO_FUI_YO` rechaza el movimiento y registra una alerta crítica. Configura `TRANSACTION_WEBHOOK_SECRET` con al menos 32 caracteres y el SMTP requerido para que el webhook acepte gastos.
 
 Filtros de `GET /transactions`: `limit`, `offset`, `estado`, `nivel_riesgo`, `tipo_movimiento`, `id_cuenta`, `id_categoria`, `search`, `min_monto`, `max_monto`, `fecha_inicio`, `fecha_fin`, `sort_by`, `sort_order`. Ordenamientos admitidos en el contrato: `fecha_transaccion`, `monto`, `tipo_movimiento`, `nivel_riesgo`; dirección `asc` o `desc`.
 
 En un listado, `data.items` contiene filas con nombres de cuenta/categoría, `es_sospechosa`, `nivel_riesgo` y campos de transacción; `data.pagination` contiene `total`, `page`, `limit` y `total_pages`. La creación incluye la transacción, evaluación de riesgo y posible alerta dentro de `data`.
 
-Solo una transacción `CONFIRMADA` afecta el saldo. `PENDIENTE` no lo modifica; resolverla como `CONFIRMADA` aplica el movimiento y resolverla como `RECHAZADA` no lo aplica. Eliminar una transacción revierte el saldo únicamente si estaba confirmada.
+Solo una transacción `CONFIRMADA` afecta el saldo. `PENDIENTE` no lo modifica; resolverla como `CONFIRMADA` aplica el movimiento y resolverla como `RECHAZADA` no lo aplica.
+
+La eliminación individual de transacciones está deshabilitada. En **Historial anual**, el usuario prepara un conjunto de movimientos con fecha de un año o más, descarga el CSV y luego confirma explícitamente su eliminación. La preparación vence en 30 minutos. El CSV contiene los movimientos y sus alertas asociadas, se genera para todo el historial elegible del usuario —sin depender de los filtros de la tabla— y debe guardarse antes de confirmar. Se excluyen movimientos pendientes y transacciones con alertas pendientes; las omitidas se conservan. La eliminación de registros históricos no cambia los saldos actuales. Los identificadores de eventos externos se conservan como huellas para que una repetición del webhook no cree movimientos duplicados.
 
 Por compatibilidad, los resúmenes también consideran registros históricos `APROBADA` como confirmados. Los presupuestos y su trigger consideran únicamente movimientos `GASTO` confirmados (`CONFIRMADA` o histórica `APROBADA`); los movimientos `AHORRO`, pendientes o rechazados no consumen presupuesto ni generan avisos.
 
@@ -288,9 +304,9 @@ El mapa carga mosaicos de OpenStreetMap desde el navegador; informa este uso de 
 1. Arrancar y verificar el backend con `GET /health`; consultar `/api/docs` cuando sea necesario.
 2. Implementar primero el cliente API y los formularios públicos de registro/login.
 3. Guardar el token de sesión en el estado de autenticación del frontend y adjuntarlo como Bearer a rutas privadas. No registrar JWT ni contraseñas en logs.
-4. Tras autenticar, cargar `/auth/me`; después cargar cuentas y categorías antes de ofrecer el formulario de transacciones.
+4. Tras autenticar, cargar `/auth/me`; después cargar cuentas y categorías. El formulario manual solo debe ofrecer cuentas de efectivo.
 5. Enviar a las operaciones solo IDs reales obtenidos del backend. Mostrar errores de validación por `details[].field` y no reemplazarlos con valores ficticios.
-6. Después de crear o eliminar una transacción, volver a consultar transacciones, saldos de cuentas, dashboard y alertas pertinentes. El servidor es quien actualiza los saldos y evalúa el riesgo.
+6. Después de crear, categorizar, resolver o eliminar una transacción, volver a consultar transacciones, saldos de cuentas, dashboard y alertas pertinentes. El servidor es quien actualiza los saldos y evalúa el riesgo.
 7. Tras aportar a una meta, usar la meta devuelta por el backend o volver a consultar `/savings`; no incrementar el progreso local como si fuera autoridad.
 8. Construir tipos/API adapters por módulo para conservar las diferencias reales de respuesta.
 

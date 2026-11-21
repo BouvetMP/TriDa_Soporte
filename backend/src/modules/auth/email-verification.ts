@@ -1,18 +1,17 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 export const EMAIL_VERIFICATION_PURPOSE = "email_verification";
-export const EMAIL_VERIFICATION_TOKEN_TTL_SECONDS = 24 * 60 * 60;
+export const EMAIL_VERIFICATION_TOKEN_TTL_SECONDS = 15 * 60;
 
 export const createEmailVerificationToken = (
   userId: number,
   email: string,
   serverSecret: string,
 ): string =>
-  jwt.sign(
-    { id_usuario: userId, email, purpose: EMAIL_VERIFICATION_PURPOSE },
-    serverSecret,
-    { expiresIn: EMAIL_VERIFICATION_TOKEN_TTL_SECONDS, algorithm: "HS256" },
-  );
+  jwt.sign({ id_usuario: userId, email, purpose: EMAIL_VERIFICATION_PURPOSE }, serverSecret, {
+    expiresIn: EMAIL_VERIFICATION_TOKEN_TTL_SECONDS,
+    algorithm: "HS256",
+  });
 
 export const getUnverifiedEmailVerificationUserId = (token: string): number | null => {
   const payload = jwt.decode(token);

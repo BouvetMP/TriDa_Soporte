@@ -38,6 +38,12 @@ const errorContentByStatus = {
       examples: { conflict: { $ref: "#/components/examples/ConflictError" } },
     },
   },
+  "423": {
+    "application/json": {
+      schema: { $ref: "#/components/schemas/ErrorResponse" },
+      examples: { accountLocked: { $ref: "#/components/examples/AccountLockedError" } },
+    },
+  },
   "429": {
     "application/json": {
       schema: { $ref: "#/components/schemas/RateLimitErrorResponse" },
@@ -81,6 +87,10 @@ const errorResponses = {
       "La operación entra en conflicto con el estado/datos existentes (incluye Prisma P2002).",
     content: errorContentByStatus["409"],
   },
+  AccountLockedError: {
+    description: "La cuenta está bloqueada temporalmente después de varios intentos fallidos.",
+    content: errorContentByStatus["423"],
+  },
   TooManyRequestsError: {
     description: "Se excedió el límite de peticiones por ventana de tiempo.",
     content: errorContentByStatus["429"],
@@ -101,6 +111,7 @@ const errorResponseComponentByStatus: Record<string, string> = {
   "403": "ForbiddenError",
   "404": "NotFoundError",
   "409": "ConflictError",
+  "423": "AccountLockedError",
   "429": "TooManyRequestsError",
   "503": "ServiceUnavailableError",
   "500": "InternalServerError",
@@ -389,11 +400,14 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
     id_transaccion: integerSchema(42),
     id_usuario: integerSchema(7),
     id_cuenta: integerSchema(3, true),
+    id_cuenta_destino: integerSchema(4, true),
     nombre_cuenta: stringSchema("Cuenta principal", true),
+    nombre_cuenta_destino: stringSchema("Cuenta de ahorros", true),
     id_categoria: integerSchema(12, true),
     nombre_categoria: stringSchema("Alimentación", true),
     icono_categoria: stringSchema("utensils", true),
     color_categoria: stringSchema("#2563eb", true),
+    canal: stringSchema("webhook"),
     monto: numberSchema(50.75),
     tipo_movimiento: stringSchema("GASTO"),
     comercio: stringSchema("Tienda", true),
@@ -422,7 +436,9 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
           id_transaccion: 42,
           id_usuario: 7,
           id_cuenta: 3,
+          id_cuenta_destino: null,
           nombre_cuenta: "Cuenta principal",
+          nombre_cuenta_destino: null,
           id_categoria: 12,
           nombre_categoria: "Alimentación",
           icono_categoria: "utensils",
@@ -448,6 +464,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
       id_transaccion: integerSchema(42),
       id_usuario: integerSchema(7),
       id_cuenta: integerSchema(3, true),
+      id_cuenta_destino: integerSchema(4, true),
       id_categoria: integerSchema(12, true),
       id_dispositivo: integerSchema(4, true),
       id_ubicacion: integerSchema(9, true),
@@ -457,6 +474,9 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
       descripcion: stringSchema("Compra", true),
       comercio: stringSchema("Tienda", true),
       canal: stringSchema("web"),
+      fuente_externa: stringSchema("SIMULADOR", true),
+      id_evento_externo: stringSchema("event-123", true),
+      confirmacion_correo_enviado_en: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
       es_recurrente: booleanSchema(false),
       score_anomalia: numberSchema(5, true),
       estado: stringSchema("CONFIRMADA"),
@@ -466,6 +486,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
       id_transaccion: 42,
       id_usuario: 7,
       id_cuenta: 3,
+      id_cuenta_destino: null,
       id_categoria: 12,
       id_dispositivo: null,
       id_ubicacion: null,
@@ -475,30 +496,43 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
       descripcion: "Compra",
       comercio: "Tienda",
       canal: "web",
+      fuente_externa: null,
+      id_evento_externo: null,
+      confirmacion_correo_enviado_en: null,
       es_recurrente: false,
       score_anomalia: 5,
       estado: "CONFIRMADA",
       fecha_transaccion: "2026-11-19T10:00:00.000Z",
     },
   ),
-  TransactionRawData: objectSchema({
-    id_transaccion: integerSchema(42),
-    id_usuario: integerSchema(7),
-    id_cuenta: integerSchema(3, true),
-    id_categoria: integerSchema(12, true),
-    id_dispositivo: integerSchema(4, true),
-    id_ubicacion: integerSchema(9, true),
-    tipo_movimiento: stringSchema("GASTO"),
-    monto: stringSchema("50.75"),
-    moneda: stringSchema("COP"),
-    descripcion: stringSchema("Compra", true),
-    comercio: stringSchema("Tienda", true),
-    canal: stringSchema("web"),
-    es_recurrente: booleanSchema(false),
-    score_anomalia: stringSchema("5.00", true),
-    estado: stringSchema("CONFIRMADA"),
-    fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
-  }),
+  TransactionArchivePreparationData: objectSchema(
+    {
+      id_exportacion: integerSchema(17, true),
+      total: integerSchema(125),
+      fecha_corte: dateTimeSchema("2025-11-21T18:11:54.001Z"),
+      expira_en: dateTimeSchema("2026-11-21T18:41:54.001Z", true),
+    },
+    {
+      id_exportacion: 17,
+      total: 125,
+      fecha_corte: "2025-11-21T18:11:54.001Z",
+      expira_en: "2026-11-21T18:41:54.001Z",
+    },
+  ),
+  TransactionArchivePurgeData: objectSchema(
+    {
+      eliminadas: integerSchema(125),
+      omitidas: integerSchema(0),
+      fecha_corte: dateTimeSchema("2025-11-21T18:11:54.001Z"),
+      saldos_modificados: booleanSchema(false),
+    },
+    {
+      eliminadas: 125,
+      omitidas: 0,
+      fecha_corte: "2025-11-21T18:11:54.001Z",
+      saldos_modificados: false,
+    },
+  ),
   TransactionCreateData: objectSchema(
     {
       transaction: schemaRef("TransactionData"),
@@ -538,6 +572,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         id_transaccion: 42,
         id_usuario: 7,
         id_cuenta: 3,
+        id_cuenta_destino: null,
         id_categoria: 12,
         id_dispositivo: null,
         id_ubicacion: null,
@@ -547,6 +582,9 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         descripcion: "Compra",
         comercio: "Tienda",
         canal: "web",
+        fuente_externa: null,
+        id_evento_externo: null,
+        confirmacion_correo_enviado_en: null,
         es_recurrente: false,
         score_anomalia: 5,
         estado: "CONFIRMADA",
@@ -565,6 +603,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
     id_transaccion: integerSchema(42),
     id_usuario: integerSchema(7),
     id_cuenta: integerSchema(3, true),
+    id_cuenta_destino: integerSchema(4, true),
     id_categoria: integerSchema(12, true),
     id_dispositivo: integerSchema(4, true),
     id_ubicacion: integerSchema(9, true),
@@ -574,12 +613,60 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
     descripcion: stringSchema("Compra", true),
     comercio: stringSchema("Tienda", true),
     canal: stringSchema("web"),
+    fuente_externa: stringSchema("SIMULADOR", true),
+    id_evento_externo: stringSchema("event-123", true),
+    confirmacion_correo_enviado_en: dateTimeSchema("2026-11-19T10:00:00.000Z", true),
     es_recurrente: booleanSchema(false),
     score_anomalia: stringSchema("5.00", true),
     estado: stringSchema("CONFIRMADA"),
     fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
   }),
   TransactionIdData: objectSchema({ id_transaccion: integerSchema(42) }, { id_transaccion: 42 }),
+  EmailTransactionConfirmationData: objectSchema(
+    {
+      id_transaccion: integerSchema(42),
+      monto: numberSchema(50.75),
+      comercio: stringSchema("Tienda", true),
+      descripcion: stringSchema("Compra", true),
+      fecha_transaccion: dateTimeSchema("2026-11-19T10:00:00.000Z"),
+      nombre_cuenta: stringSchema("Cuenta principal", true),
+      estado: stringSchema("PENDIENTE"),
+      puede_responder: booleanSchema(true),
+    },
+    {
+      id_transaccion: 42,
+      monto: 50.75,
+      comercio: "Tienda",
+      descripcion: "Compra",
+      fecha_transaccion: "2026-11-19T10:00:00.000Z",
+      nombre_cuenta: "Cuenta principal",
+      estado: "PENDIENTE",
+      puede_responder: true,
+    },
+  ),
+  EmailTransactionConfirmationResultData: objectSchema(
+    {
+      id_transaccion: integerSchema(42),
+      decision: stringSchema("FUI_YO"),
+      estado: stringSchema("CONFIRMADA"),
+      alerta_critica_creada: booleanSchema(false),
+    },
+    {
+      id_transaccion: 42,
+      decision: "FUI_YO",
+      estado: "CONFIRMADA",
+      alerta_critica_creada: false,
+    },
+  ),
+  ExternalTransactionIngestData: objectSchema(
+    {
+      id_transaccion: integerSchema(42),
+      estado: stringSchema("PENDIENTE"),
+      duplicado: booleanSchema(false),
+      archivado: booleanSchema(false),
+    },
+    { id_transaccion: 42, estado: "PENDIENTE", duplicado: false, archivado: false },
+  ),
   RiskCountsData: {
     type: "object",
     additionalProperties: { type: "integer", minimum: 0 },
@@ -716,7 +803,10 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
   DashboardStatsData: objectSchema(
     {
       saldo_total: numberSchema(1500),
-      mes_actual: objectSchema({
+      periodo: objectSchema({
+        dias: integerSchema(30),
+        fecha_inicio: dateTimeSchema("2026-10-20T12:00:00.000Z"),
+        fecha_fin: dateTimeSchema("2026-11-19T12:00:00.000Z"),
         ingresos: numberSchema(2000),
         gastos: numberSchema(500),
         ahorros: numberSchema(250),
@@ -729,7 +819,15 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
     },
     {
       saldo_total: 1500,
-      mes_actual: { ingresos: 2000, gastos: 500, ahorros: 250, balance_neto: 1250 },
+      periodo: {
+        dias: 30,
+        fecha_inicio: "2026-10-20T12:00:00.000Z",
+        fecha_fin: "2026-11-19T12:00:00.000Z",
+        ingresos: 2000,
+        gastos: 500,
+        ahorros: 250,
+        balance_neto: 1250,
+      },
       alertas: { activas: 2, criticas: 1 },
     },
   ),
@@ -1012,6 +1110,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
           score_anomalia: numberSchema(5),
           ciudad: stringSchema("Caracas", true),
           nombre_cuenta: stringSchema("Cuenta principal", true),
+          nombre_cuenta_destino: stringSchema("Cuenta de ahorros", true),
           nombre_categoria: stringSchema("Alimentación", true),
         }),
       ),
@@ -1036,6 +1135,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
           score_anomalia: 5,
           ciudad: "Caracas",
           nombre_cuenta: "Cuenta principal",
+          nombre_cuenta_destino: null,
           nombre_categoria: "Alimentación",
         },
       ],
@@ -1131,11 +1231,22 @@ const successSchemaByOperation: Record<string, Record<string, string>> = {
   },
   "/api/v2/transactions": { get: "TransactionListData", post: "TransactionCreateData" },
   "/api/v2/transactions/counts-by-level": { get: "RiskCountsData" },
+  "/api/v2/transactions/archive/prepare": { post: "TransactionArchivePreparationData" },
+  "/api/v2/transactions/archive/{exportId}/purge": {
+    post: "TransactionArchivePurgeData",
+  },
   "/api/v2/transactions/{id}": {
     get: "TransactionData",
-    delete: "TransactionRawData",
   },
   "/api/v2/transactions/{id}/status": { patch: "TransactionStatusData" },
+  "/api/v2/transactions/{id}/category": { patch: "TransactionStatusData" },
+  "/api/v2/transactions/email-confirmation": {
+    get: "EmailTransactionConfirmationData",
+    post: "EmailTransactionConfirmationResultData",
+  },
+  "/api/v2/integrations/transactions/webhook": {
+    post: "ExternalTransactionIngestData",
+  },
   "/api/v2/devices": { get: "DeviceListData", post: "DeviceData" },
   "/api/v2/devices/{id}": { get: "DeviceData", delete: "DeviceData" },
   "/api/v2/devices/{id}/trust": { patch: "DeviceData" },
@@ -1173,12 +1284,15 @@ const successSchemaByOperation: Record<string, Record<string, string>> = {
   "/api/v2/map/ubicaciones": { get: "MapLocationsData" },
 };
 
+const rawResponseOperations = new Set(["post /api/v2/transactions/archive/{exportId}/download"]);
+
 const strongPasswordOpenApiSchema = {
   type: "string",
-  minLength: 10,
+  minLength: 12,
   maxLength: 72,
-  pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)",
-  description: "10–72 caracteres, con al menos una mayúscula, una minúscula y un número.",
+  pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*[^\\p{L}\\p{N}\\s])",
+  description:
+    "12–72 caracteres, con al menos una mayúscula, una minúscula y un carácter especial distinto de letras, números o espacios.",
 };
 
 const options: swaggerJsdoc.Options = {
@@ -1224,6 +1338,11 @@ const options: swaggerJsdoc.Options = {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
+        },
+        transactionWebhookSecret: {
+          type: "apiKey",
+          in: "header",
+          name: "X-TriDa-Webhook-Secret",
         },
       },
       schemas: {
@@ -1280,7 +1399,7 @@ const options: swaggerJsdoc.Options = {
             email: { type: "string", format: "email", example: "ana@email.com" },
             password: {
               ...strongPasswordOpenApiSchema,
-              example: "ClaveSegura1",
+              example: "ClaveSegura1!",
             },
             telefono: {
               type: "string",
@@ -1295,7 +1414,7 @@ const options: swaggerJsdoc.Options = {
           required: ["email", "password"],
           properties: {
             email: { type: "string", format: "email", example: "ana@email.com" },
-            password: { type: "string", example: "ClaveSegura1" },
+            password: { type: "string", example: "ClaveSegura1!" },
           },
         },
         ForgotPasswordRequest: {
@@ -1351,6 +1470,8 @@ const options: swaggerJsdoc.Options = {
         CreateTransactionRequest: {
           type: "object",
           required: ["id_cuenta", "monto", "tipo_movimiento"],
+          description:
+            "Registro manual permitido únicamente en cuentas de efectivo. Los movimientos de otras cuentas deben ingresar por el webhook.",
           properties: {
             id_cuenta: { type: "integer", example: 1 },
             id_categoria: {
@@ -1376,6 +1497,64 @@ const options: swaggerJsdoc.Options = {
             longitud: { type: "number", example: -66.9 },
             fecha_transaccion: { type: "string", format: "date-time" },
             es_recurrente: { type: "boolean", default: false },
+          },
+        },
+        ExternalTransactionWebhookRequest: {
+          type: "object",
+          required: ["fuente", "id_evento", "id_cuenta", "monto", "tipo_movimiento"],
+          properties: {
+            fuente: {
+              type: "string",
+              maxLength: 30,
+              pattern: "^[A-Z0-9_-]+$",
+              example: "SIMULADOR",
+            },
+            id_evento: {
+              type: "string",
+              maxLength: 160,
+              description: "Identificador único del movimiento en la fuente.",
+              example: "evt-2026-000123",
+            },
+            id_cuenta: {
+              type: "integer",
+              description: "ID local de la cuenta de origen registrada en TriDa.",
+              example: 3,
+            },
+            id_cuenta_destino: {
+              type: "integer",
+              description:
+                "Obligatorio solo para TRANSFERENCIA; debe ser otra cuenta activa del mismo usuario.",
+              example: 4,
+            },
+            monto: { type: "number", minimum: 0.01, example: 50.75 },
+            tipo_movimiento: {
+              type: "string",
+              enum: ["INGRESO", "GASTO", "AHORRO", "TRANSFERENCIA"],
+            },
+            comercio: { type: "string", maxLength: 150, example: "Tienda" },
+            descripcion: { type: "string", maxLength: 255 },
+            fecha_transaccion: { type: "string", format: "date-time" },
+            es_recurrente: { type: "boolean", default: false },
+          },
+        },
+        EmailTransactionConfirmationRequest: {
+          type: "object",
+          required: ["token", "decision"],
+          properties: {
+            token: { type: "string" },
+            decision: { type: "string", enum: ["FUI_YO", "NO_FUI_YO"] },
+          },
+        },
+        UpdateTransactionCategoryRequest: {
+          type: "object",
+          required: ["id_categoria"],
+          properties: {
+            id_categoria: {
+              type: "integer",
+              nullable: true,
+              description: "ID de una categoría propia/compartida o null para quitarla.",
+              example: 12,
+            },
           },
         },
         RegisterDeviceRequest: {
@@ -1534,6 +1713,17 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        AccountLockedError: {
+          summary: "Cuenta bloqueada temporalmente",
+          value: {
+            success: false,
+            error: {
+              code: "ACCOUNT_LOCKED",
+              message:
+                "Cuenta bloqueada por una hora tras 3 intentos fallidos. Inténtalo más tarde.",
+            },
+          },
+        },
         RateLimitError: {
           summary: "Límite de peticiones excedido",
           value: {
@@ -1683,6 +1873,8 @@ const options: swaggerJsdoc.Options = {
           tags: ["Auth"],
           security: [],
           summary: "Registrar usuario",
+          description:
+            "Crea una cuenta pendiente de verificación por correo. El enlace de verificación vence en 15 minutos.",
           requestBody: {
             required: true,
             content: {
@@ -1694,15 +1886,16 @@ const options: swaggerJsdoc.Options = {
           responses: {
             "201": {
               description:
-                "Registro recibido; el inicio de sesión puede requerir verificación por correo",
+                "Registro recibido; se requiere verificar el correo para iniciar sesión.",
               content: {
                 "application/json": {
                   example: {
                     success: true,
                     message: "Registro completado con éxito",
                     data: {
-                      message: "Si el correo puede registrarse, ya puedes intentar iniciar sesión",
-                      emailVerificationRequired: false,
+                      message:
+                        "Si el correo puede registrarse, recibirás un enlace de verificación",
+                      emailVerificationRequired: true,
                     },
                   },
                 },
@@ -1716,6 +1909,7 @@ const options: swaggerJsdoc.Options = {
                 },
               },
             },
+            "503": { $ref: "#/components/responses/ServiceUnavailableError" },
           },
         },
       },
@@ -1733,8 +1927,11 @@ const options: swaggerJsdoc.Options = {
             },
           },
           responses: {
-            "200": { description: "Login exitoso (devuelve JWT)" },
+            "200": {
+              description: "Login exitoso. Devuelve un JWT válido por 8 horas por defecto.",
+            },
             "401": { description: "Credenciales inválidas" },
+            "423": { $ref: "#/components/responses/AccountLockedError" },
           },
         },
       },
@@ -1742,7 +1939,7 @@ const options: swaggerJsdoc.Options = {
         post: {
           tags: ["Auth"],
           security: [],
-          summary: "Verificar correo electrónico",
+          summary: "Verificar correo electrónico (enlace válido por 15 minutos)",
           requestBody: {
             required: true,
             content: {
@@ -2147,7 +2344,10 @@ const options: swaggerJsdoc.Options = {
             {
               name: "tipo_movimiento",
               in: "query",
-              schema: { type: "string", enum: ["INGRESO", "GASTO", "AHORRO"] },
+              schema: {
+                type: "string",
+                enum: ["INGRESO", "GASTO", "AHORRO", "TRANSFERENCIA"],
+              },
             },
             { name: "id_cuenta", in: "query", schema: { type: "integer" } },
             { name: "id_categoria", in: "query", schema: { type: "integer" } },
@@ -2201,7 +2401,10 @@ const options: swaggerJsdoc.Options = {
           },
           responses: {
             "201": { description: "Transacción creada + evaluación" },
-            "400": { description: "Validación fallida" },
+            "400": {
+              description:
+                "Validación fallida o intento de registro manual en una cuenta que no es de efectivo",
+            },
             "404": {
               description: "Cuenta o categoría inexistente o no disponible para el usuario",
             },
@@ -2228,6 +2431,69 @@ const options: swaggerJsdoc.Options = {
           },
         },
       },
+      "/api/v2/transactions/archive/prepare": {
+        post: {
+          tags: ["Transactions"],
+          summary: "Preparar exportación anual de transacciones",
+          description:
+            "Captura movimientos finalizados con fecha de un año o más. El archivo debe descargarse antes de confirmar la eliminación; la preparación vence en 30 minutos.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": { description: "Exportación preparada; total puede ser cero" },
+          },
+        },
+      },
+      "/api/v2/transactions/archive/{exportId}/download": {
+        post: {
+          tags: ["Transactions"],
+          summary: "Descargar CSV de movimientos antiguos",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "exportId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "CSV UTF-8 de los movimientos incluidos en la preparación",
+              content: {
+                "text/csv": {
+                  schema: { type: "string", format: "binary" },
+                },
+              },
+            },
+            "404": { description: "Exportación no encontrada" },
+            "409": { description: "Exportación expirada o ya utilizada" },
+          },
+        },
+      },
+      "/api/v2/transactions/archive/{exportId}/purge": {
+        post: {
+          tags: ["Transactions"],
+          summary: "Eliminar movimientos exportados",
+          description:
+            "Elimina solo movimientos finalizados incluidos en el CSV descargado, conserva los saldos actuales y registra la operación en auditoría.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "exportId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            "200": { description: "Eliminación anual completada" },
+            "404": { description: "Exportación no encontrada" },
+            "409": {
+              description: "CSV no descargado, exportación expirada o movimientos modificados",
+            },
+          },
+        },
+      },
       "/api/v2/transactions/{id}": {
         get: {
           tags: ["Transactions"],
@@ -2248,7 +2514,9 @@ const options: swaggerJsdoc.Options = {
         },
         delete: {
           tags: ["Transactions"],
-          summary: "Eliminar transacción (revierte saldo si aplica)",
+          summary: "Eliminación individual deshabilitada",
+          description:
+            "Los movimientos solo se eliminan mediante el flujo anual tras descargar el CSV correspondiente.",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -2258,7 +2526,10 @@ const options: swaggerJsdoc.Options = {
               schema: { type: "integer" },
             },
           ],
-          responses: { "200": { description: "Eliminada" } },
+          responses: {
+            "404": { description: "Transacción no encontrada" },
+            "409": { description: "La eliminación individual está deshabilitada" },
+          },
         },
       },
       "/api/v2/transactions/{id}/status": {
@@ -2287,6 +2558,104 @@ const options: swaggerJsdoc.Options = {
             "400": { description: "Estado inválido" },
             "404": { description: "Transacción no encontrada" },
             "409": { description: "La transacción ya no está pendiente" },
+          },
+        },
+      },
+      "/api/v2/transactions/{id}/category": {
+        patch: {
+          tags: ["Transactions"],
+          summary: "Asignar o cambiar la categoría de un movimiento",
+          description:
+            "La categoría debe estar activa, pertenecer al usuario o ser compartida y coincidir con el tipo de movimiento. Las transferencias no se categorizan.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "integer" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UpdateTransactionCategoryRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Categoría actualizada" },
+            "400": { description: "La categoría no corresponde o es una transferencia" },
+            "404": { description: "Transacción o categoría no encontrada" },
+          },
+        },
+      },
+      "/api/v2/transactions/email-confirmation": {
+        get: {
+          tags: ["Transactions"],
+          summary: "Consultar un gasto enviado por correo para confirmar",
+          description:
+            "Endpoint público. Leer el enlace no modifica el estado; los enlaces vencen a los 15 minutos.",
+          parameters: [
+            {
+              name: "token",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Detalle del gasto y disponibilidad de respuesta" },
+            "400": { description: "Enlace inválido o expirado" },
+            "404": { description: "Movimiento no encontrado" },
+          },
+        },
+        post: {
+          tags: ["Transactions"],
+          summary: "Confirmar o rechazar un gasto automático desde el correo",
+          description:
+            "El token es de un solo uso. NO_FUI_YO rechaza el movimiento y registra una alerta crítica.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/EmailTransactionConfirmationRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Decisión registrada" },
+            "400": { description: "Enlace inválido o expirado" },
+            "409": { description: "El movimiento ya fue resuelto" },
+            "503": { description: "No se pudo enviar el correo de alerta crítica" },
+          },
+        },
+      },
+      "/api/v2/integrations/transactions/webhook": {
+        post: {
+          tags: ["Transactions"],
+          summary: "Recibir un movimiento de un simulador o fuente externa",
+          description:
+            "Requiere el secreto configurado en TRANSACTION_WEBHOOK_SECRET. Se deduplica por cuenta, fuente e ID externo. GASTO queda pendiente y requiere confirmación por correo; TRANSFERENCIA requiere dos cuentas activas del mismo usuario.",
+          security: [{ transactionWebhookSecret: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ExternalTransactionWebhookRequest" },
+              },
+            },
+          },
+          responses: {
+            "201": { description: "Movimiento recibido" },
+            "200": { description: "Evento duplicado; no se creó otro movimiento" },
+            "400": { description: "Evento inválido" },
+            "401": { description: "Secreto del webhook inválido" },
+            "404": { description: "Cuenta no encontrada o fuera del usuario" },
+            "503": {
+              description: "Webhook no configurado o servicio SMTP no disponible para un gasto",
+            },
           },
         },
       },
@@ -2474,16 +2843,24 @@ const options: swaggerJsdoc.Options = {
       "/api/v2/dashboard/stats": {
         get: {
           tags: ["Dashboard"],
-          summary: "Estadísticas principales",
+          summary: "Estadísticas principales para un periodo seleccionable",
           security: [{ bearerAuth: [] }],
           parameters: [
+            {
+              name: "periodo_dias",
+              in: "query",
+              schema: { type: "integer", enum: [30, 90, 180, 365], default: 30 },
+            },
             {
               name: "id_cuenta",
               in: "query",
               schema: { type: "integer", minimum: 1 },
             },
           ],
-          responses: { "200": { description: "Saldos, mes actual y alertas" } },
+          responses: {
+            "200": { description: "Saldo total, métricas del periodo y alertas" },
+            "400": { description: "Periodo o ID de cuenta inválido" },
+          },
         },
       },
       "/api/v2/dashboard/estadisticas": {
@@ -2491,7 +2868,22 @@ const options: swaggerJsdoc.Options = {
           tags: ["Dashboard"],
           summary: "Estadísticas principales (alias ES)",
           security: [{ bearerAuth: [] }],
-          responses: { "200": { description: "Saldos, mes actual y alertas" } },
+          parameters: [
+            {
+              name: "periodo_dias",
+              in: "query",
+              schema: { type: "integer", enum: [30, 90, 180, 365], default: 30 },
+            },
+            {
+              name: "id_cuenta",
+              in: "query",
+              schema: { type: "integer", minimum: 1 },
+            },
+          ],
+          responses: {
+            "200": { description: "Saldo total, métricas del periodo y alertas" },
+            "400": { description: "Periodo o ID de cuenta inválido" },
+          },
         },
       },
       "/api/v2/dashboard/recent-alerts": {
@@ -2825,7 +3217,10 @@ const options: swaggerJsdoc.Options = {
             {
               name: "tipo_movimiento",
               in: "query",
-              schema: { type: "string", enum: ["INGRESO", "GASTO", "AHORRO"] },
+              schema: {
+                type: "string",
+                enum: ["INGRESO", "GASTO", "AHORRO", "TRANSFERENCIA"],
+              },
             },
           ],
           responses: { "200": { description: "Totales por categoría" } },
@@ -2855,7 +3250,10 @@ const options: swaggerJsdoc.Options = {
             {
               name: "tipo_movimiento",
               in: "query",
-              schema: { type: "string", enum: ["INGRESO", "GASTO", "AHORRO"] },
+              schema: {
+                type: "string",
+                enum: ["INGRESO", "GASTO", "AHORRO", "TRANSFERENCIA"],
+              },
             },
             { name: "limit", in: "query", schema: { type: "integer", default: 500 } },
           ],
@@ -3046,6 +3444,9 @@ for (const [path, pathItem] of Object.entries(paths ?? {})) {
       statuses.add("409");
       statuses.add("429");
       statuses.add("500");
+      if (path === "/api/v2/auth/login") {
+        statuses.add("423");
+      }
 
       if (operation.security?.length) {
         statuses.add("401");
@@ -3081,6 +3482,7 @@ for (const [path, pathItem] of Object.entries(paths ?? {})) {
     if (path.startsWith("/api/v2/")) {
       for (const [status, response] of Object.entries(responses)) {
         if (!/^2\d\d$/.test(status)) continue;
+        if (rawResponseOperations.has(`${method} ${path}`)) continue;
 
         const schemaName = successSchemaByOperation[path]?.[method];
         const dataSchema = schemaName ? componentSchemas[schemaName] : undefined;

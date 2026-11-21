@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[^\p{L}\p{N}\s])/u;
 
 const strongPassword = z
   .string()
-  .min(10, "La contraseña debe tener al menos 10 caracteres")
+  .min(12, "La contraseña debe tener al menos 12 caracteres")
   .max(72, "La contraseña no puede superar los 72 caracteres")
   .regex(
     passwordRegex,
-    "La contraseña debe contener al menos una mayúscula, una minúscula y un número",
+    "La contraseña debe contener al menos una mayúscula, una minúscula y un carácter especial distinto de letras, números o espacios",
   );
 
 export const registerSchema = z

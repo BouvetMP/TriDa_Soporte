@@ -24,7 +24,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
   const isMaxLength = passwordChecks.maxLength;
   const hasUpper = passwordChecks.hasUpper;
   const hasLower = passwordChecks.hasLower;
-  const hasNumber = passwordChecks.hasNumber;
+  const hasSpecial = passwordChecks.hasSpecial;
   const matchesConfirm =
     passwordNueva.length > 0 && passwordNueva === confirmPassword;
 
@@ -110,7 +110,7 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
               isMinLength ? "text-income" : "text-[var(--color-text-subtle)]"
             }
           >
-            Mínimo 10 caracteres
+            Mínimo 12 caracteres
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -156,17 +156,17 @@ export const ChangePasswordForm: React.FC<ChangePasswordFormProps> = ({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {hasNumber ? (
+          {hasSpecial ? (
             <Check className="w-3.5 h-3.5 text-income" />
           ) : (
             <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
           )}
           <span
             className={
-              hasNumber ? "text-income" : "text-[var(--color-text-subtle)]"
+              hasSpecial ? "text-income" : "text-[var(--color-text-subtle)]"
             }
           >
-            Al menos un número
+            Al menos un carácter especial
           </span>
         </div>
       </div>

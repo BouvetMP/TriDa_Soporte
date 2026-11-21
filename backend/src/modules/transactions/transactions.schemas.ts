@@ -2,9 +2,10 @@ import { z } from "zod";
 import { positiveMoney } from "../../utils/money.js";
 import { MAX_POSTGRES_INT } from "../../utils/params.js";
 
-const transactionType = z.enum(["INGRESO", "GASTO", "AHORRO"], {
-  message: "El tipo de movimiento debe ser INGRESO, GASTO o AHORRO",
+const manualTransactionType = z.enum(["INGRESO", "GASTO", "AHORRO"], {
+  message: "El tipo de movimiento manual debe ser INGRESO, GASTO o AHORRO",
 });
+export const transactionType = z.enum(["INGRESO", "GASTO", "AHORRO", "TRANSFERENCIA"]);
 
 const transactionQueryId = z.coerce.number().int().positive().max(MAX_POSTGRES_INT).optional();
 const transactionQueryAmount = z.coerce.number().finite().optional();
@@ -16,7 +17,7 @@ export const createTransactionSchema = z
     id_categoria: z.coerce.number().int().positive().max(MAX_POSTGRES_INT).optional(),
     id_dispositivo: z.coerce.number().int().positive().max(MAX_POSTGRES_INT).optional(),
     monto: positiveMoney,
-    tipo_movimiento: transactionType,
+    tipo_movimiento: manualTransactionType,
     comercio: z.string().trim().max(150).optional(),
     descripcion: z.string().trim().max(255).optional(),
     ciudad: z.string().trim().max(100).optional(),
@@ -69,5 +70,71 @@ export const updateTransactionStatusSchema = z
   })
   .strict();
 
+export const externalTransactionSchema = z
+  .object({
+    fuente: z.string().trim().min(1).max(30).regex(/^[A-Z0-9_-]+$/),
+    id_evento: z.string().trim().min(1).max(160),
+    id_cuenta: z.coerce.number().int().positive().max(MAX_POSTGRES_INT),
+    id_cuenta_destino: z.coerce.number().int().positive().max(MAX_POSTGRES_INT).optional(),
+    monto: positiveMoney,
+    tipo_movimiento: transactionType,
+    comercio: z.string().trim().max(150).optional(),
+    descripcion: z.string().trim().max(255).optional(),
+    fecha_transaccion: z.iso.datetime().optional(),
+    es_recurrente: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.tipo_movimiento === "TRANSFERENCIA") {
+      if (!data.id_cuenta_destino) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["id_cuenta_destino"],
+          message: "La transferencia requiere una cuenta destino",
+        });
+      } else if (data.id_cuenta_destino === data.id_cuenta) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["id_cuenta_destino"],
+          message: "La cuenta de origen y destino deben ser distintas",
+        });
+      }
+    } else if (data.id_cuenta_destino !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["id_cuenta_destino"],
+        message: "Solo una transferencia puede indicar una cuenta destino",
+      });
+    }
+
+    if (data.fecha_transaccion && new Date(data.fecha_transaccion).getTime() > Date.now()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fecha_transaccion"],
+        message: "La fecha de la transacción no puede ser futura",
+      });
+    }
+  });
+
+export const updateTransactionCategorySchema = z
+  .object({
+    id_categoria: z.coerce.number().int().positive().max(MAX_POSTGRES_INT).nullable(),
+  })
+  .strict();
+
+export const emailTransactionConfirmationSchema = z
+  .object({
+    token: z.string().min(1).max(4096),
+    decision: z.enum(["FUI_YO", "NO_FUI_YO"]),
+  })
+  .strict();
+
+export const transactionConfirmationTokenSchema = z
+  .object({
+    token: z.string().min(1).max(4096),
+  })
+  .strict();
+
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
+export type ExternalTransactionInput = z.infer<typeof externalTransactionSchema>;
 export type ListTransactionsQueryInput = z.infer<typeof listTransactionsQuerySchema>;

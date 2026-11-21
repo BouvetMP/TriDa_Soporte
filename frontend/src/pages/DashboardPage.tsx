@@ -13,8 +13,10 @@ import { FinancialAdvisorWidget } from "@/components/dashboard/FinancialAdvisorW
 import { AlertBadge } from "@/components/alerts/AlertBadge";
 import { formatCurrency, formatDate } from "@/utils/Formatters";
 import { Link } from "react-router-dom";
+import { Select } from "@/components/ui/Select";
 import {
   ArrowDownLeft,
+  ArrowLeftRight,
   ArrowUpRight,
   BellRing,
   PiggyBank,
@@ -26,7 +28,14 @@ import {
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
 
-  const { data, isLoading, markAdviceRead } = useDashboard();
+  const { data, isLoading, periodDays, setPeriodDays, markAdviceRead } =
+    useDashboard();
+  const periodOptions = [
+    { value: 30, label: "Últimos 30 días" },
+    { value: 90, label: "Últimos 90 días" },
+    { value: 180, label: "Últimos 180 días" },
+    { value: 365, label: "Último año" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -84,13 +93,24 @@ export const DashboardPage: React.FC = () => {
       </Card>
 
       <div>
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-text-primary">
-            Resumen Financiero
-          </h2>
-          <p className="text-sm text-text-muted mt-1">
-            Mostrando el consolidado de tus cuentas y el resumen del mes actual.
-          </p>
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-text-primary">
+              Resumen Financiero
+            </h2>
+            <p className="text-sm text-text-muted mt-1">
+              El saldo es consolidado; los ingresos, gastos y categorías
+              corresponden al periodo seleccionado.
+            </p>
+          </div>
+          <div className="w-full sm:w-48">
+            <Select
+              value={periodDays}
+              onChange={(event) => setPeriodDays(Number(event.target.value))}
+              options={periodOptions}
+              aria-label="Periodo del resumen financiero"
+            />
+          </div>
         </div>
 
         {isLoading ? (
@@ -139,13 +159,17 @@ export const DashboardPage: React.FC = () => {
                             ? ArrowDownLeft
                             : transaction.tipo_movimiento === "GASTO"
                               ? ArrowUpRight
-                              : PiggyBank;
+                              : transaction.tipo_movimiento === "AHORRO"
+                                ? PiggyBank
+                                : ArrowLeftRight;
                         const color =
                           transaction.tipo_movimiento === "INGRESO"
                             ? "text-income"
                             : transaction.tipo_movimiento === "GASTO"
                               ? "text-expense"
-                              : "text-saving";
+                              : transaction.tipo_movimiento === "AHORRO"
+                                ? "text-saving"
+                                : "text-text-secondary";
 
                         return (
                           <li
@@ -156,8 +180,11 @@ export const DashboardPage: React.FC = () => {
                               <Icon className={`h-4 w-4 shrink-0 ${color}`} />
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium text-text-primary">
-                                  {transaction.comercio ||
-                                    transaction.categoria.nombre}
+                                  {transaction.tipo_movimiento ===
+                                  "TRANSFERENCIA"
+                                    ? "Transferencia entre cuentas"
+                                    : transaction.comercio ||
+                                      transaction.categoria.nombre}
                                 </p>
                                 <p className="text-xs text-text-muted">
                                   {transaction.tipo_movimiento} ·{" "}

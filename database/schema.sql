@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS trida.usuarios (
     estado           BOOLEAN NOT NULL DEFAULT TRUE,
     email_verificado_en TIMESTAMPTZ DEFAULT NOW(),
     token_version    INTEGER NOT NULL DEFAULT 0,
+    intentos_login_fallidos INTEGER NOT NULL DEFAULT 0,
+    bloqueado_hasta  TIMESTAMPTZ,
     fecha_registro   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ultimo_acceso    TIMESTAMPTZ,
     CONSTRAINT chk_usuarios_email CHECK (email ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$'),
@@ -131,7 +133,7 @@ CREATE TABLE IF NOT EXISTS trida.ubicaciones (
 
 -- ----------------------------------------------------------------------------
 -- transacciones
--- Núcleo del sistema. tipo_movimiento: INGRESO | GASTO | AHORRO.
+-- Núcleo del sistema. Incluye transferencias entre cuentas propias.
 -- monto siempre positivo (RF-004 adaptado: el tipo indica la dirección).
 -- NUEVO: id_cuenta vincula cada movimiento a una cuenta del usuario.
 -- ----------------------------------------------------------------------------
@@ -142,29 +144,127 @@ CREATE TABLE IF NOT EXISTS trida.transacciones (
                       ON UPDATE CASCADE ON DELETE CASCADE,
     id_cuenta         INTEGER REFERENCES trida.cuentas (id_cuenta)
                       ON UPDATE CASCADE ON DELETE SET NULL,
+    id_cuenta_destino INTEGER REFERENCES trida.cuentas (id_cuenta)
+                      ON UPDATE CASCADE ON DELETE RESTRICT,
     id_categoria      INTEGER REFERENCES trida.categorias (id_categoria)
                       ON UPDATE CASCADE ON DELETE SET NULL,
     id_dispositivo    INTEGER REFERENCES trida.dispositivos (id_dispositivo)
                       ON UPDATE CASCADE ON DELETE SET NULL,
     id_ubicacion      INTEGER REFERENCES trida.ubicaciones (id_ubicacion)
                       ON UPDATE CASCADE ON DELETE SET NULL,
-    tipo_movimiento   VARCHAR(10) NOT NULL,
+    tipo_movimiento   VARCHAR(15) NOT NULL,
     monto             NUMERIC(15, 2) NOT NULL,
     moneda            CHAR(3) NOT NULL DEFAULT 'COP',
     descripcion       VARCHAR(255),
     comercio          VARCHAR(150),
     canal             VARCHAR(20) NOT NULL DEFAULT 'web',
+    fuente_externa    VARCHAR(30),
+    id_evento_externo VARCHAR(160),
+    huella_evento_externo CHAR(64),
+    confirmacion_correo_enviado_en TIMESTAMPTZ,
     es_recurrente     BOOLEAN NOT NULL DEFAULT FALSE,
     score_anomalia    NUMERIC(5, 2),
     estado            VARCHAR(20) NOT NULL DEFAULT 'CONFIRMADA',
     fecha_transaccion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_monto_positivo  CHECK (monto > 0),
     CONSTRAINT chk_moneda_tx       CHECK (moneda ~ '^[A-Z]{3}$'),
-    CONSTRAINT chk_tipo_movimiento CHECK (tipo_movimiento IN ('INGRESO', 'GASTO', 'AHORRO')),
-    CONSTRAINT chk_canal_tx        CHECK (canal IN ('mobile','web','pos','atm','transferencia','efectivo','manual')),
+    CONSTRAINT chk_tipo_movimiento CHECK (tipo_movimiento IN ('INGRESO', 'GASTO', 'AHORRO', 'TRANSFERENCIA')),
+    CONSTRAINT chk_transfer_accounts CHECK (
+        (tipo_movimiento = 'TRANSFERENCIA'
+            AND id_cuenta IS NOT NULL
+            AND id_cuenta_destino IS NOT NULL
+            AND id_cuenta <> id_cuenta_destino)
+        OR (tipo_movimiento <> 'TRANSFERENCIA' AND id_cuenta_destino IS NULL)
+    ),
+    CONSTRAINT chk_external_event_pair CHECK (
+        (canal = 'webhook'
+            AND fuente_externa IS NOT NULL
+            AND id_evento_externo IS NOT NULL)
+        OR (canal <> 'webhook'
+            AND fuente_externa IS NULL
+            AND id_evento_externo IS NULL)
+    ),
+    CONSTRAINT chk_canal_tx        CHECK (canal IN ('mobile','web','pos','atm','transferencia','efectivo','manual','webhook')),
     CONSTRAINT chk_estado_tx       CHECK (estado IN ('PENDIENTE','CONFIRMADA','APROBADA','SOSPECHOSA','RECHAZADA')),
     CONSTRAINT chk_score_rango     CHECK (score_anomalia BETWEEN 0 AND 100)
 );
+
+ALTER TABLE trida.transacciones
+    ADD COLUMN IF NOT EXISTS id_cuenta_destino INTEGER
+        REFERENCES trida.cuentas (id_cuenta)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    ADD COLUMN IF NOT EXISTS fuente_externa VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS id_evento_externo VARCHAR(160),
+    ADD COLUMN IF NOT EXISTS huella_evento_externo CHAR(64),
+    ADD COLUMN IF NOT EXISTS confirmacion_correo_enviado_en TIMESTAMPTZ;
+
+ALTER TABLE trida.transacciones
+    ALTER COLUMN tipo_movimiento TYPE VARCHAR(15),
+    DROP CONSTRAINT IF EXISTS chk_tipo_movimiento,
+    ADD CONSTRAINT chk_tipo_movimiento
+        CHECK (tipo_movimiento IN ('INGRESO', 'GASTO', 'AHORRO', 'TRANSFERENCIA')) NOT VALID,
+    DROP CONSTRAINT IF EXISTS chk_canal_tx,
+    ADD CONSTRAINT chk_canal_tx
+        CHECK (canal IN ('mobile','web','pos','atm','transferencia','efectivo','manual','webhook')) NOT VALID,
+    DROP CONSTRAINT IF EXISTS chk_transfer_accounts,
+    ADD CONSTRAINT chk_transfer_accounts CHECK (
+        (tipo_movimiento = 'TRANSFERENCIA'
+            AND id_cuenta IS NOT NULL
+            AND id_cuenta_destino IS NOT NULL
+            AND id_cuenta <> id_cuenta_destino)
+        OR (tipo_movimiento <> 'TRANSFERENCIA' AND id_cuenta_destino IS NULL)
+    ) NOT VALID,
+    DROP CONSTRAINT IF EXISTS chk_external_event_pair,
+    ADD CONSTRAINT chk_external_event_pair CHECK (
+        (canal = 'webhook'
+            AND fuente_externa IS NOT NULL
+            AND id_evento_externo IS NOT NULL)
+        OR (canal <> 'webhook'
+            AND fuente_externa IS NULL
+            AND id_evento_externo IS NULL)
+    ) NOT VALID;
+
+ALTER TABLE trida.transacciones
+    VALIDATE CONSTRAINT chk_tipo_movimiento,
+    VALIDATE CONSTRAINT chk_canal_tx,
+    VALIDATE CONSTRAINT chk_transfer_accounts,
+    VALIDATE CONSTRAINT chk_external_event_pair;
+
+CREATE TABLE IF NOT EXISTS trida.exportaciones_transacciones_archivo (
+    id_exportacion    SERIAL PRIMARY KEY,
+    id_usuario        INTEGER NOT NULL
+                      REFERENCES trida.usuarios (id_usuario)
+                      ON UPDATE CASCADE ON DELETE CASCADE,
+    ids_transacciones INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+    fecha_corte       TIMESTAMPTZ NOT NULL,
+    fecha_creacion    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fecha_expiracion  TIMESTAMPTZ NOT NULL,
+    fecha_descarga    TIMESTAMPTZ,
+    fecha_eliminacion TIMESTAMPTZ,
+    CONSTRAINT chk_tx_archive_expiry CHECK (fecha_expiracion > fecha_creacion)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tx_archive_user_expiry
+    ON trida.exportaciones_transacciones_archivo (id_usuario, fecha_expiracion);
+
+CREATE TABLE IF NOT EXISTS trida.eventos_transacciones_archivados (
+    id_evento_archivado     SERIAL PRIMARY KEY,
+    id_usuario              INTEGER NOT NULL
+                            REFERENCES trida.usuarios (id_usuario)
+                            ON UPDATE CASCADE ON DELETE CASCADE,
+    id_cuenta               INTEGER NOT NULL,
+    fuente_externa          VARCHAR(30) NOT NULL,
+    id_evento_externo       VARCHAR(160) NOT NULL,
+    id_transaccion_original INTEGER NOT NULL,
+    estado_original         VARCHAR(20) NOT NULL,
+    huella_evento           CHAR(64) NOT NULL,
+    fecha_archivado         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_tx_archived_event UNIQUE (id_cuenta, fuente_externa, id_evento_externo),
+    CONSTRAINT uq_tx_archived_original UNIQUE (id_transaccion_original)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tx_archived_user_date
+    ON trida.eventos_transacciones_archivados (id_usuario, fecha_archivado DESC);
 
 -- ----------------------------------------------------------------------------
 -- patron_comportamiento
@@ -215,6 +315,7 @@ CREATE TABLE IF NOT EXISTS trida.metas_ahorro (
     id_usuario       INTEGER NOT NULL
                      REFERENCES trida.usuarios (id_usuario)
                      ON UPDATE CASCADE ON DELETE CASCADE,
+    id_categoria     INTEGER,
     nombre           VARCHAR(120) NOT NULL,
     descripcion      TEXT,
     monto_objetivo   NUMERIC(15, 2) NOT NULL,
@@ -223,6 +324,10 @@ CREATE TABLE IF NOT EXISTS trida.metas_ahorro (
     estado           VARCHAR(15) NOT NULL DEFAULT 'ACTIVA',
     fecha_creacion   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     fecha_completada TIMESTAMPTZ,
+    CONSTRAINT metas_ahorro_id_categoria_fkey
+        FOREIGN KEY (id_categoria)
+        REFERENCES trida.categorias (id_categoria)
+        ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT chk_meta_obj CHECK (monto_objetivo > 0),
     CONSTRAINT chk_meta_act CHECK (monto_actual >= 0),
     CONSTRAINT chk_meta_est CHECK (estado IN ('ACTIVA','PAUSADA','COMPLETADA','CANCELADA'))
@@ -389,6 +494,8 @@ DROP TRIGGER IF EXISTS trg_meta_completada ON trida.metas_ahorro;
 ALTER TABLE trida.usuarios
     ADD COLUMN IF NOT EXISTS email_verificado_en TIMESTAMPTZ DEFAULT NOW(),
     ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS intentos_login_fallidos INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS bloqueado_hasta TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS dispositivo_historial_registrado BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE trida.usuarios
@@ -417,6 +524,27 @@ ALTER TABLE trida.consejos_financieros
     ADD COLUMN IF NOT EXISTS id_cuenta INTEGER
     REFERENCES trida.cuentas (id_cuenta)
     ON UPDATE CASCADE ON DELETE SET NULL;
+
+ALTER TABLE trida.metas_ahorro
+    ADD COLUMN IF NOT EXISTS id_categoria INTEGER;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'trida.metas_ahorro'::regclass
+          AND conname = 'metas_ahorro_id_categoria_fkey'
+    ) THEN
+        ALTER TABLE trida.metas_ahorro
+            ADD CONSTRAINT metas_ahorro_id_categoria_fkey
+            FOREIGN KEY (id_categoria)
+            REFERENCES trida.categorias (id_categoria)
+            ON UPDATE CASCADE
+            ON DELETE SET NULL;
+    END IF;
+END;
+$$;
 
 ALTER TABLE trida.usuarios
     DROP CONSTRAINT IF EXISTS chk_usuarios_rol;
@@ -497,6 +625,10 @@ CREATE INDEX IF NOT EXISTS idx_tx_usuario
     ON trida.transacciones (id_usuario);
 CREATE INDEX IF NOT EXISTS idx_tx_cuenta
     ON trida.transacciones (id_cuenta);
+CREATE INDEX IF NOT EXISTS idx_tx_cuenta_destino
+    ON trida.transacciones (id_cuenta_destino);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tx_external_event
+    ON trida.transacciones (id_cuenta, fuente_externa, id_evento_externo);
 CREATE INDEX IF NOT EXISTS idx_tx_categoria
     ON trida.transacciones (id_categoria);
 CREATE INDEX IF NOT EXISTS idx_tx_ubicacion
@@ -527,6 +659,8 @@ CREATE INDEX IF NOT EXISTS idx_metas_usuario
     ON trida.metas_ahorro (id_usuario);
 CREATE INDEX IF NOT EXISTS idx_metas_estado
     ON trida.metas_ahorro (estado);
+CREATE INDEX IF NOT EXISTS idx_metas_categoria
+    ON trida.metas_ahorro (id_categoria);
 
 CREATE INDEX IF NOT EXISTS idx_aportes_meta
     ON trida.aportes_meta (id_meta);
@@ -932,6 +1066,9 @@ $$;
 -- ============================================================================
 
 -- CORREGIDO: agrega p_id_cuenta opcional y paginación real
+DROP FUNCTION IF EXISTS trida.fn_transacciones(
+    INTEGER, INTEGER, VARCHAR, TIMESTAMPTZ, TIMESTAMPTZ, INTEGER, INTEGER
+);
 CREATE OR REPLACE FUNCTION trida.fn_transacciones(
     p_id_usuario      INTEGER,
     p_id_cuenta       INTEGER DEFAULT NULL,
@@ -943,7 +1080,7 @@ CREATE OR REPLACE FUNCTION trida.fn_transacciones(
 )
 RETURNS TABLE (
     id_transaccion INTEGER, fecha_transaccion TIMESTAMPTZ,
-    tipo_movimiento VARCHAR(10), monto NUMERIC(15,2), moneda CHAR(3),
+    tipo_movimiento VARCHAR(15), monto NUMERIC(15,2), moneda CHAR(3),
     descripcion VARCHAR(255), comercio VARCHAR(150), canal VARCHAR(20),
     es_recurrente BOOLEAN, score_anomalia NUMERIC(5,2), estado VARCHAR(20),
     categoria VARCHAR(80), categoria_color VARCHAR(20), categoria_icono VARCHAR(50),
@@ -959,7 +1096,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     LEFT JOIN trida.cuentas cu     ON cu.id_cuenta     = t.id_cuenta
     LEFT JOIN trida.ubicaciones u  ON u.id_ubicacion   = t.id_ubicacion
     WHERE t.id_usuario = p_id_usuario
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
       AND (p_tipo_movimiento IS NULL OR t.tipo_movimiento = p_tipo_movimiento)
       AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
       AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
@@ -978,12 +1115,15 @@ CREATE OR REPLACE FUNCTION trida.fn_transacciones_count(
 RETURNS BIGINT LANGUAGE sql STABLE PARALLEL SAFE AS $$
     SELECT COUNT(*)::BIGINT FROM trida.transacciones t
     WHERE t.id_usuario = p_id_usuario
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
       AND (p_tipo_movimiento IS NULL OR t.tipo_movimiento = p_tipo_movimiento)
       AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
       AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta);
 $$;
 
+DROP FUNCTION IF EXISTS trida.fn_transacciones_mapa(
+    INTEGER, INTEGER, TIMESTAMPTZ, TIMESTAMPTZ, INTEGER
+);
 CREATE OR REPLACE FUNCTION trida.fn_transacciones_mapa(
     p_id_usuario  INTEGER,
     p_id_cuenta   INTEGER DEFAULT NULL,
@@ -994,7 +1134,7 @@ CREATE OR REPLACE FUNCTION trida.fn_transacciones_mapa(
 RETURNS TABLE (
     id_transaccion INTEGER, latitud NUMERIC(9,6), longitud NUMERIC(9,6),
     ciudad VARCHAR(100), pais VARCHAR(100), monto NUMERIC(15,2),
-    tipo_movimiento VARCHAR(10), score_anomalia NUMERIC(5,2),
+    tipo_movimiento VARCHAR(15), score_anomalia NUMERIC(5,2),
     estado VARCHAR(20), comercio VARCHAR(150),
     fecha_transaccion TIMESTAMPTZ, categoria VARCHAR(80), categoria_color VARCHAR(20)
 )
@@ -1007,7 +1147,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     LEFT JOIN trida.categorias c ON c.id_categoria = t.id_categoria
     WHERE t.id_usuario = p_id_usuario
       AND u.latitud IS NOT NULL AND u.longitud IS NOT NULL
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
       AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
       AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
     ORDER BY t.fecha_transaccion DESC
@@ -1047,7 +1187,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
          WHERE id_usuario = p_id_usuario AND leido = FALSE)
     FROM trida.transacciones t, periodo p
     WHERE t.id_usuario = p_id_usuario
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
       AND t.fecha_transaccion >= p.inicio
       AND t.fecha_transaccion <  p.inicio + INTERVAL '1 month';
 $$;

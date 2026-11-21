@@ -17,7 +17,7 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
   const passwordChecks = getPasswordChecks(password);
   const checks = [
     {
-      label: "Mínimo 10 caracteres",
+      label: "Mínimo 12 caracteres",
       valid: passwordChecks.minLength,
     },
     {
@@ -33,8 +33,8 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
       valid: passwordChecks.hasLower,
     },
     {
-      label: "Al menos un número (0-9)",
-      valid: passwordChecks.hasNumber,
+      label: "Al menos un carácter especial",
+      valid: passwordChecks.hasSpecial,
     },
   ];
 

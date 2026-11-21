@@ -1,6 +1,9 @@
 export interface DashboardData {
   saldo_total: number;
-  mes_actual: {
+  periodo: {
+    dias: number;
+    fecha_inicio: string;
+    fecha_fin: string;
     ingresos: number;
     gastos: number;
     ahorros: number;
@@ -27,7 +30,7 @@ export interface DashboardAlert {
 export interface DashboardRecentTransaction {
   id_transaccion: number;
   monto: number;
-  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO";
+  tipo_movimiento: "INGRESO" | "GASTO" | "AHORRO" | "TRANSFERENCIA";
   fecha_transaccion: string;
   comercio: string | null;
   estado: string;

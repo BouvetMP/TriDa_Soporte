@@ -27,6 +27,7 @@ export const TransactionFiltersBar: React.FC<TransactionFiltersBarProps> = ({
     { value: "INGRESO", label: "Ingresos" },
     { value: "GASTO", label: "Gastos" },
     { value: "AHORRO", label: "Ahorro" },
+    { value: "TRANSFERENCIA", label: "Transferencias" },
   ];
 
   const riesgoOptions = [

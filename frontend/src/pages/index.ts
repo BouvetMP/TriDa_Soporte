@@ -9,6 +9,7 @@ export { VerifyEmailPage } from "./auth/VerifyEmailPage";
 export { DashboardPage } from "./DashboardPage";
 export { AccountsPage } from "./AccountsPage";
 export { TransactionsPage } from "./TransactionsPage";
+export { TransactionConfirmationPage } from "./transactions/TransactionConfirmationPage";
 export { AlertsPage } from "./AlertPage";
 export { DevicesPage } from "./DevicePage";
 export { ProfilePage } from "./ProfilePage";

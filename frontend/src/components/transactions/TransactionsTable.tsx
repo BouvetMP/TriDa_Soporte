@@ -1,29 +1,32 @@
 import React from "react";
 import { Transaction } from "@/types/Transaction";
+import { Category } from "@/types/Category";
 import { RiskBadge } from "./RiskBadge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatCurrency, formatDate } from "@/utils/Formatters";
 import {
-  Trash2,
   ShoppingBag,
   ArrowUpRight,
   ArrowDownLeft,
+  ArrowLeftRight,
   PiggyBank,
 } from "lucide-react";
 
 interface TransactionsTableProps {
   transactions: Transaction[];
   isLoading: boolean;
-  onDelete: (id: number) => void;
   onResolve: (id: number, estado: "CONFIRMADA" | "RECHAZADA") => void;
+  categories: Category[];
+  onUpdateCategory: (id: number, categoryId: number | null) => void;
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   transactions,
   isLoading,
-  onDelete,
   onResolve,
+  categories,
+  onUpdateCategory,
 }) => {
   if (isLoading) {
     return (
@@ -52,6 +55,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         return <ArrowUpRight className="w-4 h-4 text-expense" />;
       case "AHORRO":
         return <PiggyBank className="w-4 h-4 text-saving" />;
+      case "TRANSFERENCIA":
+        return <ArrowLeftRight className="w-4 h-4 text-text-secondary" />;
       default:
         return null;
     }
@@ -90,13 +95,47 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     {tx.descripcion}
                   </div>
                 )}
+                {tx.tipo_movimiento === "TRANSFERENCIA" && (
+                  <div className="text-xs text-[var(--color-text-subtle)]">
+                    {tx.nombre_cuenta || "Origen"} →{" "}
+                    {tx.nombre_cuenta_destino || "Destino"}
+                  </div>
+                )}
               </td>
               <td className="py-3.5 px-4 whitespace-nowrap">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--color-bg-surface-hover)] text-[var(--color-text-subtle)] border border-[var(--color-border-subtle)]">
-                  {tx.nombre_categoria ||
-                    tx.categoria?.nombre ||
-                    "Sin categoría"}
-                </span>
+                {tx.tipo_movimiento === "TRANSFERENCIA" ? (
+                  <span className="text-xs text-[var(--color-text-subtle)]">
+                    Transferencia entre cuentas
+                  </span>
+                ) : (
+                  <select
+                    aria-label={`Categoría de transacción ${tx.id_transaccion}`}
+                    value={tx.id_categoria ?? ""}
+                    onChange={(event) =>
+                      onUpdateCategory(
+                        tx.id_transaccion,
+                        event.target.value ? Number(event.target.value) : null,
+                      )
+                    }
+                    className="max-w-44 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] px-2 py-1 text-xs text-[var(--color-text-primary)]"
+                  >
+                    <option value="">Sin categoría</option>
+                    {categories
+                      .filter(
+                        (category) =>
+                          category.estado !== false &&
+                          category.tipo === tx.tipo_movimiento,
+                      )
+                      .map((category) => (
+                        <option
+                          key={category.id_categoria}
+                          value={category.id_categoria}
+                        >
+                          {category.nombre}
+                        </option>
+                      ))}
+                  </select>
+                )}
               </td>
               <td className="py-3.5 px-4 whitespace-nowrap">
                 <div className="inline-flex items-center gap-1 text-xs font-medium">
@@ -111,10 +150,16 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                       ? "text-income"
                       : tx.tipo_movimiento === "GASTO"
                         ? "text-expense"
-                        : "text-saving"
+                        : tx.tipo_movimiento === "AHORRO"
+                          ? "text-saving"
+                          : "text-text-secondary"
                   }
                 >
-                  {tx.tipo_movimiento === "INGRESO" ? "+" : "-"}{" "}
+                  {tx.tipo_movimiento === "INGRESO"
+                    ? "+"
+                    : tx.tipo_movimiento === "TRANSFERENCIA"
+                      ? "↔"
+                      : "-"}{" "}
                   {formatCurrency(tx.monto)}
                 </span>
               </td>
@@ -131,37 +176,42 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 </span>
               </td>
               <td className="py-3.5 px-4 whitespace-nowrap text-center">
-                {tx.estado === "PENDIENTE" && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onResolve(tx.id_transaccion, "CONFIRMADA")}
-                      className="mr-1"
-                      aria-label="Confirmar transacción pendiente"
-                    >
-                      Confirmar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onResolve(tx.id_transaccion, "RECHAZADA")}
-                      className="mr-1"
-                      aria-label="Rechazar transacción pendiente"
-                    >
-                      Rechazar
-                    </Button>
-                  </>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onDelete(tx.id_transaccion)}
-                  className="text-[var(--color-text-muted)] hover:text-expense p-1.5"
-                  aria-label="Eliminar transacción"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                {tx.estado === "PENDIENTE" &&
+                  tx.canal === "webhook" &&
+                  tx.tipo_movimiento === "GASTO" && (
+                    <span className="mr-2 text-xs text-text-secondary">
+                      Confirma desde el correo
+                    </span>
+                  )}
+                {tx.estado === "PENDIENTE" &&
+                  !(
+                    tx.canal === "webhook" && tx.tipo_movimiento === "GASTO"
+                  ) && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          onResolve(tx.id_transaccion, "CONFIRMADA")
+                        }
+                        className="mr-1"
+                        aria-label="Confirmar transacción pendiente"
+                      >
+                        Confirmar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          onResolve(tx.id_transaccion, "RECHAZADA")
+                        }
+                        className="mr-1"
+                        aria-label="Rechazar transacción pendiente"
+                      >
+                        Rechazar
+                      </Button>
+                    </>
+                  )}
               </td>
             </tr>
           ))}

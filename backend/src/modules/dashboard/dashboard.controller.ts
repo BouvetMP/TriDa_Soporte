@@ -5,6 +5,7 @@
 import { Request, Response, NextFunction } from "express";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { dashboardService } from "./dashboard.service.js";
+import { dashboardStatsQuerySchema } from "./dashboard.schemas.js";
 import { parseId } from "../../utils/params.js";
 
 function getAccountId(req: Request): number | undefined {
@@ -15,7 +16,12 @@ export const dashboardController = {
   async getStats(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const data = await dashboardService.getStats(userId, getAccountId(req));
+      const { periodo_dias } = dashboardStatsQuerySchema.parse(req.query);
+      const data = await dashboardService.getStats(
+        userId,
+        getAccountId(req),
+        periodo_dias,
+      );
       sendSuccess(res, data);
     } catch (error) {
       next(error);

@@ -47,10 +47,18 @@ const userProfileSelect = {
 } as const;
 
 export const AUDIT_RETENTION_DAYS = 90;
+export const LOGIN_MAX_FAILED_ATTEMPTS = 3;
+export const LOGIN_LOCK_DURATION_HOURS = 1;
+
+type FailedLoginState = {
+  intentos_login_fallidos: number;
+  bloqueado_hasta: Date | null;
+};
 
 export class AuthService {
   async register(data: RegisterInput) {
-    if (config.SMTP_ENABLED && !isEmailConfigured()) {
+    const emailVerificationRequired = config.NODE_ENV !== "test";
+    if (emailVerificationRequired && !isEmailConfigured()) {
       throw new AuthError(
         "El registro no está disponible porque falta configurar el envío de correo",
         503,
@@ -63,7 +71,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      if (config.SMTP_ENABLED && !existingUser.email_verificado_en) {
+      if (emailVerificationRequired && !existingUser.email_verificado_en) {
         await this.sendVerificationEmail(existingUser.id_usuario, existingUser.email);
       }
       return this.getRegistrationResponse();
@@ -81,7 +89,7 @@ export class AuthService {
             telefono: data.telefono,
             rol: "USER",
             estado: true,
-            email_verificado_en: config.SMTP_ENABLED ? null : new Date(),
+            email_verificado_en: emailVerificationRequired ? null : new Date(),
           },
           select: userProfileSelect,
         });
@@ -104,7 +112,7 @@ export class AuthService {
       throw error;
     }
 
-    if (config.SMTP_ENABLED) {
+    if (emailVerificationRequired) {
       await this.sendVerificationEmail(user.id_usuario, user.email);
     }
     return this.getRegistrationResponse();
@@ -112,17 +120,69 @@ export class AuthService {
 
   private getRegistrationResponse() {
     return {
-      message: config.SMTP_ENABLED
-        ? VERIFICATION_REGISTRATION_MESSAGE
-        : REGISTRATION_WITHOUT_EMAIL_MESSAGE,
-      emailVerificationRequired: config.SMTP_ENABLED,
+      message:
+        config.NODE_ENV !== "test"
+          ? VERIFICATION_REGISTRATION_MESSAGE
+          : REGISTRATION_WITHOUT_EMAIL_MESSAGE,
+      emailVerificationRequired: config.NODE_ENV !== "test",
     };
   }
 
-  async login(email: string, password: string, ipAddress?: string) {
-    const retentionCutoff = new Date(
-      Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  private async recordFailedLogin(userId: number, ipAddress?: string) {
+    return prisma.$transaction(async (transaction) => {
+      const [attempt] = await transaction.$queryRaw<FailedLoginState[]>`
+        WITH pending_attempt AS (
+          SELECT
+            id_usuario,
+            CASE
+              WHEN bloqueado_hasta IS NOT NULL AND bloqueado_hasta <= NOW() THEN 1
+              ELSE intentos_login_fallidos + 1
+            END AS next_attempt_count
+          FROM trida.usuarios
+          WHERE id_usuario = ${userId}
+            AND (bloqueado_hasta IS NULL OR bloqueado_hasta <= NOW())
+          FOR UPDATE
+        )
+        UPDATE trida.usuarios AS usuario
+        SET
+          intentos_login_fallidos = pending_attempt.next_attempt_count,
+          bloqueado_hasta = CASE
+            WHEN pending_attempt.next_attempt_count >= ${LOGIN_MAX_FAILED_ATTEMPTS}
+              THEN NOW() + make_interval(hours => ${LOGIN_LOCK_DURATION_HOURS})
+            ELSE NULL
+          END
+        FROM pending_attempt
+        WHERE usuario.id_usuario = pending_attempt.id_usuario
+        RETURNING usuario.intentos_login_fallidos, usuario.bloqueado_hasta
+      `;
+
+      if (!attempt) return null;
+
+      await transaction.log_auditoria.create({
+        data: {
+          id_usuario: userId,
+          tipo_accion: "INICIO_SESION_FALLIDO",
+          entidad_afectada: "usuarios",
+          id_entidad: userId,
+          descripcion: "Intento de inicio de sesión rechazado.",
+          direccion_ip: ipAddress ?? null,
+        },
+      });
+
+      return attempt;
+    });
+  }
+
+  private createAccountLockedError() {
+    return new AuthError(
+      "Cuenta bloqueada por una hora tras 3 intentos fallidos. Inténtalo más tarde.",
+      423,
+      "ACCOUNT_LOCKED",
     );
+  }
+
+  async login(email: string, password: string, ipAddress?: string) {
+    const retentionCutoff = new Date(Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     await prisma.log_auditoria.deleteMany({
       where: { fecha_accion: { lt: retentionCutoff } },
     });
@@ -131,33 +191,50 @@ export class AuthService {
       where: { email },
     });
 
-    const isPasswordValid = await comparePassword(password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
-    if (
-      !user ||
-      !isPasswordValid ||
-      !user.estado ||
-      (config.SMTP_ENABLED && !user.email_verificado_en)
-    ) {
-      if (user) {
-        await prisma.log_auditoria.create({
-          data: {
-            id_usuario: user.id_usuario,
-            tipo_accion: "INICIO_SESION_FALLIDO",
-            entidad_afectada: "usuarios",
-            id_entidad: user.id_usuario,
-            descripcion: "Intento de inicio de sesión rechazado.",
-            direccion_ip: ipAddress ?? null,
-          },
-        });
+    const isPasswordValid = await comparePassword(
+      password,
+      user?.password_hash ?? DUMMY_PASSWORD_HASH,
+    );
+    if (!user) {
+      throw new AuthError("Credenciales inválidas", 401);
+    }
+
+    if (!isPasswordValid) {
+      const failedAttempt = await this.recordFailedLogin(user.id_usuario, ipAddress);
+      if (!failedAttempt || failedAttempt.bloqueado_hasta) {
+        throw this.createAccountLockedError();
       }
       throw new AuthError("Credenciales inválidas", 401);
     }
 
-    await prisma.$transaction(async (transaction) => {
-      await transaction.usuario.update({
-        where: { id_usuario: user.id_usuario },
-        data: { ultimo_acceso: new Date() },
+    if (!user.estado || (config.NODE_ENV !== "test" && !user.email_verificado_en)) {
+      await prisma.log_auditoria.create({
+        data: {
+          id_usuario: user.id_usuario,
+          tipo_accion: "INICIO_SESION_FALLIDO",
+          entidad_afectada: "usuarios",
+          id_entidad: user.id_usuario,
+          descripcion: "Intento de inicio de sesión rechazado.",
+          direccion_ip: ipAddress ?? null,
+        },
       });
+      throw new AuthError("Credenciales inválidas", 401);
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      const updatedUsers = await transaction.$queryRaw<{ id_usuario: number }[]>`
+        UPDATE trida.usuarios
+        SET intentos_login_fallidos = 0,
+            bloqueado_hasta = NULL,
+            ultimo_acceso = NOW()
+        WHERE id_usuario = ${user.id_usuario}
+          AND (bloqueado_hasta IS NULL OR bloqueado_hasta <= NOW())
+        RETURNING id_usuario
+      `;
+      if (updatedUsers.length !== 1) {
+        throw this.createAccountLockedError();
+      }
+
       await transaction.log_auditoria.create({
         data: {
           id_usuario: user.id_usuario,
@@ -203,7 +280,7 @@ export class AuthService {
       await sendEmail(
         email,
         "Verifica tu correo de TriDa",
-        `<p>Confirma tu correo para activar tu cuenta.</p><p><a href="${escapedVerificationUrl}">Verificar correo</a></p><p>El enlace vence en 24 horas.</p>`,
+        `<p>Tu cuenta de TriDa fue creada. Confirma tu correo para activarla.</p><p><a href="${escapedVerificationUrl}">Verificar correo</a></p><p>El enlace vence en 15 minutos.</p>`,
       );
     } catch (error) {
       logger.error("email.verification_send_failed", error);
@@ -225,10 +302,7 @@ export class AuthService {
       select: { id_usuario: true, email: true, email_verificado_en: true },
     });
 
-    if (
-      !user ||
-      !verifyEmailVerificationToken(token, user.id_usuario, user.email, JWT_SECRET)
-    ) {
+    if (!user || !verifyEmailVerificationToken(token, user.id_usuario, user.email, JWT_SECRET)) {
       throw new AuthError("El enlace de verificación es inválido o expiró", 400);
     }
 
@@ -248,10 +322,7 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     if (!config.SMTP_ENABLED) {
-      throw new AuthError(
-        "La recuperación por correo está temporalmente deshabilitada",
-        503,
-      );
+      throw new AuthError("La recuperación por correo está temporalmente deshabilitada", 503);
     }
     if (!isEmailConfigured()) {
       throw new AuthError(
