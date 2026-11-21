@@ -13,7 +13,7 @@ interface ApiReportSummary {
 
 interface ApiCategoryReport {
   categorias: Array<{
-    id_categoria: number;
+    id_categoria: number | null;
     nombre: string;
     icono: string | null;
     color: string | null;

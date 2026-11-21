@@ -27,7 +27,7 @@ export function ContributeSavingsModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!monto || Number(monto) <= 0) return;
+    if (!monto || Number(monto) < 1000) return;
 
     setSubmitting(true);
     const success = await onSubmit({

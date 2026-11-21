@@ -92,6 +92,13 @@ export const AuthApi = {
     return response.data.data;
   },
 
+  async logout(): Promise<ApiMessageData> {
+    const response = await apiClient.post<ApiSuccess<ApiMessageData>>(
+      API_ENDPOINTS.AUTH.LOGOUT,
+    );
+    return response.data.data;
+  },
+
   /**
    * POST /api/v2/auth/forgot-password
    */

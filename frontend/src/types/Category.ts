@@ -8,6 +8,7 @@ export interface Category {
   icono?: string | null;
   color?: string | null;
   es_personalizada?: boolean;
+  estado?: boolean;
   created_at?: string;
 }
 
@@ -23,6 +24,7 @@ export interface UpdateCategoryPayload {
   tipo?: TipoCategoria;
   icono?: string;
   color?: string;
+  estado?: boolean;
 }
 
 export type CategoryCreateInput = CreateCategoryPayload;

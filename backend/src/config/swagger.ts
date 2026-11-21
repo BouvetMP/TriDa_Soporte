@@ -44,6 +44,12 @@ const errorContentByStatus = {
       examples: { rateLimit: { $ref: "#/components/examples/RateLimitError" } },
     },
   },
+  "503": {
+    "application/json": {
+      schema: { $ref: "#/components/schemas/ErrorResponse" },
+      examples: { unavailable: { $ref: "#/components/examples/ServiceUnavailableError" } },
+    },
+  },
   "500": {
     "application/json": {
       schema: { $ref: "#/components/schemas/ErrorResponse" },
@@ -79,6 +85,10 @@ const errorResponses = {
     description: "Se excedió el límite de peticiones por ventana de tiempo.",
     content: errorContentByStatus["429"],
   },
+  ServiceUnavailableError: {
+    description: "El servicio externo requerido no está disponible.",
+    content: errorContentByStatus["503"],
+  },
   InternalServerError: {
     description: "Error interno no esperado. El detalle técnico se registra en el servidor.",
     content: errorContentByStatus["500"],
@@ -92,6 +102,7 @@ const errorResponseComponentByStatus: Record<string, string> = {
   "404": "NotFoundError",
   "409": "ConflictError",
   "429": "TooManyRequestsError",
+  "503": "ServiceUnavailableError",
   "500": "InternalServerError",
 };
 
@@ -709,7 +720,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         ingresos: numberSchema(2000),
         gastos: numberSchema(500),
         ahorros: numberSchema(250),
-        balance_neto: numberSchema(1500),
+        balance_neto: numberSchema(1250),
       }),
       alertas: objectSchema({
         activas: integerSchema(2),
@@ -718,7 +729,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
     },
     {
       saldo_total: 1500,
-      mes_actual: { ingresos: 2000, gastos: 500, ahorros: 250, balance_neto: 1500 },
+      mes_actual: { ingresos: 2000, gastos: 500, ahorros: 250, balance_neto: 1250 },
       alertas: { activas: 2, criticas: 1 },
     },
   ),
@@ -857,7 +868,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         ingresos: numberSchema(2000),
         gastos: numberSchema(1200),
         ahorros: numberSchema(250),
-        balance: numberSchema(800),
+        balance: numberSchema(550),
         tasa_ahorro: numberSchema(12.5),
         total_transacciones: integerSchema(25),
         score_riesgo_promedio: numberSchema(8.5),
@@ -888,7 +899,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         ingresos: 2000,
         gastos: 1200,
         ahorros: 250,
-        balance: 800,
+        balance: 550,
         tasa_ahorro: 12.5,
         total_transacciones: 25,
         score_riesgo_promedio: 8.5,
@@ -912,7 +923,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         ingresos: numberSchema(2000),
         gastos: numberSchema(1200),
         ahorros: numberSchema(250),
-        balance: numberSchema(800),
+        balance: numberSchema(550),
       }),
       transacciones: objectSchema({
         total: integerSchema(25),
@@ -926,7 +937,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
         fecha_inicio: "2026-11-01T00:00:00.000Z",
         fecha_fin: "2026-11-19T10:00:00.000Z",
       },
-      totales: { ingresos: 2000, gastos: 1200, ahorros: 250, balance: 800 },
+      totales: { ingresos: 2000, gastos: 1200, ahorros: 250, balance: 550 },
       transacciones: { total: 25, aprobadas: 23, alertadas: 2, bloqueadas: 0 },
     },
   ),
@@ -939,7 +950,7 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
       tipo_movimiento: stringSchema("GASTO"),
       categorias: arraySchema(
         objectSchema({
-          id_categoria: integerSchema(12),
+          id_categoria: integerSchema(12, true),
           nombre: stringSchema("Alimentación"),
           icono: stringSchema("utensils", true),
           color: stringSchema("#2563eb", true),
@@ -962,6 +973,14 @@ const responseDataSchemas: Record<string, OpenApiSchema> = {
           color: "#2563eb",
           total: 500,
           cantidad: 8,
+        },
+        {
+          id_categoria: null,
+          nombre: "Sin categoría",
+          icono: null,
+          color: null,
+          total: 100,
+          cantidad: 2,
         },
       ],
     },
@@ -1091,6 +1110,7 @@ const successSchemaByOperation: Record<string, Record<string, string>> = {
   "/api/v2/audit": { get: "AuditHistoryData" },
   "/api/v2/auth/register": { post: "RegistrationData" },
   "/api/v2/auth/login": { post: "LoginData" },
+  "/api/v2/auth/logout": { post: "MessageData" },
   "/api/v2/auth/verify-email": { post: "MessageData" },
   "/api/v2/auth/forgot-password": { post: "MessageData" },
   "/api/v2/auth/verify-reset-token": { post: "ResetTokenData" },
@@ -1377,11 +1397,11 @@ const options: swaggerJsdoc.Options = {
         },
         UpdateAlertStatusRequest: {
           type: "object",
-          required: ["estado"],
+          required: ["estado", "accion_usuario"],
           properties: {
             estado: {
               type: "string",
-              enum: ["PENDIENTE", "CONFIRMADA", "DESCARTADA"],
+              enum: ["CONFIRMADA", "DESCARTADA"],
             },
             accion_usuario: {
               type: "string",
@@ -1521,6 +1541,16 @@ const options: swaggerJsdoc.Options = {
             error: {
               code: "RATE_LIMITED",
               message: "Límite de peticiones superado. Por favor ralentice sus solicitudes.",
+            },
+          },
+        },
+        ServiceUnavailableError: {
+          summary: "Servicio externo no disponible",
+          value: {
+            success: false,
+            error: {
+              code: "SERVICE_UNAVAILABLE",
+              message: "El servicio requerido no está disponible temporalmente.",
             },
           },
         },
@@ -1835,6 +1865,24 @@ const options: swaggerJsdoc.Options = {
             "200": { description: "Contraseña actualizada" },
             "400": { description: "Validación fallida" },
             "401": { description: "No autenticado" },
+          },
+        },
+      },
+      "/api/v2/auth/logout": {
+        post: {
+          tags: ["Auth"],
+          summary: "Cerrar sesión e invalidar todos los tokens del usuario",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Sesión revocada",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/SuccessMessageEnvelope" },
+                },
+              },
+            },
+            "401": { $ref: "#/components/responses/UnauthorizedError" },
           },
         },
       },

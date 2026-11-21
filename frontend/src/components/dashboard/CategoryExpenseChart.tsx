@@ -24,7 +24,10 @@ export const CategoryExpenseChart: React.FC<CategoryExpenseChartProps> = ({
       ) : (
         <div className="space-y-4">
           {categories.map((cat) => (
-            <div key={cat.id_categoria} className="space-y-1">
+            <div
+              key={cat.id_categoria ?? "sin-categoria"}
+              className="space-y-1"
+            >
               <div className="flex items-center justify-between text-xs">
                 <span className="font-medium text-[var(--color-text-primary)]">
                   {cat.nombre_categoria}

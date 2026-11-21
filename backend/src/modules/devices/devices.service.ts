@@ -43,12 +43,16 @@ export class DevicesService {
         where: uniqueDevice,
         select: { id_dispositivo: true },
       });
-      const firstDevice =
-        !existingDevice &&
-        !(await transaction.dispositivo.findFirst({
-          where: { id_usuario: userId },
-          select: { id_dispositivo: true },
-        }));
+      let firstDevice = false;
+      if (!existingDevice) {
+        const claimedFirstDevice = await transaction.$executeRaw`
+          UPDATE trida.usuarios
+          SET dispositivo_historial_registrado = TRUE
+          WHERE id_usuario = ${userId}
+            AND dispositivo_historial_registrado = FALSE
+        `;
+        firstDevice = claimedFirstDevice === 1;
+      }
 
       const device = await transaction.dispositivo.upsert({
         where: uniqueDevice,

@@ -38,6 +38,9 @@ export class AlertsService {
       id_usuario: userId,
       estado: options.estado,
       severidad: options.severidad,
+      ...(options.id_cuenta !== undefined
+        ? { transaccion: { is: { id_cuenta: options.id_cuenta } } }
+        : {}),
     };
     const [alerts, total] = await Promise.all([
       options.sort_by === "severidad"
@@ -79,11 +82,13 @@ export class AlertsService {
     const sortOrder = options.sort_order === "asc" ? "ASC" : "DESC";
     const rows = await queryRaw<Array<{ id_alerta: number }>>(
       `SELECT id_alerta
-       FROM trida.alertas_fraude
-       WHERE id_usuario = $1
-         AND ($2::text IS NULL OR estado = $2)
-         AND ($3::text IS NULL OR severidad = $3)
-       ORDER BY CASE severidad
+       FROM trida.alertas_fraude a
+       LEFT JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
+       WHERE a.id_usuario = $1
+         AND ($2::text IS NULL OR a.estado = $2)
+         AND ($3::text IS NULL OR a.severidad = $3)
+         AND ($6::int IS NULL OR t.id_cuenta = $6)
+       ORDER BY CASE a.severidad
          WHEN 'CRITICA' THEN 4
          WHEN 'ALTA' THEN 3
          WHEN 'MEDIA' THEN 2
@@ -96,6 +101,7 @@ export class AlertsService {
       options.severidad ?? null,
       options.limit,
       options.offset,
+      options.id_cuenta ?? null,
     );
     if (rows.length === 0) return [];
 
@@ -257,7 +263,7 @@ export class AlertsService {
         data: {
           estado: data.estado,
           accion_usuario: data.accion_usuario,
-          fecha_resuelta: data.estado === "PENDIENTE" ? null : new Date(),
+          fecha_resuelta: new Date(),
         },
       });
       await transaction.log_auditoria.create({
@@ -289,15 +295,22 @@ export class AlertsService {
     return this.updateAlertStatus(userId, id_alerta, data);
   }
 
-  async countsByLevel(userId: number) {
-    const counts = await prisma.alerta_fraude.groupBy({
-      by: ["severidad"],
-      where: { id_usuario: userId },
-      _count: { id_alerta: true },
-    });
+  async countsByLevel(userId: number, accountId?: number) {
+    const rows = await queryRaw<Array<{ severidad: string; count: number }>>(
+      `
+      SELECT a.severidad, COUNT(*)::int AS count
+      FROM trida.alertas_fraude a
+      LEFT JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
+      WHERE a.id_usuario = $1
+        AND ($2::int IS NULL OR t.id_cuenta = $2)
+      GROUP BY a.severidad
+      `,
+      userId,
+      accountId ?? null,
+    );
 
-    return counts.reduce<Record<string, number>>((result, row) => {
-      result[row.severidad] = row._count.id_alerta;
+    return rows.reduce<Record<string, number>>((result, row) => {
+      result[row.severidad] = Number(row.count);
       return result;
     }, {});
   }

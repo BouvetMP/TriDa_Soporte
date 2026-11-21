@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { MAX_POSTGRES_INT } from "../../utils/params.js";
 
 export const listAlertsQuerySchema = z.object({
+  id_cuenta: z.coerce.number().int().positive().max(MAX_POSTGRES_INT).optional(),
   estado: z.enum(["PENDIENTE", "CONFIRMADA", "DESCARTADA"]).optional(),
   severidad: z.enum(["BAJA", "MEDIA", "ALTA", "CRITICA"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -9,12 +11,12 @@ export const listAlertsQuerySchema = z.object({
   sort_order: z.enum(["asc", "desc"]).default("desc"),
 });
 
-export const alertIdSchema = z.coerce.number().int().positive();
+export const alertIdSchema = z.coerce.number().int().positive().max(MAX_POSTGRES_INT);
 
 export const updateAlertStatusSchema = z
   .object({
-    estado: z.enum(["PENDIENTE", "CONFIRMADA", "DESCARTADA"]),
-    accion_usuario: z.enum(["FUI_YO", "NO_FUI_YO", "BLOQUEAR_TARJETA"]).optional(),
+    estado: z.enum(["CONFIRMADA", "DESCARTADA"]),
+    accion_usuario: z.enum(["FUI_YO", "NO_FUI_YO", "BLOQUEAR_TARJETA"]),
   })
   .strict()
   .refine(

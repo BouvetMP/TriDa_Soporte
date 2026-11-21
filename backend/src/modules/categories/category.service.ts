@@ -30,7 +30,6 @@ export class CategoriesService {
   async getCategories(userId: number) {
     const categories = await prisma.categoria.findMany({
       where: {
-        estado: true,
         OR: [{ id_usuario: userId }, { id_usuario: null }],
       },
     });
@@ -49,7 +48,6 @@ export class CategoriesService {
     const category = await prisma.categoria.findFirst({
       where: {
         id_categoria: categoryId,
-        estado: true,
         OR: [{ id_usuario: userId }, { id_usuario: null }],
       },
     });
@@ -102,6 +100,25 @@ export class CategoriesService {
     const existing = await this.getCategoryById(userId, categoryId);
     if (!existing.es_personalizada) {
       throw new CategoryError("No se pueden modificar las categorías por sistema", 403);
+    }
+
+    if (data.tipo !== undefined && data.tipo !== existing.tipo) {
+      const [transactionCount, budgetCount] = await Promise.all([
+        prisma.transaccion.count({
+          where: { id_usuario: userId, id_categoria: categoryId },
+        }),
+        prisma.presupuesto.count({
+          where: { id_usuario: userId, id_categoria: categoryId },
+        }),
+      ]);
+
+      if (transactionCount > 0 || budgetCount > 0) {
+        throw new CategoryError(
+          "No se puede cambiar el tipo de una categoría con transacciones o presupuestos asociados",
+          409,
+          "CATEGORY_TYPE_CHANGE_CONFLICT",
+        );
+      }
     }
 
     const updateData: CategoryData = {};

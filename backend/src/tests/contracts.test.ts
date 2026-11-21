@@ -27,6 +27,19 @@ import {
   updateAlertStatusSchema,
 } from "../modules/alerts/alerts.schemas.js";
 import { getAlertTransactionDecision } from "../modules/alerts/alerts.service.js";
+import { getUnifiedRiskLevel } from "../utils/risk.js";
+import { updateCategorySchema } from "../modules/categories/category.schemas.js";
+import { AUDIT_RETENTION_DAYS } from "../modules/auth/auth.service.js";
+import {
+  getAuthenticatedUserKey,
+  getEmailKey,
+} from "../middlewares/rateLimit.middleware.js";
+import { config } from "../config.js";
+import {
+  MIN_HISTORICAL_TRANSACTIONS_FOR_AVERAGE,
+  getGeoRiskPenalty,
+  RiskService,
+} from "../modules/alerts/risk.service.js";
 import { registerDeviceSchema, updateTrustSchema } from "../modules/devices/devices.schemas.js";
 import {
   errorHandler,
@@ -176,6 +189,27 @@ test("risk thresholds classify boundary scores consistently in TypeScript and SQ
   assert.match(riskRankSql("score_anomalia"), /score_anomalia >= 70 THEN 3/);
 });
 
+test("risk level uses the highest of score and alert severity", () => {
+  assert.equal(getUnifiedRiskLevel(40, "ALTA"), "ALTO");
+  assert.equal(getUnifiedRiskLevel(80, "MEDIA"), "ALTO");
+  assert.equal(getUnifiedRiskLevel(20, "CRITICA"), "CRITICO");
+  assert.equal(getUnifiedRiskLevel(20, null), "BAJO");
+});
+
+test("impossible geolocation speed requires more than 100 km", () => {
+  assert.equal(getGeoRiskPenalty(0.5, 900), null);
+  assert.equal(getGeoRiskPenalty(100, 900), null);
+  assert.deepEqual(getGeoRiskPenalty(100.1, 900), {
+    score: 50,
+    reason: "Velocidad de desplazamiento imposible: 900 km/h (100.1 km)",
+  });
+  assert.equal(getGeoRiskPenalty(100.1, 150), null);
+  assert.deepEqual(getGeoRiskPenalty(100.1, 250), {
+    score: 30,
+    reason: "Desplazamiento inusualmente rápido: 250 km/h",
+  });
+});
+
 test("audit history query is bounded and documented as a read-only self endpoint", () => {
   assert.deepEqual(auditHistoryQuerySchema.parse({}), { limit: 20 });
   assert.equal(auditHistoryQuerySchema.safeParse({ limit: 51 }).success, false);
@@ -194,12 +228,70 @@ test("audit history query is bounded and documented as a read-only self endpoint
 });
 
 test("financial calculations preserve decimal cents and threshold boundaries", () => {
-  assert.equal(calculateNetBalance("0.30", "0.10").toString(), "0.2");
-  assert.equal(calculateNetBalance("999999999999.99", "999999999999.98").toFixed(2), "0.01");
+  assert.equal(calculateNetBalance("0.30", "0.10", "0.05").toString(), "0.15");
+  assert.equal(
+    calculateNetBalance("999999999999.99", "999999999999.98", "0.01").toFixed(2),
+    "0.00",
+  );
   assert.equal(calculatePercentage("0.10", "0.30").toFixed(2), "33.33");
   assert.equal(calculatePercentage("1.00", "0.00").toString(), "0");
   assert.equal(exceedsAverageMultiple("0.30", "0.10", 3), false);
   assert.equal(exceedsAverageMultiple("0.31", "0.10", 3), true);
+});
+
+test("rate limit keys separate users and login emails", () => {
+  const tokenFor = (idUsuario: number) =>
+    jwt.sign({ id_usuario: idUsuario }, config.JWT_SECRET);
+
+  const requestFor = (authorization?: string, email?: string) =>
+    ({
+      ip: "203.0.113.10",
+      headers: authorization ? { authorization } : {},
+      body: email ? { email } : {},
+    }) as unknown as Parameters<typeof getAuthenticatedUserKey>[0];
+
+  assert.equal(
+    getAuthenticatedUserKey(requestFor(`Bearer ${tokenFor(1)}`)),
+    "user:1",
+  );
+  assert.equal(
+    getAuthenticatedUserKey(requestFor(`Bearer ${tokenFor(2)}`)),
+    "user:2",
+  );
+  assert.notEqual(
+    getEmailKey(requestFor(undefined, "Ana@Example.com")),
+    getEmailKey(requestFor(undefined, "Otro@Example.com")),
+  );
+  assert.equal(
+    getEmailKey(requestFor(undefined, "ANA@example.com")),
+    getEmailKey(requestFor(undefined, "ana@example.com")),
+  );
+});
+
+test("risk amount comparison requires at least ten historical transactions", async () => {
+  assert.equal(MIN_HISTORICAL_TRANSACTIONS_FOR_AVERAGE, 10);
+
+  const riskService = new RiskService();
+  const evaluate = async (countTx: number) =>
+    riskService.evaluateRisk(
+      {
+        id_usuario: 1,
+        monto: 100,
+        tipo_movimiento: "INGRESO",
+        fecha_transaccion: new Date("2026-11-21T12:00:00.000Z"),
+      },
+      {
+        transaccion: {
+          aggregate: async () => ({
+            _avg: { monto: new Prisma.Decimal(10) },
+            _count: { id_transaccion: countTx },
+          }),
+        },
+      } as unknown as Prisma.TransactionClient,
+    );
+
+  assert.equal((await evaluate(9)).score_riesgo, 0);
+  assert.equal((await evaluate(10)).score_riesgo, 40);
 });
 
 test("application errors carry stable module and domain codes", () => {
@@ -355,6 +447,15 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
       id_cuenta: 5,
       monto: 10,
       tipo_movimiento: "GASTO",
+      fecha_transaccion: "2099-01-01T00:00:00.000Z",
+    }).success,
+    false,
+  );
+  assert.equal(
+    createTransactionSchema.safeParse({
+      id_cuenta: 5,
+      monto: 10,
+      tipo_movimiento: "GASTO",
       ip_origen: "not-an-ip",
     }).success,
     false,
@@ -370,12 +471,30 @@ test("transaction schema accepts snake_case and rejects camelCase aliases", () =
   );
 });
 
+test("failed login audit uses 90-day retention", () => {
+  assert.equal(AUDIT_RETENTION_DAYS, 90);
+});
+
+test("inactive categories can be reactivated through state update", () => {
+  assert.equal(updateCategorySchema.safeParse({ estado: true }).success, true);
+  assert.equal(updateCategorySchema.safeParse({ estado: false }).success, true);
+  assert.equal(updateCategorySchema.safeParse({ estado: "true" }).success, false);
+});
+
 test("route IDs and monetary values are bounded and normalized", () => {
   assert.equal(parseId("12"), 12);
   assert.throws(() => parseId("abc"));
   assert.throws(() => parseId("0"));
-  assert.equal(addFundsSchema.safeParse({ monto: "2.345" }).data?.monto, 2.35);
-  assert.equal(addFundsSchema.safeParse({ monto: "1.005" }).data?.monto, 1.01);
+  assert.throws(
+    () => parseId("2147483648"),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.statusCode === 404 &&
+      error.code === "NOT_FOUND",
+  );
+  assert.equal(addFundsSchema.safeParse({ monto: "1002.345" }).data?.monto, 1002.35);
+  assert.equal(addFundsSchema.safeParse({ monto: "1001.005" }).data?.monto, 1001.01);
+  assert.equal(addFundsSchema.safeParse({ monto: "999.99" }).success, false);
   const maximumAmount = addFundsSchema.safeParse({ monto: "9999999999999.99" });
   assert.equal(maximumAmount.success, true);
   if (maximumAmount.success) {
@@ -456,6 +575,20 @@ test("documented transaction query parameters map to service filters", () => {
     anio: 2026,
   });
   assert.equal(reportQuerySchema.parse({ id_cuenta: "5" }).id_cuenta, 5);
+  assert.equal(
+    reportQuerySchema.safeParse({
+      fecha_inicio: "2026-02-28",
+      fecha_fin: "2026-02-01",
+    }).success,
+    false,
+  );
+  assert.equal(
+    reportQuerySchema.safeParse({
+      fecha_inicio: "2026-02-01",
+      fecha_fin: "2026-02-28",
+    }).success,
+    true,
+  );
   assert.equal(mapQuerySchema.parse({ id_cuenta: "5" }).id_cuenta, 5);
 });
 
@@ -611,6 +744,14 @@ test("budget, alert and device payloads use database-aligned snake_case fields",
   );
   assert.equal(
     updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA", accion_usuario: "FUI_YO" }).success,
+    false,
+  );
+  assert.equal(
+    updateAlertStatusSchema.safeParse({ estado: "PENDIENTE", accion_usuario: "FUI_YO" }).success,
+    false,
+  );
+  assert.equal(
+    updateAlertStatusSchema.safeParse({ estado: "CONFIRMADA" }).success,
     false,
   );
   assert.deepEqual(
@@ -791,18 +932,19 @@ test("password reset token verification is documented as a POST body, not a quer
 test("savings funding validates positive IDs and contribution amounts", () => {
   assert.equal(savingsIdSchema.parse("1"), 1);
   assert.equal(savingsIdSchema.safeParse("1.5").success, false);
-  assert.equal(addFundsSchema.safeParse({ monto: 100 }).success, true);
+  assert.equal(addFundsSchema.safeParse({ monto: 100 }).success, false);
+  assert.equal(addFundsSchema.safeParse({ monto: 1000 }).success, true);
   assert.equal(addFundsSchema.safeParse({ monto: 0 }).success, false);
 });
 
 test("savings state derives from progress and preserves paused or cancelled status", () => {
   assert.equal(
-    deriveSavingsState(new Prisma.Decimal(100), new Prisma.Decimal(100), "ACTIVA", "COMPLETADA"),
+    deriveSavingsState(new Prisma.Decimal(50), new Prisma.Decimal(100), "ACTIVA", "COMPLETADA"),
     "COMPLETADA",
   );
   assert.equal(
-    deriveSavingsState(new Prisma.Decimal(99), new Prisma.Decimal(100), "COMPLETADA", "COMPLETADA"),
-    "ACTIVA",
+    deriveSavingsState(new Prisma.Decimal(100), new Prisma.Decimal(100), "ACTIVA", "COMPLETADA"),
+    "COMPLETADA",
   );
   assert.equal(
     deriveSavingsState(new Prisma.Decimal(50), new Prisma.Decimal(100), "ACTIVA", "PAUSADA"),

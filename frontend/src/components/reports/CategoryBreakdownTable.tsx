@@ -63,7 +63,10 @@ export function CategoryBreakdownTable({
       ) : (
         <div className="space-y-3">
           {categories.map((cat) => (
-            <div key={cat.id_categoria} className="space-y-1">
+            <div
+              key={cat.id_categoria ?? "sin-categoria"}
+              className="space-y-1"
+            >
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span

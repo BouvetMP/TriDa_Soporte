@@ -251,6 +251,8 @@ CREATE TABLE IF NOT EXISTS trida.consejos_financieros (
     id_usuario     INTEGER NOT NULL
                    REFERENCES trida.usuarios (id_usuario)
                    ON UPDATE CASCADE ON DELETE CASCADE,
+    id_cuenta      INTEGER REFERENCES trida.cuentas (id_cuenta)
+                   ON UPDATE CASCADE ON DELETE SET NULL,
     tipo           VARCHAR(20) NOT NULL,
     titulo         VARCHAR(150) NOT NULL,
     descripcion    TEXT NOT NULL,
@@ -386,7 +388,8 @@ DROP TRIGGER IF EXISTS trg_meta_completada ON trida.metas_ahorro;
 
 ALTER TABLE trida.usuarios
     ADD COLUMN IF NOT EXISTS email_verificado_en TIMESTAMPTZ DEFAULT NOW(),
-    ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS dispositivo_historial_registrado BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE trida.usuarios
     ALTER COLUMN email_verificado_en SET DEFAULT NOW(),
@@ -409,6 +412,11 @@ WHERE saldo_actual IS NULL;
 ALTER TABLE trida.cuentas
     ALTER COLUMN saldo_actual SET DEFAULT 0,
     ALTER COLUMN saldo_actual SET NOT NULL;
+
+ALTER TABLE trida.consejos_financieros
+    ADD COLUMN IF NOT EXISTS id_cuenta INTEGER
+    REFERENCES trida.cuentas (id_cuenta)
+    ON UPDATE CASCADE ON DELETE SET NULL;
 
 ALTER TABLE trida.usuarios
     DROP CONSTRAINT IF EXISTS chk_usuarios_rol;
@@ -451,10 +459,7 @@ $$;
 -- 2. REGLAS (logs inmutables)
 -- ============================================================================
 
-DROP RULE IF EXISTS logs_no_update ON trida.logs_auditoria;
-CREATE RULE logs_no_update AS ON UPDATE TO trida.logs_auditoria DO INSTEAD NOTHING;
-DROP RULE IF EXISTS logs_no_delete ON trida.logs_auditoria;
-CREATE RULE logs_no_delete AS ON DELETE TO trida.logs_auditoria DO INSTEAD NOTHING;
+-- Los registros pueden depurarse por la retención de 90 días.
 
 -- ============================================================================
 -- 3. ÍNDICES
@@ -564,8 +569,8 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.id_dispositivo IS NOT NULL THEN
         UPDATE trida.dispositivos
-        SET fecha_primer_uso = LEAST(fecha_primer_uso, NEW.fecha_transaccion),
-            fecha_ultimo_uso = GREATEST(fecha_ultimo_uso, NEW.fecha_transaccion)
+        SET fecha_primer_uso = LEAST(fecha_primer_uso, NOW()),
+            fecha_ultimo_uso = GREATEST(fecha_ultimo_uso, NOW())
         WHERE id_dispositivo = NEW.id_dispositivo;
     END IF;
     RETURN NEW;
@@ -696,15 +701,16 @@ BEGIN
     IF v_gastado >= v_limite
        AND v_gastado_anterior < v_limite THEN
         INSERT INTO trida.consejos_financieros
-            (id_usuario, tipo, titulo, descripcion, prioridad)
+            (id_usuario, id_cuenta, tipo, titulo, descripcion, prioridad)
         VALUES (
             NEW.id_usuario,
+            NEW.id_cuenta,
             'GASTO',
             'Presupuesto excedido',
             FORMAT(
-                'Has gastado %s de %s en %s durante este periodo.',
-                v_gastado,
-                v_limite,
+                'Has gastado %s COP de %s COP en %s durante este periodo.',
+                TO_CHAR(ROUND(v_gastado, 0), 'FM999G999G999G990'),
+                TO_CHAR(ROUND(v_limite, 0), 'FM999G999G999G990'),
                 COALESCE(v_nombre_categoria, 'esta categoría')
             ),
             'ALTA'
@@ -712,15 +718,16 @@ BEGIN
     ELSIF v_gastado >= v_limite * 0.8
        AND v_gastado_anterior < v_limite * 0.8 THEN
         INSERT INTO trida.consejos_financieros
-            (id_usuario, tipo, titulo, descripcion, prioridad)
+            (id_usuario, id_cuenta, tipo, titulo, descripcion, prioridad)
         VALUES (
             NEW.id_usuario,
+            NEW.id_cuenta,
             'GASTO',
             'Presupuesto al 80%',
             FORMAT(
-                'Has gastado %s de %s en %s durante este periodo.',
-                v_gastado,
-                v_limite,
+                'Has gastado %s COP de %s COP en %s durante este periodo.',
+                TO_CHAR(ROUND(v_gastado, 0), 'FM999G999G999G990'),
+                TO_CHAR(ROUND(v_limite, 0), 'FM999G999G999G990'),
                 COALESCE(v_nombre_categoria, 'esta categoría')
             ),
             'MEDIA'

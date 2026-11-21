@@ -10,8 +10,8 @@ export const insightsController = {
   async getInsights(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const { periodo_dias } = insightsQuerySchema.parse(req.query);
-      const data = await insightsService.getInsights(userId, periodo_dias);
+      const { periodo_dias, id_cuenta } = insightsQuerySchema.parse(req.query);
+      const data = await insightsService.getInsights(userId, periodo_dias, id_cuenta);
       sendSuccess(res, data);
     } catch (error) {
       next(error);

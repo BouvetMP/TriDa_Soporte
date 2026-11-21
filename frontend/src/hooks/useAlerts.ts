@@ -7,6 +7,7 @@ import {
   AlertStatus,
 } from "@/types/Alert";
 import { useToast } from "@/components/ui/Toast";
+import { useAccount } from "@/hooks/useAccount";
 
 export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
@@ -32,12 +33,21 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
   const pendingCountRequestId = useRef(0);
   const isMounted = useRef(false);
   const { showToast } = useToast();
+  const { selectedAccountId, refreshAccounts } = useAccount();
+
+  useEffect(() => {
+    setQueryParams((prev) => ({
+      ...prev,
+      id_cuenta: selectedAccountId ?? undefined,
+      offset: 0,
+    }));
+  }, [selectedAccountId]);
 
   const fetchPendingCount = useCallback(async () => {
     if (!isMounted.current) return;
     const currentRequestId = ++pendingCountRequestId.current;
     try {
-      const response = await AlertsApi.getPendingCount();
+      const response = await AlertsApi.getPendingCount(selectedAccountId ?? undefined);
       if (
         !isMounted.current ||
         currentRequestId !== pendingCountRequestId.current
@@ -60,7 +70,7 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         message: err.message || "No se pudo actualizar el contador de alertas.",
       });
     }
-  }, [showToast]);
+  }, [selectedAccountId, showToast]);
 
   const fetchAlerts = useCallback(async () => {
     if (!isMounted.current) return;
@@ -147,8 +157,9 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
         title: "Alerta actualizada",
         message: "Tu acción de seguridad ha sido registrada exitosamente.",
       });
-      fetchAlerts();
-      fetchPendingCount();
+      await refreshAccounts();
+      void fetchAlerts();
+      void fetchPendingCount();
       return true;
     } catch (error) {
       if (!isMounted.current) return false;

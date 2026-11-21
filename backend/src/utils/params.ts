@@ -1,7 +1,14 @@
 import { z } from "zod";
+import { AppError } from "./AppError.js";
 
-const idParamSchema = z.coerce.number().int().positive();
+export const MAX_POSTGRES_INT = 2_147_483_647;
+
+const idParamSchema = z.coerce.number().int().positive().max(MAX_POSTGRES_INT);
 
 export function parseId(value: unknown): number {
-  return idParamSchema.parse(value);
+  const parsed = idParamSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new AppError("Recurso no encontrado", 404, "NOT_FOUND");
+  }
+  return parsed.data;
 }

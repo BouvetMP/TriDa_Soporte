@@ -18,6 +18,7 @@ export const API_ENDPOINTS = {
     RESET_PASSWORD: "/auth/reset-password",
     ME: "/auth/me",
     CHANGE_PASSWORD: "/auth/change-password",
+    LOGOUT: "/auth/logout",
   },
   ACCOUNTS: "/accounts",
   CATEGORIES: "/categories",

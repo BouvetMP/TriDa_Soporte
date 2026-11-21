@@ -22,7 +22,7 @@ export const authController = {
   async login(req: Request, res: Response, next: NextFunction) {
     try {
       const data = loginSchema.parse(req.body);
-      const result = await authService.login(data.email, data.password);
+      const result = await authService.login(data.email, data.password, req.ip);
       sendSuccess(res, result, "Inicio de sesión exitoso");
     } catch (error) {
       next(error);
@@ -109,6 +109,15 @@ export const authController = {
     try {
       const data = changePasswordSchema.parse(req.body);
       const result = await authService.changePassword(req.user!.id_usuario, data);
+      sendSuccess(res, result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async logout(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await authService.logout(req.user!.id_usuario);
       sendSuccess(res, result);
     } catch (error) {
       next(error);

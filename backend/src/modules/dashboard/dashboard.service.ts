@@ -10,6 +10,7 @@ import { queryRaw } from "../../db/queryRaw.js";
 import { config } from "../../config.js";
 import { startOfMonth, startOfNextMonth } from "../../utils/dateRange.js";
 import { AppError } from "../../utils/AppError.js";
+import { getUnifiedRiskLevel } from "../../utils/risk.js";
 
 export const dashboardService = {
   async getStats(userId: number, accountId?: number) {
@@ -93,7 +94,7 @@ export const dashboardService = {
         ingresos: Number(ingresos),
         gastos: Number(gastos),
         ahorros: Number(rMes.ahorros),
-        balance_neto: calculateNetBalance(ingresos, gastos).toNumber(),
+        balance_neto: calculateNetBalance(ingresos, gastos, rMes.ahorros).toNumber(),
       },
       alertas: {
         activas: Number(rAlertas.alertas_activas),
@@ -167,6 +168,7 @@ export const dashboardService = {
         comercio: string | null;
         estado: string;
         score_anomalia: string | number | null;
+        severidad_alerta: "BAJA" | "MEDIA" | "ALTA" | "CRITICA" | null;
         nombre_categoria: string | null;
         categoria_icono: string | null;
         categoria_color: string | null;
@@ -181,11 +183,27 @@ export const dashboardService = {
         t.comercio,
         t.estado,
         t.score_anomalia,
+        a.severidad AS severidad_alerta,
         cat.nombre AS nombre_categoria,
         cat.icono AS categoria_icono,
         cat.color AS categoria_color
       FROM trida.transacciones t
       LEFT JOIN trida.categorias cat ON cat.id_categoria = t.id_categoria
+      LEFT JOIN LATERAL (
+        SELECT a.severidad
+        FROM trida.alertas_fraude a
+        WHERE a.id_transaccion = t.id_transaccion
+        ORDER BY
+          CASE a.severidad
+            WHEN 'CRITICA' THEN 4
+            WHEN 'ALTA' THEN 3
+            WHEN 'MEDIA' THEN 2
+            WHEN 'BAJA' THEN 1
+            ELSE 0
+          END DESC,
+          a.fecha_detectada DESC
+        LIMIT 1
+      ) a ON TRUE
       WHERE t.id_usuario = $1
         AND ($3::int IS NULL OR t.id_cuenta = $3)
       ORDER BY t.fecha_transaccion DESC
@@ -204,6 +222,10 @@ export const dashboardService = {
       comercio: r.comercio ?? null,
       estado: r.estado,
       score_anomalia: r.score_anomalia !== null ? Number(r.score_anomalia) : 0,
+      nivel_riesgo: getUnifiedRiskLevel(
+        r.score_anomalia !== null ? Number(r.score_anomalia) : 0,
+        r.severidad_alerta,
+      ),
       categoria: {
         nombre: r.nombre_categoria ?? "Sin categoría",
         icono: r.categoria_icono ?? null,
@@ -212,13 +234,14 @@ export const dashboardService = {
     }));
   },
 
-  async getRecentAdvice(userId: number, limit = 5) {
+  async getRecentAdvice(userId: number, limit = 5, accountId?: number) {
     const safeLimit = Math.max(1, Math.min(limit, 50));
     const rows = await prisma.consejo_financiero.findMany({
       where: {
         id_usuario: userId,
         leido: false,
-        titulo: { in: ["Presupuesto al 80%", "Presupuesto excedido"] },
+        tipo: "GASTO",
+        ...(accountId === undefined ? {} : { id_cuenta: accountId }),
       },
       orderBy: { fecha_generado: "desc" },
       take: safeLimit,

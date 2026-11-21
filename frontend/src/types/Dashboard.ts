@@ -32,6 +32,7 @@ export interface DashboardRecentTransaction {
   comercio: string | null;
   estado: string;
   score_anomalia: number;
+  nivel_riesgo: "BAJO" | "MEDIO" | "ALTO" | "CRITICO";
   categoria: {
     nombre: string;
     icono: string | null;
@@ -55,7 +56,7 @@ export interface FinancialAdviceReadResult {
 }
 
 export interface CategoryExpense {
-  id_categoria: number;
+  id_categoria: number | null;
   nombre_categoria: string;
   total: number;
   porcentaje: number;

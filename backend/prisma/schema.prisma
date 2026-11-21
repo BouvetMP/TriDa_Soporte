@@ -24,6 +24,7 @@ model usuario {
   estado          Boolean   @default(true)
   email_verificado_en DateTime? @default(now()) @db.Timestamptz
   token_version   Int       @default(0)
+  dispositivo_historial_registrado Boolean @default(false)
   fecha_registro  DateTime  @default(now()) @db.Timestamptz
   ultimo_acceso   DateTime? @db.Timestamptz
 
@@ -77,6 +78,7 @@ model cuenta {
 
   usuario       usuario       @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
   transacciones transaccion[]
+  consejos      consejo_financiero[]
 
   @@index([id_usuario], map: "idx_cuentas_usuario")
   @@map("cuentas")
@@ -258,6 +260,7 @@ model aporte_meta {
 model consejo_financiero {
   id_consejo     Int       @id @default(autoincrement())
   id_usuario     Int
+  id_cuenta      Int?
   tipo           String    @db.VarChar(20)
   titulo         String    @db.VarChar(150)
   descripcion    String
@@ -267,6 +270,7 @@ model consejo_financiero {
   fecha_leido    DateTime? @db.Timestamptz
 
   usuario usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  cuenta  cuenta? @relation(fields: [id_cuenta], references: [id_cuenta], onDelete: SetNull)
 
   @@index([id_usuario], map: "idx_consejos_usuario")
   @@map("consejos_financieros")

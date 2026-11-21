@@ -33,15 +33,22 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const [idCategoria, setIdCategoria] = useState<string>("");
   const [descripcion, setDescripcion] = useState<string>("");
   const [comercio, setComercio] = useState<string>("");
+  const [fechaTransaccion, setFechaTransaccion] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [shareLocation, setShareLocation] = useState(false);
 
   const activeAccounts = accounts.filter((account) => account.estado);
+  const selectedAccountForForm = activeAccounts.find(
+    (account) => account.id_cuenta === Number(idCuenta),
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setError("");
+    const now = new Date();
+    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+    setFechaTransaccion(localNow.toISOString().slice(0, 16));
   }, [isOpen]);
 
   useEffect(() => {
@@ -64,6 +71,24 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     if (isNaN(numericMonto) || numericMonto <= 0) {
       setError("El monto debe ser un número positivo.");
       return;
+    }
+
+    const selectedAccount = activeAccounts.find(
+      (account) => account.id_cuenta === accountId,
+    );
+    if (
+      selectedAccount?.tipo === "EFECTIVO" &&
+      (!fechaTransaccion || new Date(fechaTransaccion).getTime() > Date.now())
+    ) {
+      setError("La fecha de efectivo no puede estar vacía ni ser futura.");
+      return;
+    }
+    if (
+      selectedAccount &&
+      selectedAccount.tipo !== "EFECTIVO" &&
+      fechaTransaccion
+    ) {
+      setFechaTransaccion("");
     }
 
     setError("");
@@ -111,7 +136,10 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         id_categoria: idCategoria ? Number(idCategoria) : undefined,
         descripcion: descripcion.trim() || undefined,
         comercio: comercio.trim() || undefined,
-        fecha_transaccion: new Date().toISOString(),
+        fecha_transaccion:
+          selectedAccount?.tipo === "EFECTIVO"
+            ? new Date(fechaTransaccion).toISOString()
+            : undefined,
         ...location,
       };
 
@@ -138,7 +166,10 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const categoryOptions = [
     { value: "", label: "Sin categoría" },
     ...categories
-      .filter((category) => category.tipo === tipoMovimiento)
+      .filter(
+        (category) =>
+          category.estado !== false && category.tipo === tipoMovimiento,
+      )
       .map((c) => ({
         value: String(c.id_categoria),
         label: c.nombre,
@@ -173,6 +204,21 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             ]}
           />
         </div>
+
+        {selectedAccountForForm?.tipo === "EFECTIVO" && (
+          <Input
+            label="Fecha y hora de la transacción"
+            type="datetime-local"
+            value={fechaTransaccion}
+            max={(() => {
+              const now = new Date();
+              const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+              return localNow.toISOString().slice(0, 16);
+            })()}
+            onChange={(event) => setFechaTransaccion(event.target.value)}
+            required
+          />
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>

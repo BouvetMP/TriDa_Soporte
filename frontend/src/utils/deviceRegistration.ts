@@ -1,5 +1,7 @@
 import { DevicesApi } from "@/api/Devices";
 
+const registrationPromises = new Map<number, Promise<number>>();
+
 const deviceIdentifierKey = (userId: number) =>
   `trida_device_identifier_${userId}`;
 const deviceRecordIdKey = (userId: number) => `trida_device_record_${userId}`;
@@ -22,6 +24,19 @@ export const clearCurrentDeviceRecordId = (
 export const registerCurrentDevice = async (
   userId: number,
 ): Promise<number> => {
+  const inFlight = registrationPromises.get(userId);
+  if (inFlight) return inFlight;
+
+  const registration = registerDevice(userId);
+  registrationPromises.set(userId, registration);
+  try {
+    return await registration;
+  } finally {
+    registrationPromises.delete(userId);
+  }
+};
+
+const registerDevice = async (userId: number): Promise<number> => {
   const identifierKey = deviceIdentifierKey(userId);
   let identifier = localStorage.getItem(identifierKey);
   if (!identifier) {

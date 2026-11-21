@@ -46,6 +46,8 @@ const userProfileSelect = {
   ultimo_acceso: true,
 } as const;
 
+export const AUDIT_RETENTION_DAYS = 90;
+
 export class AuthService {
   async register(data: RegisterInput) {
     if (config.SMTP_ENABLED && !isEmailConfigured()) {
@@ -68,26 +70,39 @@ export class AuthService {
     }
 
     const password_hash = await hashPassword(data.password);
-    const user = await prisma.$transaction(async (transaction) => {
-      const createdUser = await transaction.usuario.create({
-        data: {
-          email: data.email,
-          password_hash,
-          nombre_completo: data.nombre_completo,
-          telefono: data.telefono,
-          rol: "USER",
-          estado: true,
-          email_verificado_en: config.SMTP_ENABLED ? null : new Date(),
-        },
-        select: userProfileSelect,
-      });
+    let user;
+    try {
+      user = await prisma.$transaction(async (transaction) => {
+        const createdUser = await transaction.usuario.create({
+          data: {
+            email: data.email,
+            password_hash,
+            nombre_completo: data.nombre_completo,
+            telefono: data.telefono,
+            rol: "USER",
+            estado: true,
+            email_verificado_en: config.SMTP_ENABLED ? null : new Date(),
+          },
+          select: userProfileSelect,
+        });
 
-      await transaction.perfil_financiero.create({
-        data: { id_usuario: createdUser.id_usuario },
-      });
+        await transaction.perfil_financiero.create({
+          data: { id_usuario: createdUser.id_usuario },
+        });
 
-      return createdUser;
-    });
+        return createdUser;
+      });
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        return this.getRegistrationResponse();
+      }
+      throw error;
+    }
 
     if (config.SMTP_ENABLED) {
       await this.sendVerificationEmail(user.id_usuario, user.email);
@@ -104,7 +119,14 @@ export class AuthService {
     };
   }
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, ipAddress?: string) {
+    const retentionCutoff = new Date(
+      Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    );
+    await prisma.log_auditoria.deleteMany({
+      where: { fecha_accion: { lt: retentionCutoff } },
+    });
+
     const user = await prisma.usuario.findUnique({
       where: { email },
     });
@@ -116,15 +138,18 @@ export class AuthService {
       !user.estado ||
       (config.SMTP_ENABLED && !user.email_verificado_en)
     ) {
-      await prisma.log_auditoria.create({
-        data: {
-          id_usuario: user?.id_usuario ?? null,
-          tipo_accion: "INICIO_SESION_FALLIDO",
-          entidad_afectada: "usuarios",
-          id_entidad: user?.id_usuario ?? null,
-          descripcion: "Intento de inicio de sesión rechazado.",
-        },
-      });
+      if (user) {
+        await prisma.log_auditoria.create({
+          data: {
+            id_usuario: user.id_usuario,
+            tipo_accion: "INICIO_SESION_FALLIDO",
+            entidad_afectada: "usuarios",
+            id_entidad: user.id_usuario,
+            descripcion: "Intento de inicio de sesión rechazado.",
+            direccion_ip: ipAddress ?? null,
+          },
+        });
+      }
       throw new AuthError("Credenciales inválidas", 401);
     }
 
@@ -341,6 +366,14 @@ export class AuthService {
     });
 
     return { message: "Contraseña cambiada exitosamente" };
+  }
+
+  async logout(userId: number) {
+    await prisma.usuario.update({
+      where: { id_usuario: userId },
+      data: { token_version: { increment: 1 } },
+    });
+    return { message: "Sesión cerrada exitosamente" };
   }
 }
 

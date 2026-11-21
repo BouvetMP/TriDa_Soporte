@@ -22,9 +22,10 @@ export const AlertsApi = {
   /**
    * Obtiene el conteo total de alertas pendientes de revisión
    */
-  getPendingCount: async (): Promise<{ count: number }> => {
+  getPendingCount: async (idCuenta?: number): Promise<{ count: number }> => {
     const response = await AlertsApi.getAll({
       estado: "PENDIENTE",
+      id_cuenta: idCuenta,
       limit: 1,
       offset: 0,
     });

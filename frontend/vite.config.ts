@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-function getApiOrigin(apiBaseUrl: string, mode: string): string {
+function getApiOrigin(apiBaseUrl: string): string {
   let apiUrl: URL;
   try {
     apiUrl = new URL(apiBaseUrl);
@@ -12,15 +12,6 @@ function getApiOrigin(apiBaseUrl: string, mode: string): string {
 
   if (!["http:", "https:"].includes(apiUrl.protocol)) {
     throw new Error("VITE_API_BASE_URL debe usar HTTP o HTTPS.");
-  }
-
-  const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(
-    apiUrl.hostname,
-  );
-  if (mode !== "development" && (apiUrl.protocol !== "https:" || isLocalHost)) {
-    throw new Error(
-      "Los builds que no son de desarrollo requieren una VITE_API_BASE_URL HTTPS pública.",
-    );
   }
 
   return apiUrl.origin;
@@ -38,7 +29,7 @@ export default defineConfig(({ mode }) => {
     throw new Error("VITE_API_BASE_URL debe definirse para los builds.");
   }
 
-  const apiOrigin = getApiOrigin(apiBaseUrl, mode);
+  const apiOrigin = getApiOrigin(apiBaseUrl);
   const connectSources = ["'self'", apiOrigin];
   const scriptSources = ["'self'"];
   if (mode === "development") {

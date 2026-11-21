@@ -10,9 +10,8 @@ interface ReportSummaryCardsProps {
 export function ReportSummaryCards({ summary }: ReportSummaryCardsProps) {
   const ingresos = summary?.total_ingresos ?? 0;
   const gastos = summary?.total_gastos ?? 0;
-  const balance = summary?.balance_neto ?? ingresos - gastos;
-  const tasaAhorro =
-    summary?.tasa_ahorro ?? (ingresos > 0 ? (balance / ingresos) * 100 : 0);
+  const balance = summary?.balance_neto ?? 0;
+  const tasaAhorro = summary?.tasa_ahorro ?? 0;
 
   const isBalancePositive = balance >= 0;
 
@@ -82,7 +81,7 @@ export function ReportSummaryCards({ summary }: ReportSummaryCardsProps) {
             {Math.max(0, tasaAhorro).toFixed(1)}%
           </p>
           <span className="text-2xs text-[var(--color-text-muted)]">
-            De tus ingresos retenidos
+            Porcentaje de ingresos destinado al ahorro
           </span>
         </div>
         <div className="w-10 h-10 rounded-xl bg-[var(--color-primary-light)] text-[var(--color-primary)] flex items-center justify-center">

@@ -5,7 +5,11 @@ import { getTransactionBalanceDelta } from "./transaction-balance.js";
 import { AppError } from "../../utils/AppError.js";
 import { config } from "../../config.js";
 import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
-import { RISK_THRESHOLDS, riskLevelSql, riskRankSql } from "../../utils/risk.js";
+import {
+  RISK_THRESHOLDS,
+  riskRankSql,
+  unifiedRiskLevelSql,
+} from "../../utils/risk.js";
 import type { CreateTransactionInput, ListTransactionsQueryInput } from "./transactions.schemas.js";
 
 export class TransactionError extends AppError {
@@ -24,7 +28,7 @@ export class TransactionsService {
     const sqlParams: unknown[] = [Number(userId)];
     const conditions = [
       "t.id_usuario = $1",
-      "EXISTS (SELECT 1 FROM trida.cuentas active_account WHERE active_account.id_cuenta = t.id_cuenta AND active_account.id_usuario = t.id_usuario AND active_account.estado = TRUE)",
+      "EXISTS (SELECT 1 FROM trida.cuentas owned_account WHERE owned_account.id_cuenta = t.id_cuenta AND owned_account.id_usuario = t.id_usuario)",
     ];
 
     if (params.fecha_inicio) {
@@ -54,16 +58,9 @@ export class TransactionsService {
 
     if (params.nivel_riesgo && params.nivel_riesgo.toUpperCase() !== "ALL") {
       sqlParams.push(params.nivel_riesgo);
-      conditions.push(`CASE
-        WHEN a.id_alerta IS NOT NULL THEN CASE a.severidad
-          WHEN 'BAJA' THEN 'BAJO'
-          WHEN 'MEDIA' THEN 'MEDIO'
-          WHEN 'ALTA' THEN 'ALTO'
-          WHEN 'CRITICA' THEN 'CRITICO'
-          ELSE a.severidad
-        END
-        ELSE ${riskLevelSql("t.score_anomalia")}
-      END = $${sqlParams.length}`);
+      conditions.push(
+        `${unifiedRiskLevelSql("t.score_anomalia", "COALESCE(a.severidad, '')")} = $${sqlParams.length}`,
+      );
     }
 
     if (params.min_monto !== undefined) {
@@ -94,14 +91,37 @@ export class TransactionsService {
       monto: "t.monto",
       tipo_movimiento: "t.tipo_movimiento",
       nivel_riesgo: `CASE
-        WHEN a.id_alerta IS NOT NULL THEN CASE a.severidad
-          WHEN 'BAJA' THEN 1
-          WHEN 'MEDIA' THEN 2
-          WHEN 'ALTA' THEN 3
-          WHEN 'CRITICA' THEN 4
-          ELSE 0
-        END
-        ELSE ${riskRankSql("t.score_anomalia")}
+        WHEN GREATEST(
+          ${riskRankSql("t.score_anomalia")},
+          CASE
+            WHEN a.severidad = 'CRITICA' THEN 4
+            WHEN a.severidad = 'ALTA' THEN 3
+            WHEN a.severidad = 'MEDIA' THEN 2
+            WHEN a.severidad = 'BAJA' THEN 1
+            ELSE 1
+          END
+        ) = 4 THEN 4
+        WHEN GREATEST(
+          ${riskRankSql("t.score_anomalia")},
+          CASE
+            WHEN a.severidad = 'CRITICA' THEN 4
+            WHEN a.severidad = 'ALTA' THEN 3
+            WHEN a.severidad = 'MEDIA' THEN 2
+            WHEN a.severidad = 'BAJA' THEN 1
+            ELSE 1
+          END
+        ) = 3 THEN 3
+        WHEN GREATEST(
+          ${riskRankSql("t.score_anomalia")},
+          CASE
+            WHEN a.severidad = 'CRITICA' THEN 4
+            WHEN a.severidad = 'ALTA' THEN 3
+            WHEN a.severidad = 'MEDIA' THEN 2
+            WHEN a.severidad = 'BAJA' THEN 1
+            ELSE 1
+          END
+        ) = 2 THEN 2
+        ELSE 1
       END`,
     };
     const sortField =
@@ -169,16 +189,7 @@ export class TransactionsService {
           u.latitud,
           u.longitud,
           (t.score_anomalia >= ${RISK_THRESHOLDS.MEDIUM} OR a.id_alerta IS NOT NULL) AS es_sospechosa,
-          CASE
-            WHEN a.id_alerta IS NOT NULL THEN CASE a.severidad
-              WHEN 'BAJA' THEN 'BAJO'
-              WHEN 'MEDIA' THEN 'MEDIO'
-              WHEN 'ALTA' THEN 'ALTO'
-              WHEN 'CRITICA' THEN 'CRITICO'
-              ELSE a.severidad
-            END
-            ELSE ${riskLevelSql("t.score_anomalia")}
-          END AS nivel_riesgo,
+          ${unifiedRiskLevelSql("t.score_anomalia", "COALESCE(a.severidad, '')")} AS nivel_riesgo,
           a.motivo AS motivo_riesgo,
           c.nombre AS nombre_cuenta,
           cat.nombre AS nombre_categoria,
@@ -268,30 +279,52 @@ export class TransactionsService {
   ) {
     const id_usuario = Number(userId);
     const id_categoria = data.id_categoria ?? null;
-    const fecha_transaccion = data.fecha_transaccion
-      ? new Date(data.fecha_transaccion)
-      : new Date();
     const variacion_saldo = getTransactionBalanceDelta(data.tipo_movimiento, data.monto);
 
     return prisma.$transaction(async (transaction) => {
       const cuentaTransaccion = await transaction.cuenta.findFirst({
         where: { id_cuenta: data.id_cuenta, id_usuario, estado: true },
-        select: { id_cuenta: true },
+        select: { id_cuenta: true, tipo: true },
       });
       if (!cuentaTransaccion) {
         throw new TransactionError("La cuenta no existe, no está activa o no pertenece al usuario", 404);
+      }
+
+      let fecha_transaccion = new Date();
+      if (data.fecha_transaccion) {
+        if (cuentaTransaccion.tipo !== "EFECTIVO") {
+          throw new TransactionError(
+            "La fecha manual solo está disponible para cuentas de efectivo",
+            400,
+          );
+        }
+        const fechaManual = new Date(data.fecha_transaccion);
+        if (Number.isNaN(fechaManual.getTime())) {
+          throw new TransactionError("La fecha de la transacción no es válida", 400);
+        }
+        if (fechaManual.getTime() > Date.now()) {
+          throw new TransactionError("La fecha de la transacción no puede ser futura", 400);
+        }
+        fecha_transaccion = fechaManual;
       }
 
       if (id_categoria !== null) {
         const categoriaTransaccion = await transaction.categoria.findFirst({
           where: {
             id_categoria,
+            estado: true,
             OR: [{ id_usuario }, { id_usuario: null }],
           },
-          select: { id_categoria: true },
+          select: { id_categoria: true, tipo: true },
         });
         if (!categoriaTransaccion) {
           throw new TransactionError("La categoría no existe o no pertenece al usuario", 404);
+        }
+        if (categoriaTransaccion.tipo !== data.tipo_movimiento) {
+          throw new TransactionError(
+            "El tipo de categoría no coincide con el tipo de movimiento",
+            400,
+          );
         }
       }
 
@@ -434,6 +467,20 @@ export class TransactionsService {
         });
       }
 
+      await client.log_auditoria.create({
+        data: {
+          id_usuario: Number(userId),
+          tipo_accion: "TRANSACCION_ELIMINADA",
+          entidad_afectada: "transacciones",
+          id_entidad: transaction.id_transaccion,
+          descripcion:
+            `Transacción eliminada: tipo=${transaction.tipo_movimiento}; ` +
+            `monto=${transaction.monto.toString()}; estado=${transaction.estado}; ` +
+            `id_cuenta=${transaction.id_cuenta ?? "null"}; ` +
+            `fecha=${transaction.fecha_transaccion.toISOString()}.`,
+        },
+      });
+
       return client.transaccion.delete({
         where: { id_transaccion: transaction.id_transaccion },
       });
@@ -487,6 +534,10 @@ export class TransactionsService {
         });
       }
 
+      const accion_usuario = estado === "CONFIRMADA" ? "FUI_YO" : "NO_FUI_YO";
+      const estado_alerta = estado === "CONFIRMADA" ? "DESCARTADA" : "CONFIRMADA";
+      const fecha_resuelta = new Date();
+
       await client.alerta_fraude.updateMany({
         where: {
           id_transaccion: transaction.id_transaccion,
@@ -494,8 +545,19 @@ export class TransactionsService {
           estado: "PENDIENTE",
         },
         data: {
-          estado: estado === "CONFIRMADA" ? "CONFIRMADA" : "DESCARTADA",
-          fecha_resuelta: new Date(),
+          estado: estado_alerta,
+          accion_usuario,
+          fecha_resuelta,
+        },
+      });
+
+      await client.log_auditoria.create({
+        data: {
+          id_usuario: Number(userId),
+          tipo_accion: "TRANSACCION_RESUELTA",
+          entidad_afectada: "transacciones",
+          id_entidad: transaction.id_transaccion,
+          descripcion: `Resolución de transacción: ${estado}; acción: ${accion_usuario}.`,
         },
       });
 
@@ -513,10 +575,7 @@ export class TransactionsService {
     const rows = await queryRaw<Array<{ nivel_riesgo: string; count: number }>>(
       `
         SELECT
-          COALESCE(
-            a.severidad,
-            ${riskLevelSql("t.score_anomalia")}
-          ) AS nivel_riesgo,
+          ${unifiedRiskLevelSql("t.score_anomalia", "COALESCE(a.severidad, '')")} AS nivel_riesgo,
           COUNT(*)::int AS count
         FROM trida.transacciones t
           LEFT JOIN LATERAL (

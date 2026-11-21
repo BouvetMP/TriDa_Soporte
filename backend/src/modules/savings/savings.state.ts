@@ -8,6 +8,10 @@ export function deriveSavingsState(
   existingState: SavingsState,
   requestedState?: SavingsState,
 ): SavingsState {
+  if (requestedState === "COMPLETADA") {
+    return "COMPLETADA";
+  }
+
   if (requestedState === "PAUSADA" || requestedState === "CANCELADA") {
     return requestedState;
   }

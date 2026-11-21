@@ -93,6 +93,25 @@ test("transaction routes keep account balances consistent across creation and re
     userId = registeredUser.id_usuario;
     assert.ok(registeredUser.email_verificado_en);
 
+    const duplicateRegistrationResponse = await fetch(`${baseUrl}/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        nombre_completo: "Otro Nombre",
+        email,
+        password: "TestPassword123",
+      }),
+    });
+    assert.equal(duplicateRegistrationResponse.status, 201);
+    assert.deepEqual(
+      await readJson<SuccessEnvelope<{ emailVerificationRequired: boolean }>>(
+        duplicateRegistrationResponse,
+      ),
+      await readJson<SuccessEnvelope<{ emailVerificationRequired: boolean }>>(
+        registrationResponse,
+      ),
+    );
+
     const loginResponse = await fetch(`${baseUrl}/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -208,6 +227,113 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(accountResponse.status, 201);
     const account = await readJson<SuccessEnvelope<{ id_cuenta: number }>>(accountResponse);
     const accountId = account.data.id_cuenta;
+
+    const reportCategory = await prisma.categoria.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Categoría de reporte ${randomUUID()}`,
+        tipo: "GASTO",
+      },
+    });
+    const reportAccount = await prisma.cuenta.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Cuenta de reporte ${randomUUID()}`,
+        tipo: "BANCO",
+        saldo_inicial: 0,
+        saldo_actual: 0,
+      },
+    });
+    const reportDate = new Date();
+    await prisma.transaccion.createMany({
+      data: [
+        {
+          id_usuario: userId,
+          id_cuenta: reportAccount.id_cuenta,
+          id_categoria: reportCategory.id_categoria,
+          tipo_movimiento: "GASTO",
+          monto: 70,
+          estado: "CONFIRMADA",
+          fecha_transaccion: reportDate,
+        },
+        {
+          id_usuario: userId,
+          id_cuenta: reportAccount.id_cuenta,
+          id_categoria: null,
+          tipo_movimiento: "GASTO",
+          monto: 30,
+          estado: "CONFIRMADA",
+          fecha_transaccion: reportDate,
+        },
+        {
+          id_usuario: userId,
+          id_cuenta: reportAccount.id_cuenta,
+          tipo_movimiento: "INGRESO",
+          monto: 200,
+          estado: "CONFIRMADA",
+          fecha_transaccion: reportDate,
+        },
+        {
+          id_usuario: userId,
+          id_cuenta: reportAccount.id_cuenta,
+          tipo_movimiento: "AHORRO",
+          monto: 20,
+          estado: "CONFIRMADA",
+          fecha_transaccion: reportDate,
+        },
+      ],
+    });
+    const reportParams = new URLSearchParams({
+      id_cuenta: String(reportAccount.id_cuenta),
+      fecha_inicio: new Date(reportDate.getTime() - 60_000).toISOString(),
+      fecha_fin: new Date(reportDate.getTime() + 60_000).toISOString(),
+    });
+    const categoryReportResponse = await fetch(
+      `${baseUrl}/reports/by-category?${reportParams.toString()}&tipo_movimiento=GASTO`,
+      { headers: authorization },
+    );
+    assert.equal(categoryReportResponse.status, 200);
+    const categoryReport = await readJson<
+      SuccessEnvelope<{
+        categorias: Array<{
+          id_categoria: number | null;
+          nombre: string;
+          total: number;
+          cantidad: number;
+        }>;
+      }>
+    >(categoryReportResponse);
+    assert.deepEqual(
+      categoryReport.data.categorias.find((category) => category.id_categoria === null),
+      {
+        id_categoria: null,
+        nombre: "Sin categoría",
+        icono: null,
+        color: null,
+        total: 30,
+        cantidad: 1,
+      },
+    );
+    assert.equal(
+      categoryReport.data.categorias.reduce((sum, category) => sum + category.total, 0),
+      100,
+    );
+    const categorySummaryResponse = await fetch(
+      `${baseUrl}/reports/summary?${reportParams.toString()}`,
+      { headers: authorization },
+    );
+    assert.equal(categorySummaryResponse.status, 200);
+    const categorySummary = await readJson<
+      SuccessEnvelope<{
+        totales: { ingresos: number; gastos: number; ahorros: number; balance: number };
+      }>
+    >(categorySummaryResponse);
+    assert.deepEqual(categorySummary.data.totales, {
+      ingresos: 200,
+      gastos: 100,
+      ahorros: 20,
+      balance: 80,
+    });
 
     const savingsResponse = await fetch(`${baseUrl}/savings`, {
       method: "POST",
@@ -457,6 +583,107 @@ test("transaction routes keep account balances consistent across creation and re
       transactionCountBeforeInvalidRequest,
     );
 
+    const inactiveCategory = await prisma.categoria.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Categoría inactiva ${randomUUID()}`,
+        tipo: "GASTO",
+        estado: false,
+      },
+    });
+    const mismatchedCategory = await prisma.categoria.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Categoría ingreso ${randomUUID()}`,
+        tipo: "INGRESO",
+        estado: true,
+      },
+    });
+
+    const transactionCountBeforeCategoryValidation = await prisma.transaccion.count({
+      where: { id_usuario: userId },
+    });
+    const inactiveCategoryResponse = await fetch(`${baseUrl}/transactions`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        id_cuenta: accountId,
+        id_categoria: inactiveCategory.id_categoria,
+        monto: 10,
+        tipo_movimiento: "GASTO",
+      }),
+    });
+    assert.equal(inactiveCategoryResponse.status, 404);
+
+    const mismatchedCategoryResponse = await fetch(`${baseUrl}/transactions`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        id_cuenta: accountId,
+        id_categoria: mismatchedCategory.id_categoria,
+        monto: 10,
+        tipo_movimiento: "GASTO",
+      }),
+    });
+    assert.equal(mismatchedCategoryResponse.status, 400);
+    assert.equal(
+      await prisma.transaccion.count({ where: { id_usuario: userId } }),
+      transactionCountBeforeCategoryValidation,
+    );
+
+    const unusedCategory = await prisma.categoria.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Categoría sin uso ${randomUUID()}`,
+        tipo: "GASTO",
+      },
+    });
+    const changeUnusedCategoryResponse = await fetch(
+      `${baseUrl}/categories/${unusedCategory.id_categoria}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ tipo: "INGRESO" }),
+      },
+    );
+    assert.equal(changeUnusedCategoryResponse.status, 200);
+    assert.equal(
+      (
+        await prisma.categoria.findUniqueOrThrow({
+          where: { id_categoria: unusedCategory.id_categoria },
+          select: { tipo: true },
+        })
+      ).tipo,
+      "INGRESO",
+    );
+
+    const transactionCategory = await prisma.categoria.create({
+      data: {
+        id_usuario: userId,
+        nombre: `Categoría con movimiento ${randomUUID()}`,
+        tipo: "GASTO",
+      },
+    });
+    await prisma.transaccion.create({
+      data: {
+        id_usuario: userId,
+        id_cuenta: accountId,
+        id_categoria: transactionCategory.id_categoria,
+        tipo_movimiento: "GASTO",
+        monto: 5,
+        estado: "CONFIRMADA",
+      },
+    });
+    const changeTransactionCategoryResponse = await fetch(
+      `${baseUrl}/categories/${transactionCategory.id_categoria}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ tipo: "INGRESO" }),
+      },
+    );
+    assert.equal(changeTransactionCategoryResponse.status, 409);
+
     const transactionResponse = await fetch(`${baseUrl}/transactions`, {
       method: "POST",
       headers: { ...authorization, "content-type": "application/json" },
@@ -511,6 +738,14 @@ test("transaction routes keep account balances consistent across creation and re
         estado: "PENDIENTE",
       },
     });
+    const pendingAlert = await prisma.alerta_fraude.create({
+      data: {
+        id_usuario: userId,
+        id_transaccion: pending.id_transaccion,
+        severidad: "MEDIA",
+        motivo: "Confirmación de transacción pendiente",
+      },
+    });
     const approveResponse = await fetch(
       `${baseUrl}/transactions/${pending.id_transaccion}/status`,
       {
@@ -539,6 +774,22 @@ test("transaction routes keep account balances consistent across creation and re
       ),
       85,
     );
+    const confirmedAlert = await prisma.alerta_fraude.findUniqueOrThrow({
+      where: { id_alerta: pendingAlert.id_alerta },
+    });
+    assert.equal(confirmedAlert.estado, "DESCARTADA");
+    assert.equal(confirmedAlert.accion_usuario, "FUI_YO");
+    assert.ok(confirmedAlert.fecha_resuelta);
+    const confirmationAudit = await prisma.log_auditoria.findFirst({
+      where: {
+        id_usuario: userId,
+        tipo_accion: "TRANSACCION_RESUELTA",
+        entidad_afectada: "transacciones",
+        id_entidad: pending.id_transaccion,
+      },
+    });
+    assert.match(confirmationAudit?.descripcion ?? "", /FUI_YO/);
+
     const resolveAgainResponse = await fetch(
       `${baseUrl}/transactions/${pending.id_transaccion}/status`,
       {
@@ -559,6 +810,14 @@ test("transaction routes keep account balances consistent across creation and re
         tipo_movimiento: "INGRESO",
         monto: 50,
         estado: "PENDIENTE",
+      },
+    });
+    const directRejectAlert = await prisma.alerta_fraude.create({
+      data: {
+        id_usuario: userId,
+        id_transaccion: rejected.id_transaccion,
+        severidad: "MEDIA",
+        motivo: "Rechazo de transacción pendiente",
       },
     });
     const rejectResponse = await fetch(
@@ -589,12 +848,38 @@ test("transaction routes keep account balances consistent across creation and re
       ),
       85,
     );
+    const confirmedFraudAlert = await prisma.alerta_fraude.findUniqueOrThrow({
+      where: { id_alerta: directRejectAlert.id_alerta },
+    });
+    assert.equal(confirmedFraudAlert.estado, "CONFIRMADA");
+    assert.equal(confirmedFraudAlert.accion_usuario, "NO_FUI_YO");
+    assert.ok(confirmedFraudAlert.fecha_resuelta);
+    const rejectionAudit = await prisma.log_auditoria.findFirst({
+      where: {
+        id_usuario: userId,
+        tipo_accion: "TRANSACCION_RESUELTA",
+        entidad_afectada: "transacciones",
+        id_entidad: rejected.id_transaccion,
+      },
+    });
+    assert.match(rejectionAudit?.descripcion ?? "", /NO_FUI_YO/);
 
     const deleteResponse = await fetch(`${baseUrl}/transactions/${pending.id_transaccion}`, {
       method: "DELETE",
       headers: authorization,
     });
     assert.equal(deleteResponse.status, 200);
+    const pendingDeletionAudit = await prisma.log_auditoria.findFirst({
+      where: {
+        id_usuario: userId,
+        tipo_accion: "TRANSACCION_ELIMINADA",
+        entidad_afectada: "transacciones",
+        id_entidad: pending.id_transaccion,
+      },
+    });
+    assert.ok(pendingDeletionAudit);
+    assert.match(pendingDeletionAudit?.descripcion ?? "", /tipo=INGRESO/);
+    assert.match(pendingDeletionAudit?.descripcion ?? "", /estado=CONFIRMADA/);
     assert.equal(
       Number(
         (
@@ -650,6 +935,25 @@ test("transaction routes keep account balances consistent across creation and re
       await readJson<SuccessEnvelope<{ id_presupuesto: number; limite_mensual: number }>>(
         createBudgetResponse,
       );
+    const changeUsedCategoryResponse = await fetch(
+      `${baseUrl}/categories/${budgetCategory.id_categoria}`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({ tipo: "INGRESO" }),
+      },
+    );
+    assert.equal(changeUsedCategoryResponse.status, 409);
+    assert.equal(
+      (
+        await prisma.categoria.findUniqueOrThrow({
+          where: { id_categoria: budgetCategory.id_categoria },
+          select: { tipo: true },
+        })
+      ).tipo,
+      "GASTO",
+    );
+
     const updateBudgetResponse = await fetch(
       `${baseUrl}/budgets/${createdBudget.data.id_presupuesto}`,
       {
@@ -756,7 +1060,7 @@ test("transaction routes keep account balances consistent across creation and re
     >(inactiveAccountTransactions);
     assert.equal(
       transactions.data.items.some((item) => item.id_cuenta === accountId),
-      false,
+      true,
     );
 
     const transactionCountBeforeInactiveAccountRequest = await prisma.transaccion.count({
@@ -967,6 +1271,23 @@ test("transaction routes keep account balances consistent across creation and re
       { method: "DELETE", headers: authorization },
     );
     assert.equal(deleteDeviceResponse.status, 200);
+
+    const reRegisteredDeviceResponse = await fetch(`${baseUrl}/devices`, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify({
+        identificador_unico: `new-after-delete-${randomUUID()}`,
+        tipo_dispositivo: "BROWSER",
+        sistema_operativo: "Test",
+        navegador: "Test",
+      }),
+    });
+    assert.equal(reRegisteredDeviceResponse.status, 201);
+    const reRegisteredDevice =
+      await readJson<SuccessEnvelope<{ confiable: boolean }>>(
+        reRegisteredDeviceResponse,
+      );
+    assert.equal(reRegisteredDevice.data.confiable, false);
 
     await prisma.usuario.update({
       where: { id_usuario: userId },

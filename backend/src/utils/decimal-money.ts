@@ -4,8 +4,11 @@ export type DecimalValue = Prisma.Decimal | number | string;
 
 const asDecimal = (value: DecimalValue) => new Prisma.Decimal(value);
 
-export const calculateNetBalance = (income: DecimalValue, expenses: DecimalValue) =>
-  asDecimal(income).minus(asDecimal(expenses));
+export const calculateNetBalance = (
+  income: DecimalValue,
+  expenses: DecimalValue,
+  savings: DecimalValue,
+) => asDecimal(income).minus(asDecimal(expenses)).minus(asDecimal(savings));
 
 export const calculatePercentage = (amount: DecimalValue, total: DecimalValue) => {
   const denominator = asDecimal(total);

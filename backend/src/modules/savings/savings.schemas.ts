@@ -3,8 +3,9 @@
 
 import { z } from "zod";
 import { nonNegativeMoney, positiveMoney } from "../../utils/money.js";
+import { MAX_POSTGRES_INT } from "../../utils/params.js";
 
-export const savingsIdSchema = z.coerce.number().int().positive();
+export const savingsIdSchema = z.coerce.number().int().positive().max(MAX_POSTGRES_INT);
 
 export const createSavingsSchema = z
   .object({
@@ -29,7 +30,9 @@ export const updateSavingsSchema = z
 
 export const addFundsSchema = z
   .object({
-    monto: positiveMoney,
+    monto: positiveMoney.pipe(
+      z.number().min(1000, "El aporte mínimo es de 1000"),
+    ),
   })
   .strict();
 

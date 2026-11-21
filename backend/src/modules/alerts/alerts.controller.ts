@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { alertsService } from "./alerts.service.js";
 import { alertIdSchema, listAlertsQuerySchema, updateAlertStatusSchema } from "./alerts.schemas.js";
+import { parseId } from "../../utils/params.js";
 
 export class AlertsController {
   async getAlerts(req: Request, res: Response, next: NextFunction) {
@@ -40,7 +41,9 @@ export class AlertsController {
   async getCountsByLevel(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const counts = await alertsService.countsByLevel(userId);
+      const accountId =
+        req.query.id_cuenta === undefined ? undefined : parseId(req.query.id_cuenta);
+      const counts = await alertsService.countsByLevel(userId, accountId);
 
       sendSuccess(res, counts);
     } catch (error) {

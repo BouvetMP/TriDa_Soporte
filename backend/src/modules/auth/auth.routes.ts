@@ -9,6 +9,7 @@ import {
   authMutationRateLimiter,
   forgotPasswordRateLimiter,
   loginRateLimiter,
+  loginIpRateLimiter,
   registerRateLimiter,
   verifyResetTokenRateLimiter,
 } from "../../middlewares/rateLimit.middleware.js";
@@ -16,7 +17,7 @@ import {
 const router = Router();
 
 // ── Rutas Públicas ───────────────────────────────────────────
-router.post("/login", loginRateLimiter, authController.login);
+router.post("/login", loginIpRateLimiter, loginRateLimiter, authController.login);
 router.post("/register", registerRateLimiter, authController.register);
 router.post("/verify-email", authMutationRateLimiter, authController.verifyEmail);
 router.post("/forgot-password", forgotPasswordRateLimiter, authController.forgotPassword);
@@ -27,6 +28,7 @@ router.post("/reset-password", authMutationRateLimiter, authController.resetPass
 router.get("/me", requireAuth, authController.me);
 router.patch("/me", requireAuth, authController.updateProfile);
 router.post("/change-password", requireAuth, authMutationRateLimiter, authController.changePassword);
+router.post("/logout", requireAuth, authController.logout);
 
 export const authRoutes = router;
 export default router;

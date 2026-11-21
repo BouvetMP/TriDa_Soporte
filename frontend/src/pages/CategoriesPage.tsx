@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Edit2, Plus, Tag, Trash2 } from "lucide-react";
+import { Edit2, Plus, RefreshCw, Tag, Trash2 } from "lucide-react";
 import { CategoryFormModal } from "@/components/categories/CategoryFormModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -65,6 +65,10 @@ export const CategoriesPage: React.FC = () => {
     if (deleted) setDeletingCategory(null);
   };
 
+  const handleReactivate = async (category: Category) => {
+    await updateCategory(category.id_categoria, { estado: true });
+  };
+
   const renderCategory = (category: Category, isPersonal: boolean) => (
     <Card
       key={category.id_categoria}
@@ -102,15 +106,27 @@ export const CategoriesPage: React.FC = () => {
           >
             <Edit2 className="h-4 w-4" />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Desactivar ${category.nombre}`}
-            onClick={() => setDeletingCategory(category)}
-          >
-            <Trash2 className="h-4 w-4 text-expense" />
-          </Button>
+          {category.estado === false ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`Reactivar ${category.nombre}`}
+              onClick={() => void handleReactivate(category)}
+            >
+              <RefreshCw className="h-4 w-4 text-income" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`Desactivar ${category.nombre}`}
+              onClick={() => setDeletingCategory(category)}
+            >
+              <Trash2 className="h-4 w-4 text-expense" />
+            </Button>
+          )}
         </div>
       )}
     </Card>

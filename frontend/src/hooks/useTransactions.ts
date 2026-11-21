@@ -125,6 +125,7 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
         message: "La transacción fue eliminada del registro.",
       });
       await Promise.all([fetchTransactions(), refreshAccounts()]);
+      window.dispatchEvent(new Event("trida-alerts-updated"));
       return true;
     } catch (error) {
       const err = error as Error;
@@ -152,6 +153,7 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
             : "Transacción rechazada.",
       });
       await Promise.all([fetchTransactions(), refreshAccounts()]);
+      window.dispatchEvent(new Event("trida-alerts-updated"));
       return true;
     } catch (error) {
       const err = error as Error;

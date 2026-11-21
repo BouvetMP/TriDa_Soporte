@@ -87,7 +87,7 @@ export const reportsService = {
         ingresos: Number(ingresos),
         gastos: Number(gastos),
         ahorros: Number(ahorros),
-        balance: calculateNetBalance(ingresos, gastos).toNumber(),
+        balance: calculateNetBalance(ingresos, gastos, ahorros).toNumber(),
       },
       transacciones: {
         total: Number(r.total_tx),
@@ -104,7 +104,7 @@ export const reportsService = {
 
     const rows = await queryRaw<
       Array<{
-        id_categoria: number;
+        id_categoria: number | null;
         nombre: string;
         icono: string | null;
         color: string | null;
@@ -115,13 +115,13 @@ export const reportsService = {
       `
       SELECT
         c.id_categoria,
-        c.nombre,
+        COALESCE(c.nombre, 'Sin categoría') AS nombre,
         c.icono,
         c.color,
         COALESCE(SUM(t.monto), 0)::numeric AS total,
         COUNT(*)::bigint AS cantidad
       FROM trida.transacciones t
-      JOIN trida.categorias c ON c.id_categoria = t.id_categoria
+      LEFT JOIN trida.categorias c ON c.id_categoria = t.id_categoria
       WHERE t.id_usuario = $1
         AND t.tipo_movimiento = $2
         AND t.fecha_transaccion >= $3
@@ -142,7 +142,7 @@ export const reportsService = {
       periodo: { fecha_inicio: start, fecha_fin: end },
       tipo_movimiento: tipo,
       categorias: rows.map((r) => ({
-        id_categoria: Number(r.id_categoria),
+        id_categoria: r.id_categoria === null ? null : Number(r.id_categoria),
         nombre: r.nombre,
         icono: r.icono ?? null,
         color: r.color ?? null,

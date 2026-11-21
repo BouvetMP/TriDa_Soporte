@@ -67,7 +67,11 @@ export const dashboardController = {
   async getRecentAdvice(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id_usuario;
-      const data = await dashboardService.getRecentAdvice(userId);
+      const data = await dashboardService.getRecentAdvice(
+        userId,
+        5,
+        getAccountId(req),
+      );
       sendSuccess(res, data);
     } catch (error) {
       next(error);

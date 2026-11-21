@@ -1,5 +1,5 @@
 export interface CategoryReportItem {
-  id_categoria: number;
+  id_categoria: number | null;
   nombre: string;
   tipo: "INGRESO" | "GASTO";
   total: number;

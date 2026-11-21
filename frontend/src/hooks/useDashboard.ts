@@ -21,7 +21,7 @@ export const useDashboard = () => {
           DashboardApi.getRecentAlerts(selectedAccount?.id_cuenta),
           DashboardApi.getRecentTransactions(selectedAccount?.id_cuenta),
           DashboardApi.getCategoryExpenses(selectedAccount?.id_cuenta),
-          DashboardApi.getAdvice(),
+          DashboardApi.getAdvice(selectedAccount?.id_cuenta),
         ]);
       if (currentRequestId !== requestId.current) return;
       setData({

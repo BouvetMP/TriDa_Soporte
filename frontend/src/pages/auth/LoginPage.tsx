@@ -20,6 +20,13 @@ export const LoginPage: React.FC = () => {
         message: "Tu sesión ha caducado. Por favor inicia sesión nuevamente.",
       });
     }
+    if (searchParams.get("inactive") === "true") {
+      showToast({
+        type: "warning",
+        title: "Cuenta desactivada",
+        message: "Tu cuenta está inactiva. Ya cerramos la sesión actual.",
+      });
+    }
   }, [searchParams, showToast]);
 
   return (

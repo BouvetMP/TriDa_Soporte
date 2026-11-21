@@ -22,6 +22,7 @@ const actionLabels: Record<string, string> = {
   DISPOSITIVO_MARCADO_NO_CONFIABLE: "Dispositivo marcado como no confiable",
   DISPOSITIVO_ELIMINADO: "Dispositivo eliminado",
   ALERTA_FRAUDE_RESUELTA: "Alerta de fraude revisada",
+  TRANSACCION_RESUELTA: "Transacción pendiente resuelta",
 };
 
 const formatAction = (event: AuditEvent) =>

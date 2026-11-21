@@ -21,6 +21,30 @@ export interface RiskEvaluationResult {
   id_dispositivo_validado: number | null;
 }
 
+export const MIN_GEO_DISTANCE_KM = 100;
+
+export function getGeoRiskPenalty(distanceKm: number, speedKmH: number) {
+  if (distanceKm <= MIN_GEO_DISTANCE_KM) return null;
+
+  if (speedKmH > 800) {
+    return {
+      score: 50,
+      reason: `Velocidad de desplazamiento imposible: ${Math.round(speedKmH)} km/h (${distanceKm.toFixed(1)} km)`,
+    };
+  }
+
+  if (speedKmH > 200) {
+    return {
+      score: 30,
+      reason: `Desplazamiento inusualmente rápido: ${Math.round(speedKmH)} km/h`,
+    };
+  }
+
+  return null;
+}
+
+export const MIN_HISTORICAL_TRANSACTIONS_FOR_AVERAGE = 10;
+
 export class RiskService {
   async evaluateRisk(
     input: EvaluateRiskInput,
@@ -48,7 +72,7 @@ export class RiskService {
     const monto = new Prisma.Decimal(input.monto);
     const countTx = stats._count.id_transaccion;
 
-    if (countTx >= 1 && avgMonto.greaterThan(0)) {
+    if (countTx >= MIN_HISTORICAL_TRANSACTIONS_FOR_AVERAGE && avgMonto.greaterThan(0)) {
       if (exceedsAverageMultiple(monto, avgMonto, 5)) {
         score += 40;
         razones.push(
@@ -122,14 +146,12 @@ export class RiskService {
 
         if (timeDiffHours > 0) {
           const speedKmH = distanceKm / timeDiffHours;
-          if (speedKmH > 800) {
-            score += 50;
+          const geoPenalty = getGeoRiskPenalty(distanceKm, speedKmH);
+          if (geoPenalty) {
+            score += geoPenalty.score;
             razones.push(
-              `Velocidad de desplazamiento imposible: ${Math.round(speedKmH)} km/h (${distanceKm.toFixed(1)} km en ${timeDiffHours.toFixed(2)}h)`,
+              `${geoPenalty.reason} (${timeDiffHours.toFixed(2)}h)`,
             );
-          } else if (speedKmH > 200 && distanceKm > 100) {
-            score += 30;
-            razones.push(`Desplazamiento inusualmente rápido: ${Math.round(speedKmH)} km/h`);
           }
         }
       }

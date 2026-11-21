@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
   getPendingCount: vi.fn(),
   updateStatus: vi.fn(),
   showToast: vi.fn(),
+  refreshAccounts: vi.fn(),
+}));
+
+vi.mock("@/hooks/useAccount", () => ({
+  useAccount: () => ({ refreshAccounts: mocks.refreshAccounts }),
 }));
 
 vi.mock("@/api/Alerts", () => ({
@@ -35,6 +40,8 @@ describe("useAlerts", () => {
     mocks.getPendingCount.mockReset();
     mocks.updateStatus.mockReset();
     mocks.showToast.mockReset();
+    mocks.refreshAccounts.mockReset();
+    mocks.refreshAccounts.mockResolvedValue(undefined);
   });
 
   it("ignores an older pending-count response after a newer request", async () => {
@@ -56,6 +63,7 @@ describe("useAlerts", () => {
     await act(async () => {
       await result.current.resolveAlert(1, "FUI_YO");
     });
+    expect(mocks.refreshAccounts).toHaveBeenCalled();
     await waitFor(() => {
       expect(pendingCountResolvers).toHaveLength(2);
     });

@@ -17,7 +17,7 @@ export interface AuthContextType {
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (credentials: RegisterCredentials) => Promise<RegisterResponseData>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -38,11 +38,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const handleAuthExpired = (event: Event) => {
-      const returnTo = (event as CustomEvent<{ returnTo?: string }>).detail
-        ?.returnTo;
+      const detail = (event as CustomEvent<{
+        returnTo?: string;
+        reason?: "USER_INACTIVE";
+      }>).detail;
+      const returnTo = detail?.returnTo;
       setUser(null);
       setToken(null);
-      navigate("/login?expired=true", {
+      navigate(detail?.reason === "USER_INACTIVE"
+        ? "/login?inactive=true"
+        : "/login?expired=true", {
         replace: true,
         state: returnTo ? { from: returnTo } : undefined,
       });
@@ -117,7 +122,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await AuthApi.logout();
+    } catch (error) {
+      console.error("No se pudo revocar la sesión en el servidor:", error);
+    }
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);

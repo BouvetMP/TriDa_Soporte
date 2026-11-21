@@ -23,6 +23,7 @@ export interface FraudAlert {
 }
 
 export interface ListAlertsQueryParams {
+  id_cuenta?: number;
   estado?: AlertStatus;
   severidad?: AlertSeverity;
   limit?: number;
@@ -32,6 +33,6 @@ export interface ListAlertsQueryParams {
 }
 
 export interface UpdateAlertStatusPayload {
-  estado: AlertStatus;
-  accion_usuario?: AlertUserAction;
+  estado: "CONFIRMADA" | "DESCARTADA";
+  accion_usuario: AlertUserAction;
 }

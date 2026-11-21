@@ -10,6 +10,7 @@ import { BudgetCard } from "@/components/budgets/BudgetCard";
 import { NewBudgetModal } from "@/components/budgets/NewBudgetModal";
 import { EditBudgetModal } from "@/components/budgets/EditBudgetModal";
 import type { Budget } from "@/types";
+import { dateOnlyInBogota } from "@/utils/Date";
 
 const MONTH_NAMES = [
   "Enero",
@@ -29,9 +30,8 @@ const MIN_BUDGET_YEAR = 2020;
 const MAX_BUDGET_YEAR = 2100;
 
 export function BudgetsPage() {
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth() + 1;
-  const currentYear = currentDate.getFullYear();
+  const todayInBogota = dateOnlyInBogota(new Date());
+  const [currentYear, currentMonth] = todayInBogota.split("-").map(Number);
 
   const {
     budgets,

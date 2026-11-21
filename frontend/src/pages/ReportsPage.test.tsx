@@ -22,7 +22,17 @@ describe("ReportsPage", () => {
           balance_neto: 300,
           tasa_ahorro: 30,
         },
-        gastos_por_categoria: [],
+        gastos_por_categoria: [
+          {
+            id_categoria: null,
+            nombre: "Sin categoría",
+            tipo: "GASTO",
+            total: 30,
+            porcentaje: 4.3,
+            numero_transacciones: 1,
+            color: null,
+          },
+        ],
         ingresos_por_categoria: [],
         top_comercios: [
           {
@@ -54,5 +64,9 @@ describe("ReportsPage", () => {
       screen.getByRole("heading", { name: "Comercios principales" }),
     ).toBeTruthy();
     expect(screen.getByText("Éxito")).toBeTruthy();
+    expect(screen.getByText("Sin categoría")).toBeTruthy();
+    expect(
+      screen.getByText("Porcentaje de ingresos destinado al ahorro"),
+    ).toBeTruthy();
   });
 });

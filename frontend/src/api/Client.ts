@@ -65,6 +65,20 @@ apiClient.interceptors.response.use(
       }
     }
 
+    if (
+      error.response?.status === 403 &&
+      error.response.data?.error?.code === "USER_INACTIVE" &&
+      !window.location.pathname.startsWith("/login")
+    ) {
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      localStorage.removeItem(TOKEN_KEY);
+      window.dispatchEvent(
+        new CustomEvent(AUTH_EXPIRED_EVENT, {
+          detail: { returnTo, reason: "USER_INACTIVE" },
+        }),
+      );
+    }
+
     // Extrae el mensaje de error normalizado enviado por sendError del backend
     const errorMessage =
       error.response?.data?.error?.message ||

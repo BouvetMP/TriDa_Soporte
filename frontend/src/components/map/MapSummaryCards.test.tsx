@@ -5,7 +5,7 @@ import { MapSummaryCards } from "./MapSummaryCards";
 afterEach(cleanup);
 
 describe("MapSummaryCards", () => {
-  it("shows four distinct geographic summary metrics", () => {
+  it("shows only metrics supported by stored coordinates and risk data", () => {
     render(
       <MapSummaryCards
         summary={{
@@ -19,9 +19,9 @@ describe("MapSummaryCards", () => {
     );
 
     expect(screen.getByText("Ubicaciones registradas")).toBeTruthy();
-    expect(screen.getByText("Ciudades")).toBeTruthy();
-    expect(screen.getByText("Países registrados")).toBeTruthy();
     expect(screen.getByText("Riesgo alto")).toBeTruthy();
+    expect(screen.queryByText("Ciudades")).toBeNull();
+    expect(screen.queryByText("Países registrados")).toBeNull();
     expect(screen.queryByText("Puntos registrados")).toBeNull();
   });
 });

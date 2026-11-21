@@ -11,7 +11,7 @@ import {
 
 interface ApiCategoryReport {
   categorias: Array<{
-    id_categoria: number;
+    id_categoria: number | null;
     nombre: string;
     total: number;
   }>;
@@ -67,9 +67,11 @@ export const DashboardApi = {
     }));
   },
 
-  getAdvice: async (): Promise<FinancialAdvice[]> => {
+  getAdvice: async (id_cuenta?: number): Promise<FinancialAdvice[]> => {
     const response =
-      await apiClient.get<ApiSuccess<FinancialAdvice[]>>("/dashboard/advice");
+      await apiClient.get<ApiSuccess<FinancialAdvice[]>>("/dashboard/advice", {
+        params: id_cuenta ? { id_cuenta } : undefined,
+      });
     return response.data.data;
   },
 

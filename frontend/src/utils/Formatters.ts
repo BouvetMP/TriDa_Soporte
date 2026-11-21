@@ -7,17 +7,22 @@ export function formatCurrency(
   locale = "es-CO",
 ): string {
   const numericAmount =
-    typeof amount === "string" ? parseFloat(amount) : amount;
+    typeof amount === "string" ? Number(amount) : amount;
 
-  if (isNaN(numericAmount)) {
-    return "$ 0,00";
+  if (!Number.isFinite(numericAmount)) {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: currency === "COP" ? 0 : 2,
+      maximumFractionDigits: currency === "COP" ? 0 : 2,
+    }).format(0);
   }
 
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: currency === "COP" ? 0 : 2,
+    maximumFractionDigits: currency === "COP" ? 0 : 2,
   }).format(numericAmount);
 }
 

@@ -10,7 +10,7 @@ import {
 import { RISK_THRESHOLDS } from "../../utils/risk.js";
 
 export const insightsService = {
-  async getInsights(userId: number, periodoDias = 30) {
+  async getInsights(userId: number, periodoDias = 30, accountId?: number) {
     const desde = new Date();
     desde.setDate(desde.getDate() - periodoDias);
 
@@ -35,9 +35,11 @@ export const insightsService = {
       WHERE id_usuario = $1
         AND fecha_transaccion >= $2
         AND estado IN ('CONFIRMADA', 'APROBADA')
+        AND ($3::int IS NULL OR id_cuenta = $3)
       `,
       userId,
       desde,
+      accountId ?? null,
     );
 
     // 2. Top categorías de gasto
@@ -63,12 +65,14 @@ export const insightsService = {
         AND t.tipo_movimiento = 'GASTO'
         AND t.fecha_transaccion >= $2
         AND t.estado IN ('CONFIRMADA', 'APROBADA')
+        AND ($3::int IS NULL OR t.id_cuenta = $3)
       GROUP BY c.id_categoria, c.nombre, c.icono, c.color
       ORDER BY total DESC
       LIMIT 5
       `,
       userId,
       desde,
+      accountId ?? null,
     );
 
     // 3. Top comercios
@@ -89,12 +93,14 @@ export const insightsService = {
         AND tipo_movimiento = 'GASTO'
         AND fecha_transaccion >= $2
         AND estado IN ('CONFIRMADA', 'APROBADA')
+        AND ($3::int IS NULL OR id_cuenta = $3)
       GROUP BY comercio
       ORDER BY total DESC
       LIMIT 5
       `,
       userId,
       desde,
+      accountId ?? null,
     );
 
     // 4. Alertas del periodo
@@ -109,11 +115,14 @@ export const insightsService = {
         COUNT(*)::bigint AS total_alertas,
         COUNT(*) FILTER (WHERE a.severidad IN ('ALTA', 'CRITICA'))::bigint AS criticas
       FROM trida.alertas_fraude a
+      LEFT JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
         AND a.fecha_detectada >= $2
+        AND ($3::int IS NULL OR t.id_cuenta = $3)
       `,
       userId,
       desde,
+      accountId ?? null,
     );
 
     const resumen = resumenRows[0] ?? {
@@ -124,10 +133,31 @@ export const insightsService = {
       score_promedio: 0,
     };
 
+    const aportesMeta =
+      accountId === undefined
+        ? await (async () => {
+            const aporteRows = await queryRaw<
+              { aportes: string | number }[]
+            >(
+              `
+              SELECT COALESCE(SUM(am.monto), 0)::numeric AS aportes
+              FROM trida.aportes_meta am
+              JOIN trida.metas_ahorro ma ON ma.id_meta = am.id_meta
+              WHERE ma.id_usuario = $1
+                AND am.fecha_aporte >= $2
+              `,
+              userId,
+              desde,
+            );
+            return new Prisma.Decimal(aporteRows[0]?.aportes ?? 0);
+          })()
+        : new Prisma.Decimal(0);
+
     const ingresos = new Prisma.Decimal(resumen.ingresos);
     const gastos = new Prisma.Decimal(resumen.gastos);
-    const ahorros = new Prisma.Decimal(resumen.ahorros);
-    const balance = calculateNetBalance(ingresos, gastos);
+    const ahorrosMovimiento = new Prisma.Decimal(resumen.ahorros);
+    const ahorros = ahorrosMovimiento.plus(aportesMeta);
+    const balance = calculateNetBalance(ingresos, gastos, ahorros);
     const tasaAhorro = calculatePercentage(ahorros, ingresos);
     const scorePromedio = Number(resumen.score_promedio);
     const totalAlertas = Number(alertasRows[0]?.total_alertas ?? 0);

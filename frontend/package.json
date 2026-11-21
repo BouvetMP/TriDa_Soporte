@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm type-check && vite build",
+    "build:local": "pnpm type-check && vite build --mode development",
     "type-check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint .",
     "format": "prettier --write . --ignore-path ../.gitignore",

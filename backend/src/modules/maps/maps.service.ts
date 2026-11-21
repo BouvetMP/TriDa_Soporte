@@ -6,7 +6,11 @@ import { queryRaw } from "../../db/queryRaw.js";
 import type { MapQueryInput } from "./maps.schemas.js";
 import { config } from "../../config.js";
 import { parseDateEnd, parseDateStart } from "../../utils/dateRange.js";
-import { RISK_THRESHOLDS, riskLevelSql, type RiskLevel } from "../../utils/risk.js";
+import {
+  RISK_THRESHOLDS,
+  unifiedRiskLevelSql,
+  type RiskLevel,
+} from "../../utils/risk.js";
 
 type RawLocation = {
   id_transaccion: number;
@@ -62,10 +66,27 @@ export const mapService = {
         COUNT(*)::bigint AS total_geolocalizadas,
         COUNT(DISTINCT ciudad)::bigint AS ciudades_distintas,
         COUNT(DISTINCT pais)::bigint AS paises_distintos,
-        COUNT(*) FILTER (WHERE t.score_anomalia >= ${RISK_THRESHOLDS.HIGH})::bigint AS transacciones_riesgo_alto,
+        COUNT(*) FILTER (
+          WHERE ${unifiedRiskLevelSql("t.score_anomalia", "COALESCE(a.severidad, '')")} IN ('ALTO', 'CRITICO')
+        )::bigint AS transacciones_riesgo_alto,
         COALESCE(AVG(t.score_anomalia), 0)::numeric AS score_promedio
       FROM trida.transacciones t
       JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
+      LEFT JOIN LATERAL (
+        SELECT a.severidad
+        FROM trida.alertas_fraude a
+        WHERE a.id_transaccion = t.id_transaccion
+        ORDER BY
+          CASE a.severidad
+            WHEN 'CRITICA' THEN 4
+            WHEN 'ALTA' THEN 3
+            WHEN 'MEDIA' THEN 2
+            WHEN 'BAJA' THEN 1
+            ELSE 0
+          END DESC,
+          a.fecha_detectada DESC
+        LIMIT 1
+      ) a ON TRUE
       WHERE t.id_usuario = $1
         AND u.latitud IS NOT NULL
         AND u.longitud IS NOT NULL
@@ -104,7 +125,7 @@ export const mapService = {
 
     if (filters.nivel_riesgo && filters.nivel_riesgo !== "ALL") {
       params.push(filters.nivel_riesgo);
-      conditions.push(`${riskLevelSql("t.score_anomalia")} = $${params.length}`);
+      conditions.push(`${unifiedRiskLevelSql("t.score_anomalia", "COALESCE(a.severidad, '')")} = $${params.length}`);
     }
 
     if (filters.estado && filters.estado !== "ALL") {
@@ -133,7 +154,7 @@ export const mapService = {
         t.estado,
         t.score_anomalia,
         COALESCE(t.score_anomalia >= ${RISK_THRESHOLDS.MEDIUM}, FALSE) AS es_sospechosa,
-        ${riskLevelSql("t.score_anomalia")} AS nivel_riesgo,
+        ${unifiedRiskLevelSql("t.score_anomalia", "COALESCE(a.severidad, '')")} AS nivel_riesgo,
         u.ciudad,
         u.pais,
         u.latitud,
@@ -145,6 +166,21 @@ export const mapService = {
       JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
       LEFT JOIN trida.cuentas ct ON ct.id_cuenta = t.id_cuenta
       LEFT JOIN trida.categorias cat ON cat.id_categoria = t.id_categoria
+      LEFT JOIN LATERAL (
+        SELECT a.severidad
+        FROM trida.alertas_fraude a
+        WHERE a.id_transaccion = t.id_transaccion
+        ORDER BY
+          CASE a.severidad
+            WHEN 'CRITICA' THEN 4
+            WHEN 'ALTA' THEN 3
+            WHEN 'MEDIA' THEN 2
+            WHEN 'BAJA' THEN 1
+            ELSE 0
+          END DESC,
+          a.fecha_detectada DESC
+        LIMIT 1
+      ) a ON TRUE
       WHERE ${whereClause}
       ORDER BY t.fecha_transaccion DESC
       LIMIT $${itemsParams.length}
@@ -154,6 +190,21 @@ export const mapService = {
       SELECT COUNT(*)::bigint AS total
       FROM trida.transacciones t
       JOIN trida.ubicaciones u ON u.id_ubicacion = t.id_ubicacion
+      LEFT JOIN LATERAL (
+        SELECT a.severidad
+        FROM trida.alertas_fraude a
+        WHERE a.id_transaccion = t.id_transaccion
+        ORDER BY
+          CASE a.severidad
+            WHEN 'CRITICA' THEN 4
+            WHEN 'ALTA' THEN 3
+            WHEN 'MEDIA' THEN 2
+            WHEN 'BAJA' THEN 1
+            ELSE 0
+          END DESC,
+          a.fecha_detectada DESC
+        LIMIT 1
+      ) a ON TRUE
       WHERE ${whereClause}
     `;
 
