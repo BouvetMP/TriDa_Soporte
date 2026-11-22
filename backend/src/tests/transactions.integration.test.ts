@@ -46,9 +46,7 @@ process.env.TRANSACTION_WEBHOOK_SECRET = transactionWebhookSecret;
 function createSignedWebhookRequest(payload: unknown, secret = transactionWebhookSecret) {
   const body = JSON.stringify(payload);
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = createHmac("sha256", secret)
-    .update(`${timestamp}.${body}`)
-    .digest("hex");
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
 
   return {
     body,
@@ -300,27 +298,47 @@ test("transaction routes keep account balances consistent across creation and re
       { id_usuario: userId, id_transaccion: pendingConfirmation.id_transaccion },
       process.env.JWT_SECRET!,
     );
+    const mismatchedOwnerToken = createTransactionConfirmationToken(
+      { id_usuario: userId + 1, id_transaccion: pendingConfirmation.id_transaccion },
+      process.env.JWT_SECRET!,
+    );
+    const mismatchedReadResponse = await fetch(
+      `${baseUrl}/transactions/email-confirmation?token=${encodeURIComponent(mismatchedOwnerToken)}`,
+    );
+    assert.equal(mismatchedReadResponse.status, 404);
+    assert.equal(mismatchedReadResponse.headers.get("cache-control"), "no-store");
+    const mismatchedDecisionResponse = await fetch(`${baseUrl}/transactions/email-confirmation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: mismatchedOwnerToken, decision: "NO_FUI_YO" }),
+    });
+    assert.equal(mismatchedDecisionResponse.status, 404);
+    assert.equal(mismatchedDecisionResponse.headers.get("cache-control"), "no-store");
+    assert.equal(
+      (
+        await prisma.transaccion.findUniqueOrThrow({
+          where: { id_transaccion: pendingConfirmation.id_transaccion },
+          select: { estado: true },
+        })
+      ).estado,
+      "PENDIENTE",
+    );
     const readConfirmationResponse = await fetch(
       `${baseUrl}/transactions/email-confirmation?token=${encodeURIComponent(confirmationToken)}`,
     );
     assert.equal(readConfirmationResponse.status, 200);
-    const firstConfirmationResponse = await fetch(
-      `${baseUrl}/transactions/email-confirmation`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: confirmationToken, decision: "FUI_YO" }),
-      },
-    );
+    assert.equal(readConfirmationResponse.headers.get("cache-control"), "no-store");
+    const firstConfirmationResponse = await fetch(`${baseUrl}/transactions/email-confirmation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: confirmationToken, decision: "FUI_YO" }),
+    });
     assert.equal(firstConfirmationResponse.status, 200);
-    const replayedConfirmationResponse = await fetch(
-      `${baseUrl}/transactions/email-confirmation`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: confirmationToken, decision: "FUI_YO" }),
-      },
-    );
+    const replayedConfirmationResponse = await fetch(`${baseUrl}/transactions/email-confirmation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: confirmationToken, decision: "FUI_YO" }),
+    });
     assert.equal(replayedConfirmationResponse.status, 409);
     assert.equal(
       Number(
@@ -1617,6 +1635,57 @@ test("transaction routes keep account balances consistent across creation and re
         ).saldo_actual,
       ),
       255,
+    );
+
+    const automaticAlertTransaction = await prisma.transaccion.create({
+      data: {
+        id_usuario: userId,
+        id_cuenta: alertAccount.id_cuenta,
+        tipo_movimiento: "GASTO",
+        monto: 18,
+        canal: "webhook",
+        estado: "PENDIENTE",
+      },
+    });
+    const automaticAlert = await prisma.alerta_fraude.create({
+      data: {
+        id_usuario: userId,
+        id_transaccion: automaticAlertTransaction.id_transaccion,
+        severidad: "ALTA",
+        motivo: "Gasto automático pendiente de revisión",
+      },
+    });
+    const resolveAutomaticAlertResponse = await fetch(
+      `${baseUrl}/alerts/${automaticAlert.id_alerta}/status`,
+      {
+        method: "PATCH",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify({
+          estado: "DESCARTADA",
+          accion_usuario: "FUI_YO",
+        }),
+      },
+    );
+    assert.equal(resolveAutomaticAlertResponse.status, 200);
+    assert.equal(
+      (
+        await prisma.transaccion.findUniqueOrThrow({
+          where: { id_transaccion: automaticAlertTransaction.id_transaccion },
+          select: { estado: true },
+        })
+      ).estado,
+      "CONFIRMADA",
+    );
+    assert.equal(
+      Number(
+        (
+          await prisma.cuenta.findUniqueOrThrow({
+            where: { id_cuenta: alertAccount.id_cuenta },
+            select: { saldo_actual: true },
+          })
+        ).saldo_actual,
+      ),
+      237,
     );
 
     const trustDeviceResponse = await fetch(

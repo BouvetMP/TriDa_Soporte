@@ -36,7 +36,12 @@ const getTransport = (): ReturnType<typeof nodemailer.createTransport> => {
   return transport;
 };
 
-export const sendEmail = async (to: string, subject: string, html: string): Promise<void> => {
+export const sendEmail = async (
+  to: string,
+  subject: string,
+  html: string,
+  text?: string,
+): Promise<void> => {
   const activeTransport = getTransport();
   activeSends += 1;
   try {
@@ -45,6 +50,7 @@ export const sendEmail = async (to: string, subject: string, html: string): Prom
       to,
       subject,
       html,
+      ...(text ? { text } : {}),
     });
   } finally {
     activeSends -= 1;

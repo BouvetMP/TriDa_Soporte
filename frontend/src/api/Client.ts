@@ -7,6 +7,36 @@ import {
 } from "@/constants/Api";
 import { ApiErrorResponse } from "@/types";
 
+interface ApiClientError {
+  response?: {
+    status: number;
+    data?: ApiErrorResponse;
+  };
+  code?: string;
+  message?: string;
+}
+
+export function normalizeApiError(error: ApiClientError): Error {
+  if (error.response) {
+    const status = error.response.status;
+    const apiError = error.response.data?.error;
+    const code = apiError?.code;
+    const message =
+      apiError?.message || `El servidor respondió con HTTP ${status}.`;
+    return new Error(`[HTTP ${status}${code ? ` · ${code}` : ""}] ${message}`);
+  }
+
+  if (error.code === "ERR_NETWORK" || error.message === "Network Error") {
+    return new Error(
+      "Sin respuesta HTTP (Network Error). Verifica que el backend esté iniciado y que la URL de API y CORS sean correctos.",
+    );
+  }
+
+  return new Error(
+    `Sin respuesta HTTP${error.code ? ` (${error.code})` : ""}: ${error.message || "Ocurrió un error inesperado."}`,
+  );
+}
+
 /**
  * Instancia global de Axios configurada con la base URL de la API v2.
  */
@@ -79,12 +109,6 @@ apiClient.interceptors.response.use(
       );
     }
 
-    // Extrae el mensaje de error normalizado enviado por sendError del backend
-    const errorMessage =
-      error.response?.data?.error?.message ||
-      error.message ||
-      "Ocurrió un error inesperado de red.";
-
-    return Promise.reject(new Error(errorMessage));
+    return Promise.reject(normalizeApiError(error));
   },
 );

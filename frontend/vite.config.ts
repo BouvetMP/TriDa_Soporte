@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-function getApiOrigin(apiBaseUrl: string): string {
+function getApiOrigin(apiBaseUrl: string, mode: string): string {
   let apiUrl: URL;
   try {
     apiUrl = new URL(apiBaseUrl);
@@ -12,6 +12,22 @@ function getApiOrigin(apiBaseUrl: string): string {
 
   if (!["http:", "https:"].includes(apiUrl.protocol)) {
     throw new Error("VITE_API_BASE_URL debe usar HTTP o HTTPS.");
+  }
+
+  if (mode !== "development") {
+    const hostname = apiUrl.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    const isLoopback =
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "::1" ||
+      hostname === "0.0.0.0" ||
+      /^127(?:\.\d{1,3}){3}$/.test(hostname);
+
+    if (apiUrl.protocol !== "https:" || isLoopback) {
+      throw new Error(
+        "En builds que no sean de desarrollo, VITE_API_BASE_URL debe ser una URL HTTPS pública, no una dirección local.",
+      );
+    }
   }
 
   return apiUrl.origin;
@@ -29,8 +45,8 @@ export default defineConfig(({ mode }) => {
     throw new Error("VITE_API_BASE_URL debe definirse para los builds.");
   }
 
-  const apiOrigin = getApiOrigin(apiBaseUrl);
-  const connectSources = ["'self'", apiOrigin];
+  const apiOrigin = getApiOrigin(apiBaseUrl, mode);
+  const connectSources = ["'self'", apiOrigin, "https://tiles.openfreemap.org"];
   const scriptSources = ["'self'"];
   if (mode === "development") {
     connectSources.push("http://localhost:*", "http://127.0.0.1:*", "ws:");
@@ -42,8 +58,9 @@ export default defineConfig(({ mode }) => {
     `script-src ${scriptSources.join(" ")}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+    "img-src 'self' data: blob: https://tiles.openfreemap.org",
     `connect-src ${connectSources.join(" ")}`,
+    "worker-src 'self' blob:",
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",

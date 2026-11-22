@@ -89,9 +89,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
         entidad: tipo === "EFECTIVO" ? undefined : entidad.trim(),
         tipo,
         numero_enmascarado:
-          tipo === "EFECTIVO"
-            ? undefined
-            : accountNumberDigits.slice(-4),
+          tipo === "EFECTIVO" ? undefined : accountNumberDigits.slice(-4),
         saldo_inicial: parsedSaldo,
         color,
       });
@@ -121,10 +119,11 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
       isOpen={isOpen}
       onClose={handleClose}
       isSubmitting={isSubmitting}
+      maxWidth="xl"
       title="Agregar Nueva Cuenta"
       description="Registra un banco, tarjeta, billetera digital o dinero en efectivo"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <Input
           label="Nombre de la cuenta"
           placeholder="Ej: Bancolombia Ahorros, Nequi, Tarjeta Visa"
@@ -133,7 +132,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
           required
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select
             label="Tipo de cuenta"
             value={tipo}
@@ -158,7 +157,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
             label="Saldo Inicial (COP)"
             type="number"
@@ -174,7 +173,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
             <div>
               <Input
                 label="Número completo de cuenta *"
-                placeholder="Escribe el número completo"
+                placeholder="Ingresa el número de cuenta"
                 inputMode="numeric"
                 autoComplete="off"
                 value={numeroCuenta}
@@ -188,14 +187,14 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
           )}
         </div>
 
-        <div>
+        <div className="space-y-2">
           <label
             htmlFor="new-account-color"
-            className="block text-xs font-semibold tracking-wide text-text-secondary uppercase mb-1.5"
+            className="block text-xs font-semibold tracking-wide text-text-secondary uppercase"
           >
             Color distintivo
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <input
               id="new-account-color"
               type="color"
@@ -203,17 +202,24 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setColor(e.target.value)
               }
-              className="h-9 w-12 rounded-lg bg-surface border border-border cursor-pointer"
+              className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-surface p-1"
             />
-            <span className="text-xs font-mono text-text-muted">{color}</span>
+            <span className="rounded-md bg-surface-hover px-2.5 py-1.5 text-xs font-mono text-text-muted">
+              {color.toUpperCase()}
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+        <div className="flex flex-col-reverse items-stretch justify-end gap-2 border-t border-border pt-5 sm:flex-row sm:items-center sm:gap-3">
           <Button type="button" variant="ghost" onClick={handleClose}>
             Cancelar
           </Button>
-          <Button type="submit" variant="primary" isLoading={isSubmitting}>
+          <Button
+            type="submit"
+            variant="primary"
+            isLoading={isSubmitting}
+            className="sm:min-w-36"
+          >
             Guardar cuenta
           </Button>
         </div>

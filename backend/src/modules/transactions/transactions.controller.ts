@@ -154,6 +154,7 @@ export class TransactionsController {
   }
 
   async getEmailConfirmation(req: Request, res: Response, next: NextFunction) {
+    res.setHeader("Cache-Control", "no-store");
     try {
       const { token } = transactionConfirmationTokenSchema.parse(req.query);
       const confirmation = await transactionsService.getEmailConfirmation(token);
@@ -164,6 +165,7 @@ export class TransactionsController {
   }
 
   async resolveEmailConfirmation(req: Request, res: Response, next: NextFunction) {
+    res.setHeader("Cache-Control", "no-store");
     try {
       const { token, decision } = emailTransactionConfirmationSchema.parse(req.body);
       const result = await transactionsService.resolveEmailConfirmation(token, decision);

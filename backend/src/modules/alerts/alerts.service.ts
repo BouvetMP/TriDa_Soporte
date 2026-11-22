@@ -179,17 +179,6 @@ export class AlertsService {
 
       const currentTransaction = alert.transaccion;
       const { confirmsTransaction, rejectsTransaction } = getAlertTransactionDecision(data);
-      if (
-        currentTransaction.canal === "webhook" &&
-        currentTransaction.tipo_movimiento === "GASTO" &&
-        currentTransaction.estado === "PENDIENTE" &&
-        (confirmsTransaction || rejectsTransaction)
-      ) {
-        throw new AlertError(
-          "Los gastos automáticos deben resolverse desde el enlace enviado por correo",
-          409,
-        );
-      }
 
       const systemBlocked =
         currentTransaction.estado === "RECHAZADA" &&

@@ -1,6 +1,6 @@
 # TriDa
 
-> **Guardián Financiero y de Ciberseguridad Personal Impulsado por Inteligencia Artificial**
+> **Aplicación web de finanzas personales**
 
 ---
 
@@ -15,8 +15,8 @@
 7. [Variables de Entorno](#7-variables-de-entorno)
 8. [Estructura del Proyecto](#8-estructura-del-proyecto)
 9. [Modelo y Esquema de Base de Datos (`schema: trida`)](#9-modelo-y-esquema-de-base-de-datos-schema-trida)
-10. [Documentación de la API REST (`/api/v1`)](#10-documentación-de-la-api-rest-apiv1)
-11. [Seguridad, Privacidad y Cumplimiento (Ley 1581)](#11-seguridad-privacidad-y-cumplimiento-ley-1581)
+10. [Documentación de la API REST (`/api/v2`)](#10-documentación-de-la-api-rest-apiv2)
+11. [Seguridad y privacidad](#11-seguridad-y-privacidad)
 12. [Estándares de Desarrollo y Contribución](#12-estándares-de-desarrollo-y-contribución)
 13. [Estado del Proyecto y Licencia](#13-estado-del-proyecto-y-licencia)
 
@@ -24,147 +24,79 @@
 
 ## 1. ¿Qué es TriDa?
 
-**TriDa** es un **copiloto inteligente de protección financiera y ciberseguridad cotidiana** centrado en el usuario. Al vincularse de forma segura con tus cuentas y notificaciones, analiza en tiempo real movimientos enviados y recibidos, alertas SMS/push y enlaces web para **detectar intentos de estafa, suplantación (*phishing/smishing*) y fugas de dinero antes de que afecten tu patrimonio**.
+TriDa es una aplicación web para administrar cuentas y movimientos financieros, consultar resúmenes, presupuestos, metas de ahorro y alertas generadas por reglas. Las transacciones manuales del backend solo se pueden registrar en cuentas de efectivo; otros tipos de cuenta reciben movimientos mediante el webhook autenticado. TriDa no se conecta directamente con bancos ni solicita credenciales bancarias.
 
-A diferencia de los monitores pasivos tradicionales, TriDa convierte los datos en **acción preventiva**:
-- Evalúa la seguridad de cualquier **sitio web o enlace** antes de que ingreses tus credenciales o datos de pago.
-- Analiza **en qué se está yendo tu dinero** (gastos hormiga, suscripciones ocultas y flujo de caja).
-- Diagnostica tu **vida crediticia** y capacidad de endeudamiento para prevenir mora o sobreendeudamiento.
-- Genera **Planes Personalizados de Protección/Ciberseguridad y de Ahorro** mediante Inteligencia Artificial.
-- Entrega un **Reporte Mensual del Guardián** que resume a cuántas situaciones sospechosas estuviste expuesto, el dinero protegido y tu progreso financiero.
+El proyecto no integra actualmente un proveedor de IA. La evaluación de riesgo y los insights son reglas implementadas en el backend.
 
 ---
 
 ## 2. Características Principales
 
-| Módulo / Capacidad | Descripción |
+| Módulo disponible | Alcance actual |
 | --- | --- |
-| **Escudo en Tiempo Real (< 500 ms)** | Ingesta y normalización continua de transacciones enviadas/recibidas y notificaciones bancarias o SMS. |
-| **Verificador de Sitios Web (URLs)** | Analiza certificados TLS/SSL, antigüedad del dominio, redirecciones ocultas y *typosquatting* antes de navegar. |
-| **Motor de Criticidad + Explicabilidad** | Calcula un score de riesgo (0,0 % – 100,0 %) y traduce los factores técnicos a español cotidiano y empático. |
-| **Alertas Preventivas por Criticidad** | Clasificación en 3 niveles: **Baja** (30–49 %), **Media** (50–79 %) y **Alta** (80–95 %) con despacho multicanal. |
-| **Protocolo Escudo Crítico (> 95 %)** | Alerta prioritaria simultánea (Push, Email y SMS en < 30 s) con guía inmediata de contención ante estafas severas. |
-| **Radiografía de Gastos** | Clasificación automática de ingresos y egresos, detección de gastos hormiga y alertas de desviación de presupuesto. |
-| **Diagnóstico de Vida Crediticia** | Monitoreo de relación deuda/ingreso, uso de cupos de crédito, puntualidad de pagos y alertas de vencimiento. |
-| **Planes Generados por IA** | Creación y recalibración dinámica de un **Plan de Protección/Seguridad** y un **Plan de Ahorro** a la medida. |
-| **Reporte Mensual del Guardián** | Consolidado mensual de amenazas cercanas evitadas, monto protegido, balance financiero y exportación (PDF/XLSX/CSV). |
-| **Privacidad por Diseño (ARCO)** | Cero almacenamiento de contraseñas bancarias, enmascaramiento de PII antes de IA y cumplimiento de Ley 1581 de 2012. |
+| Autenticación | Registro, inicio/cierre de sesión, verificación de correo, recuperación y cambio de contraseña. El registro y los flujos por correo requieren SMTP configurado. |
+| Finanzas | Cuentas, categorías, transacciones, presupuestos y metas de ahorro. Eliminar una cuenta la desactiva; no borra físicamente la cuenta. |
+| Ingesta externa | Webhook de transacciones con secreto compartido, timestamp y firma HMAC. No conecta directamente con bancos. |
+| Seguimiento | Dashboard, alertas/reglas de riesgo, dispositivos, insights, reportes, perfil y mapa de movimientos con ubicación disponible. |
+| Auditoría | Consulta autenticada del historial de acciones propio. |
+
+El contrato detallado está en Swagger (`/api/docs`) y en OpenAPI (`/api/docs.json`) cuando el backend no se ejecuta con `NODE_ENV=production`.
 
 ---
 
 ## 3. Arquitectura del Sistema
 
-### 3.1 Visión General (Tres Capas Desacopladas)
+### 3.1 Arquitectura implementada
 
-TriDa está construido bajo una arquitectura modular de alta cohesión y bajo acoplamiento:
-
-- **Frontend (Cliente Web Responsivo)**: React 18 + Vite + Tailwind CSS + TypeScript. Se comunica con el backend mediante API REST sobre HTTPS/TLS 1.3 con tokens JWT.
-- **Backend (Núcleo del Guardián)**: Node.js 22 + Express.js + TypeScript. Orquesta la ingesta de eventos, el análisis de URLs, la evaluación crediticia, el enmascaramiento de datos sensibles (`PIIMasker`) y la generación de planes.
-- **Base de Datos**: PostgreSQL 17 con esquema relacional normalizado en 3FN (`schema: trida`), funciones almacenadas (`trida.fn_*`) y reglas de auditoría inmutable (`RULES`).
-- **IA Externa**: Gemini API integrada mediante **Adapter Pattern**, garantizando explicabilidad y planes accionables sin acoplar el núcleo a un único proveedor.
+- **Frontend**: SPA React 18 + TypeScript servida por Vite. El cliente Axios usa `VITE_API_BASE_URL` (por defecto `http://localhost:3000/api/v2`) y JWT en rutas autenticadas.
+- **Backend**: API Express 4 + TypeScript ejecutada en Node.js. Los módulos separan rutas, controladores y servicios; Zod valida entradas y Prisma accede a PostgreSQL.
+- **Base de datos**: PostgreSQL, esquema `trida`. `database/schema.sql` instala el esquema y reglas SQL; Prisma Client se genera desde `backend/prisma/schema.prisma`. Algunas consultas usan SQL parametrizado.
+- **Servicios externos**: SMTP es opcional, pero necesario para enviar correos; el mapa obtiene estilos y tiles de OpenFreeMap y la fuente Inter de Google Fonts desde el navegador. Un sistema externo puede enviar movimientos al webhook autenticado.
+- **No configurado en el runtime actual**: proveedores de IA, agregadores bancarios, SMS/push, Redis, MongoDB, microservicios ML y Docker Compose.
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
-│                        CLIENTE (Browser / PWA)                     │
-│                React 18 + Vite + Tailwind CSS + TS                 │
-│                          localhost:5173                            │
-└─────────────────────────────────┬──────────────────────────────────┘
-                                  │ API REST sobre HTTPS (TLS 1.3)
-                                  │ Authorization: Bearer <JWT>
-                                  ▼
-┌────────────────────────────────────────────────────────────────────┐
-│                       BACKEND (Express.js)                         │
-│                         localhost:5000                             │
-│                                                                    │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                       NÚCLEO TRIDA                           │  │
-│  │  Orquestador central del Guardián:                           │  │
-│  │  • Ingesta de movimientos y notificaciones (SMS/Push)        │  │
-│  │  • Verificación de seguridad de sitios web (URLs)            │  │
-│  │  • Análisis de gastos y vida crediticia                      │  │
-│  │  • Generación y seguimiento de Planes de Protección y Ahorro │  │
-│  └──────────────────────────────┬───────────────────────────────┘  │
-│                                 │                                  │
-│  ┌──────────────────────────────▼───────────────────────────────┐  │
-│  │            PIIMasker + INTERFAZ IA (Adapter Pattern)         │  │
-│  │  Anonimiza datos personales y traduce contratos hacia IA     │  │
-│  └──────────────────────────────┬───────────────────────────────┘  │
-└──────────────┬──────────────────┼──────────────────┬───────────────┘
-               │ pg Pool          │ HTTPS            │ HTTPS
-               ▼                  ▼                  ▼
-┌──────────────────────┐ ┌──────────────────┐ ┌──────────────────────┐
-│   BASE DE DATOS      │ │   IA EXTERNA     │ │ INTELIGENCIA WEB     │
-│   (PostgreSQL 17)    │ │  (Gemini API)    │ │ (SSL / Reputación)   │
-│   schema: trida      │ │                  │ │                      │
-│   12 tablas (3FN)    │ │ • Score 0-100 %  │ │ • Validez TLS/SSL    │
-│   pgcrypto + RULES   │ │ • Explicabilidad │ │ • Antigüedad dominio │
-│                      │ │ • Planes IA      │ │ • Anti-Phishing      │
-└──────────────────────┘ └──────────────────┘ └──────────────────────┘
+Navegador (React / Vite, localhost:5173)
+  ├─ REST /api/v2 ───────────────> Backend Express (localhost:3000)
+  │                                  ├─ Prisma / SQL ──> PostgreSQL (trida)
+  │                                  └─ SMTP opcional ─> Servicio de correo
+  └─ Tiles del mapa y fuente ─────> OpenFreeMap / Google Fonts
+
+Sistema emisor ── webhook firmado ─> Backend Express
 ```
 
-### 3.2 Flujo del Backend por Capas
-
-El **Núcleo TriDa** actúa como orquestador central: evita la dispersión de lógica de decisión entre múltiples servicios coordinando el enriquecimiento, la anonimización y la respuesta final.
+### 3.2 Flujo del backend
 
 ```text
-HTTP Request
-     │
-     ▼
-┌──────────────────┐
-│      Router      │  Define rutas /api/v1/* y aplica middlewares de seguridad
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│    Controller    │  Valida payload con Zod, extrae req.user, invoca servicio
-└────────┬─────────┘
-         │
-         ▼
-┌───────────────────────────────────────────┐
-│               NÚCLEO TRIDA                │
-│  Orquestador central del flujo preventivo │
-└────────┬─────────────────────────┬────────┘
-         │                         │
-         ▼                         ▼
-┌──────────────────┐      ┌──────────────────┐
-│     Service      │      │    PIIMasker +   │
-│  Finanzas, URLs, │      │  IAIAdapter      │
-│  Crédito, Planes │      │  (Gemini API)    │
-└────────┬─────────┘      └────────┬─────────┘
-         │                         │
-         ▼                         ▼
-┌──────────────────┐      ┌──────────────────┐
-│   PostgreSQL     │      │  Audit Log       │
-│  trida.fn_*()    │      │  logs_auditoria  │
-└──────────────────┘      └──────────────────┘
+HTTP request
+  → global middleware
+  → router del módulo (/api/v2/...)
+  → requireAuth cuando la ruta lo exige
+  → controller (validación Zod y respuesta)
+  → service
+  → Prisma o consulta SQL parametrizada
+  → PostgreSQL
 ```
 
 ### 3.3 Cadena de Middlewares (Express)
 
 ```text
-Request → helmet → cors → express.json() → rateLimiter → verifyToken → verifyOwnership / requireAdmin → controller → Response
+Request → requestLogger → helmet → cors → body parsers → rateLimiter → router
+        → requireAuth (rutas protegidas) → controller → errorHandler → Response
 ```
 
 | Middleware | Propósito | Alcance |
 | --- | --- | --- |
-| `helmet` | Cabeceras HTTP de seguridad (`HSTS`, `CSP`, `X-Frame-Options: DENY`) | Global |
-| `cors` | Control estricto de orígenes permitidos vía `FRONTEND_URL` (prohibido `*`) | Global |
-| `express.json()` | Parsing de payloads JSON con control de tamaño | Global |
-| `rateLimiter` | Protección contra fuerza bruta y abuso (máx. 100 req/min por IP) | Global / Auth / URLs |
-| `verifyToken` | Valida firma JWT y adjunta `req.user` (`{ id_usuario, email, rol, nombre }`) | Rutas protegidas |
-| `verifyOwnership` | Garantiza aislamiento total: cada usuario solo accede a sus propios registros | `/api/v1/guardian/*` |
-| `requireAdmin` | Restringe acceso al rol `ADMINISTRADOR` | `/api/v1/admin/*` |
+| `requestLogger` | Añade ID de solicitud y registra metadatos de petición | Global |
+| `helmet` | Cabeceras HTTP; CSP distinta según entorno | Global |
+| `cors` | Permite el origen configurado en `FRONTEND_URL` | Global |
+| `express.json()` | JSON con límite de 1 MB y retención del cuerpo bruto para firmar webhooks | Global |
+| `apiRateLimiter` | Límite general; autenticación agrega límites específicos | Global / Auth |
+| `requireAuth` | Valida JWT, usuario activo y versión del token | Rutas protegidas |
+| `errorHandler` | Normaliza errores de validación, Prisma y aplicación | Al final de las rutas |
 
-### 3.4 Arquitectura Modular del Frontend
+### 3.4 Aplicación web
 
-El cliente web está estructurado en **seis módulos autónomos** bajo enfoque *Mobile-First* y soporte **Dark/Light Mode**:
-
-1. **Autenticación y Seguridad de Cuenta**: Registro, login, recuperación sin enumeración y MFA (TOTP).
-2. **Centro de Mando del Guardián (Dashboard)**: Índice de exposición mensual, alertas activas con código de color, flujo financiero y progreso de planes.
-3. **Escáner de Sitios Web y Enlaces**: Verificador instantáneo de URLs con diagnóstico SSL, antigüedad de dominio y alerta anti-phishing.
-4. **Finanzas Personales y Vida Crediticia**: Radiografía de gastos por categoría, detección de gastos hormiga y salud de endeudamiento.
-5. **Planes Inteligentes de IA**: Gestión interactiva del **Plan de Protección/Seguridad** y del **Plan de Ahorro**.
-6. **Reportes del Guardián y Privacidad (ARCO)**: Descarga de reportes mensuales (PDF/XLSX/CSV), vinculación de cuentas y ejercicio de derechos Habeas Data.
+Las rutas de la SPA están en `frontend/src/App.tsx`. Las páginas autenticadas incluyen dashboard, cuentas, transacciones, categorías, presupuestos, ahorro, insights, reportes, alertas/seguridad, perfil, dispositivos y mapa. Las rutas públicas incluyen inicio de sesión, registro, verificación de correo, recuperación de contraseña y confirmación de transacciones por correo.
 
 ---
 
@@ -172,12 +104,11 @@ El cliente web está estructurado en **seis módulos autónomos** bajo enfoque *
 
 | Patrón | Implementación en TriDa | Beneficio Clave |
 | --- | --- | --- |
-| **Adapter Pattern (IA)** | Interfaz `IAIAdapter` implementada por `GeminiAdapter` (conmutable por configuración a OpenAI/Claude/Local). | Permite cambiar el proveedor de IA sin alterar el Núcleo TriDa ni los servicios financieros. |
-| **Privacy-by-Design (`PIIMasker`)** | Servicio intermedio que enmascara nombres, cédulas y números de cuenta antes de enviar contexto a la API externa de IA. | Cumple la Ley 1581 de 2012 evitando fuga de información personal identificable (PII). |
-| **Funciones SQL (`schema trida`)** | Todos los endpoints invocan funciones almacenadas (`SELECT * FROM trida.fn_nombre($1)`) en lugar de SQL crudo. | Centraliza reglas de consulta, garantiza filtrado por `id_usuario` y desacopla las tablas. |
-| **Auditoría Inmutable (`RULES`)** | Reglas `logs_no_update` y `logs_no_delete` en PostgreSQL sobre `trida.logs_auditoria` + hash SHA-256. | Impide modificar o borrar registros de seguridad incluso desde conexiones privilegiadas. |
-| **RBAC + Aislamiento de Titular** | Roles `USUARIO` (acceso exclusivo a sus datos) y `ADMINISTRADOR` (salud técnica y modelos IA, sin ver finanzas privadas). | Garantiza confidencialidad patrimonial y principio de mínimo privilegio. |
-| **Anti-Enumeración** | `login` y `forgot-password` devuelven mensajes y tiempos de respuesta genéricos sin revelar existencia de correos. | Protege contra ataques de descubrimiento de cuentas (OWASP A07). |
+| **Módulos por dominio** | Rutas, controladores y servicios organizados por dominio funcional. | Separa responsabilidades en la API. |
+| **Validación de contratos** | Zod valida payloads y parámetros; Swagger/OpenAPI documenta operaciones. | Rechaza entradas que no cumplen los esquemas del backend. |
+| **ORM y SQL parametrizado** | Prisma para acceso relacional y helper `queryRaw` para consultas SQL parametrizadas. | Acceso consistente al esquema `trida`. |
+| **JWT** | `requireAuth` verifica firma, usuario activo y versión del token. | Protege las rutas autenticadas. |
+| **Webhook firmado** | Secreto compartido, timestamp reciente y HMAC-SHA256 del cuerpo de la petición. | Autentica al emisor de movimientos externos. |
 
 ---
 
@@ -185,23 +116,18 @@ El cliente web está estructurado en **seis módulos autónomos** bajo enfoque *
 
 ### Stack Actual (MVP)
 
-| Capa | Tecnología | Versión | Función |
+| Capa | Dependencias principales | Versión declarada | Uso |
 | --- | --- | --- | --- |
-| **Runtime & Backend** | Node.js + Express.js + TypeScript | 22 LTS / 4.x / 5.x | API RESTful v1 y Núcleo Orquestador |
-| **Base de Datos** | PostgreSQL (`schema: trida`) | 17 | Persistencia relacional 3FN, `pgcrypto` y `RULES` |
-| **ORM / Driver** | Prisma ORM / `pg` (Pool) | 6.x / 8.x | Migraciones versionadas y ejecución de funciones SQL |
-| **Motor de IA** | Gemini API (vía `IAIAdapter`) | v1 | Scoring de riesgo, explicabilidad y planes de ahorro/protección |
-| **Validación & Seguridad** | Zod + Helmet + JWT + bcrypt | 3.x / 8.x / 9.x / 5.x | Esquemas estrictos, cabeceras seguras, tokens y hash (`cost = 12`) |
-| **Frontend** | React + Vite + Tailwind CSS + TS | 18.3 / 5.4 / 3.4 / 5.5 | Interfaz responsiva con Dark/Light Mode sin degradados |
-| **Iconografía & Mapas** | `lucide-react` + Leaflet | 0.453 / 1.9 | Iconografía unificada exclusiva y contexto geográfico |
-| **Gestor de Paquetes** | `pnpm` (`save-exact=true`) | 10+ | Único gestor permitido (`npm` y `yarn` prohibidos) |
+| Backend | Node.js, Express, TypeScript | Node `>=22.13.0`, Express 4, TypeScript 5 | API REST `/api/v2` |
+| Datos | PostgreSQL, Prisma Client y Prisma CLI | Prisma 6 | Persistencia en los esquemas `trida` y `public` |
+| Validación y seguridad | Zod, Helmet, CORS, express-rate-limit, jsonwebtoken, bcryptjs | Ver `backend/package.json` | Validación, HTTP, JWT y hash de contraseñas |
+| Correo | Nodemailer | Ver `backend/package.json` | Verificación, recuperación y notificaciones por SMTP |
+| Frontend | React, React DOM, React Router, Vite, TypeScript | React 18, Router 6, Vite 5, TypeScript 5 | SPA y compilación |
+| UI y mapas | Tailwind CSS, lucide-react, MapLibre GL JS | Ver `frontend/package.json` | Estilos, iconos y mapa |
+| Pruebas | Node test runner, Vitest, Testing Library | Ver manifiestos | Pruebas de contrato, integración y componentes |
+| Workspace | pnpm | Lockfile `pnpm-lock.yaml` | Gestión de `frontend` y `backend` |
 
-### Stack Objetivo (v2.0 — Escalabilidad Avanzada)
-
-- **Caché y Colas Prioritarias**: Redis 7+ (TTL para dominios verificados y cola de alta prioridad para Escudo Crítico > 95 %).
-- **Auditoría Distribuida**: MongoDB 8 (`append-only` collection).
-- **Microservicio ML Local**: Python 3.12 + TensorFlow 2.18 + Scikit-learn 1.6.
-- **Orquestación y Observabilidad**: Kubernetes, Nginx Load Balancer, Prometheus + Grafana y CI/CD con GitHub Actions.
+Los manifiestos y el lockfile son la fuente de verdad para dependencias y scripts. No hay un paquete raíz con comandos propios; ejecuta los scripts desde `backend` o `frontend`. El runtime no incluye conexión bancaria directa, proveedor de IA, Redis, MongoDB ni servicio ML externo.
 
 ---
 
@@ -209,95 +135,150 @@ El cliente web está estructurado en **seis módulos autónomos** bajo enfoque *
 
 ### Requisitos Previos
 
-- **Node.js** 22 LTS
-- **pnpm** 10+ (`corepack enable` o `npm install -g pnpm`)
-- **PostgreSQL** 17
-- **API Key de Gemini** (obtenida en Google AI Studio)
-- **Docker** y **Docker Compose** (vía recomendada)
+- **Node.js** 22.13 o superior.
+- **pnpm** compatible con el lockfile, habilitado mediante Corepack.
+- **PostgreSQL** accesible desde el backend. `database/schema.sql` es el esquema instalado.
+- **SMTP**, necesario para registrar/verificar usuarios y para los flujos de recuperación y notificación por correo.
+- **psql / createdb**, para instalar el esquema SQL desde la terminal.
 
-### Opción A: Instalación con Docker (Recomendada)
+### Instalación local
 
-```bash
-# 1. Clonar el repositorio
-git clone [https://github.com/isaias066/TriDa.git](https://github.com/isaias066/TriDa.git)
-cd TriDa
+```powershell
+# 1. Instalar dependencias desde la raíz del monorepo
+Set-Location C:\ruta\TriDa
+corepack enable
+pnpm install --frozen-lockfile
 
-# 2. Configurar variables de entorno
-cp .env.example .env
-# Edita .env con tus credenciales de PostgreSQL, JWT_SECRET, ENCRYPTION_KEY y GEMINI_API_KEY
-
-# 3. Construir y levantar los servicios
-docker compose up --build
-
-# Servicios disponibles:
-# - Frontend (Dashboard Guardián): http://localhost:5173
-# - Backend (API REST v1):         http://localhost:5000
-```
-
-### Opción B: Instalación Local (Sin Docker)
-
-```bash
-# 1. Clonar el repositorio
-git clone [https://github.com/isaias066/TriDa.git](https://github.com/isaias066/TriDa.git)
-cd TriDa
-
-# 2. Crear y poblar la base de datos en PostgreSQL 17
+# 2. Crear la base de datos PostgreSQL e instalar el esquema
 createdb TriDa
-psql -d TriDa -f database/schema.sql
-psql -d TriDa -f database/seed.sql
+psql -d TriDa -v ON_ERROR_STOP=1 -f database/schema.sql
 
-# 3. Configurar e iniciar el Backend
-cd backend
-cp .env.example .env
-pnpm install
-pnpm prisma generate
-pnpm dev
-# API corriendo en http://localhost:5000
+# 3. Configurar los archivos de entorno
+Copy-Item .env.example backend\.env
+Copy-Item frontend\.env.example frontend\.env
+# Edita backend\.env: DATABASE_URL y JWT_SECRET son obligatorios.
+# En desarrollo, frontend\.env puede dejar VITE_API_BASE_URL vacío:
+# Vite usa http://localhost:3000/api/v2 como valor predeterminado.
+# Para registro y correos, habilita SMTP_ENABLED=true y configura SMTP/EMAIL_*.
+# Para habilitar la ingesta externa, configura también
+# TRANSACTION_WEBHOOK_SECRET en backend\.env y en el sistema emisor.
 
-# 4. Configurar e iniciar el Frontend (en otra terminal)
-cd ../frontend
-pnpm install
+# 4. Generar Prisma con el backend APAGADO
+Set-Location backend
+pnpm prisma:generate
+
+# 5. Iniciar el backend
+pnpm build
 pnpm dev
-# Interfaz corriendo en http://localhost:5173
+# API disponible en http://localhost:3000
+# Healthcheck: http://localhost:3000/health
+# Readiness: http://localhost:3000/health/ready
+
+# 6. Iniciar el frontend en otra terminal
+Set-Location ..\frontend
+pnpm dev
+# Interfaz disponible en http://localhost:5173
 ```
+
+El backend carga `backend/.env`; el frontend carga `frontend/.env`. No copies
+credenciales reales a archivos versionados.
+
+#### Build de producción del frontend
+
+`pnpm build` en el frontend ejecuta primero los chequeos TypeScript. Los builds
+que no sean de desarrollo requieren una URL HTTPS pública de la API. En
+PowerShell:
+
+```powershell
+cd C:\ruta\TriDa\frontend
+$env:VITE_API_BASE_URL = "https://api.example.com/api/v2"
+pnpm build
+Remove-Item Env:VITE_API_BASE_URL
+```
+
+Reemplaza `api.example.com` por el dominio real. También puedes definir el valor
+en `frontend/.env.production` o en la configuración de variables de CI. No uses
+la URL local del `.env` de desarrollo en un build de producción; Vite rechazará
+HTTP y direcciones loopback.
+
+#### Orden crítico de Prisma en Windows
+
+El cliente Prisma se genera en `node_modules` y puede quedar bloqueado si el
+backend todavía está ejecutándose. Antes de ejecutar `pnpm prisma:generate`,
+`pnpm build` o una instalación que vuelva a generar Prisma:
+
+1. Detén `pnpm dev` del backend.
+2. Confirma que el puerto `3000` esté libre.
+3. Ejecuta `pnpm prisma:generate`.
+4. Inicia nuevamente el backend con `pnpm dev`.
+
+Si aparece `EPERM: operation not permitted, rename ... query_engine-windows.dll.node`,
+detén los procesos Node que usan el backend y repite la generación antes de
+volver a iniciar el servidor.
+
+#### Configurar la ingesta de transacciones por webhook (opcional)
+
+Sin `TRANSACTION_WEBHOOK_SECRET`, el backend puede iniciar con normalidad, pero
+`POST /api/v2/integrations/transactions/webhook` responde `503
+WEBHOOK_NOT_CONFIGURED`. Para habilitarlo, genera una clave aleatoria de al menos
+32 caracteres:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Configura el mismo valor en `backend\.env` (`TRANSACTION_WEBHOOK_SECRET`) y en el
+sistema que envía los movimientos. No lo publiques ni lo agregues al repositorio.
+El emisor debe enviar `X-TriDa-Webhook-Secret`, un timestamp Unix de 10 dígitos
+en `X-TriDa-Timestamp` y la firma HMAC-SHA256 hexadecimal del texto
+`<timestamp>.<cuerpo JSON exacto>` en `X-TriDa-Signature`. También se acepta el
+prefijo `sha256=` en la firma. El timestamp debe estar dentro de los cinco
+minutos. Reinicia el backend tras modificar `.env`. El webhook procesa
+movimientos externos y los gastos pueden requerir confirmación por correo;
+para esas notificaciones también se necesita SMTP.
 
 ### Primer Acceso
 
-```bash
-# Sembrar datos iniciales y usuario administrador de prueba
-cd backend
-pnpm seed:admin
-```
+Registra un usuario desde `/register`. En entornos distintos de `test`, el
+backend exige SMTP funcional para enviar el enlace de verificación; sin él, el
+registro no se completa. No existe un script `seed:admin`.
 
-### Datos de demostración para una cuenta existente
+### Cuentas de ejemplo
 
-Para poblar una cuenta existente, abre `database/seed-test-data.sql` en el editor SQL de tu cliente PostgreSQL conectado a la base de pruebas. Reemplaza los dos valores de ejemplo al inicio del bloque (`v_expected_database` y `v_email`) por el nombre exacto de la base y el correo del usuario; luego ejecuta el script allí.
-
-El script verifica que la base activa tenga el nombre exacto indicado, que ese nombre identifique una base de pruebas y que el usuario exista. También aborta si ya encuentra cuentas o categorías demo, para evitar duplicados. Si la base no tiene el esquema actualizado, primero ejecuta `database/schema.sql` sobre esa base.
-
-Agrega cuentas, categorías, movimientos geolocalizados, presupuestos, metas y alertas de demostración. No crea usuarios ni utiliza la configuración `DATABASE_URL` del backend.
-
-Para ver esos datos en la aplicación local, configura `DATABASE_URL` del backend hacia esa base de pruebas. Las pruebas de contrato (`pnpm test`) no requieren PostgreSQL. Las pruebas de integración (`pnpm test:integration`) deben usar otra base exclusiva mediante `TEST_DATABASE_URL`; el backend comprueba que sea distinta de `DATABASE_URL`.
+El repositorio incluye una semilla de PostgreSQL con cuatro cuentas de usuario
+de ejemplo para recorrer las funciones de la aplicación. La
+[guía de cuentas de ejemplo](./CUENTAS_EJEMPLO.md) describe los perfiles, los
+datos incluidos y cómo cargarla de forma segura. Ejecútala una sola vez y solo
+en una base local o de pruebas aislada; no la uses en producción.
 
 ---
 
 ## 7. Variables de Entorno
 
-El servidor valida todas las variables al iniciar mediante `Zod`. **Si falta alguna variable obligatoria, la aplicación detiene el arranque automáticamente.**
+El backend carga `backend/.env` y valida con Zod las variables que usa el
+servidor. Copia el ejemplo raíz `.env.example` a `backend/.env`. El frontend
+usa `frontend/.env`; `VITE_API_BASE_URL` se lee durante el build/desarrollo de
+Vite, no desde la configuración del backend.
 
-| Variable | Obligatoria | Ejemplo | Descripción |
-| --- | --- | --- | --- |
-| `DATABASE_URL` | ✅ Sí | `postgresql://postgres:pass@localhost:5432/TriDa` | Cadena de conexión a PostgreSQL 17 |
-| `JWT_SECRET` | ✅ Sí | `clave_secreta_super_segura_min_32_caracteres` | Llave de firma para tokens JWT |
-| `GEMINI_API_KEY` | ✅ Sí | `AIzaSy...` | API Key para el proveedor de IA (`GeminiAdapter`) |
-| `ENCRYPTION_KEY` | ✅ Sí | `0123456789abcdef0123456789abcdef...` | Llave AES-256 (32 bytes) para cifrado en reposo |
-| `PORT` | No | `5000` | Puerto HTTP del backend Express |
-| `JWT_ACCESS_EXPIRES` | No | `15m` | Tiempo de vida del Access Token |
-| `JWT_REFRESH_EXPIRES` | No | `24h` | Tiempo de vida del Refresh Token |
-| `FRONTEND_URL` | No | `http://localhost:5173` | Origen permitido en política CORS |
-| `EMAIL_USER` | No | `alertas@trida.co` | Cuenta SMTP para notificaciones y recuperación |
-| `EMAIL_PASS` | No | `app_password_smtp` | Contraseña de aplicación SMTP |
-| `EMAIL_FROM` | No | `TriDa Guardián <alertas@trida.co>` | Remitente oficial de correos |
+| Variable | Requerida / predeterminada | Uso |
+| --- | --- | --- |
+| `DATABASE_URL` | Requerida | Cadena de conexión a PostgreSQL |
+| `JWT_SECRET` | Requerida; mínimo 32 caracteres | Firma de tokens JWT |
+| `PORT` | `3000` | Puerto HTTP del backend |
+| `NODE_ENV` | `development` | Swagger se monta cuando no es `production` |
+| `FRONTEND_URL` | `http://localhost:5173` | Origen CORS permitido |
+| `TRUST_PROXY` | `false` | Activa la confianza en el proxy Express |
+| `APP_TIMEZONE` | `America/Bogota` | Zona horaria de operaciones que la usan |
+| `JWT_EXPIRES_IN` | `8h` | Vigencia de JWT |
+| `TRANSACTION_WEBHOOK_SECRET` | Opcional; el endpoint requiere al menos 32 caracteres | Secreto compartido para el webhook |
+| `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | SMTP deshabilitado por defecto; puerto predeterminado `587` | Transporte SMTP |
+| `EMAIL_USER`, `EMAIL_PASS`, `EMAIL_FROM` | Credenciales opcionales; remitente predeterminado `TriDa App` | Envío de correo |
+| `VITE_API_BASE_URL` | Desarrollo: `http://localhost:3000/api/v2`; otros builds: requerido y HTTPS | URL base de la API; se configura en `frontend/.env` o el entorno del build |
+| `TEST_DATABASE_URL` | Solo la prueba de integración | PostgreSQL exclusivo, con nombre que identifique una base de test y distinto de `DATABASE_URL` |
+
+`TEST_DATABASE_URL` se consume por el archivo de integración; no es una
+variable validada por el servidor en `backend/src/config.ts`. Los correos de
+registro/verificación y recuperación no funcionan sin un SMTP utilizable.
 
 ---
 
@@ -306,390 +287,177 @@ El servidor valida todas las variables al iniciar mediante `Zod`. **Si falta alg
 ```text
 TriDa/
 ├── backend/
-│   ├── prisma/
-│   │   └── schema.prisma               # Modelos de datos y migraciones
+│   ├── prisma/schema.prisma
 │   ├── src/
-│   │   ├── adapters/
-│   │   │   ├── aiAdapter.interface.ts  # Contrato estándar IAIAdapter
-│   │   │   └── geminiAdapter.ts        # Implementación con Gemini API
-│   │   ├── config/
-│   │   │   └── env.ts                  # Validación centralizada de entorno con Zod
-│   │   ├── controllers/
-│   │   │   ├── authController.ts       # Registro, login, MFA y reset password
-│   │   │   ├── guardianController.ts   # Dashboard y Reporte Mensual del Guardián
-│   │   │   ├── eventsController.ts     # Ingesta de movimientos y notificaciones
-│   │   │   ├── alertsController.ts     # Gestión y feedback de alertas preventivas
-│   │   │   ├── urlScannerController.ts # Verificador de seguridad de sitios web
-│   │   │   ├── financesController.ts   # Radiografía de gastos y vida crediticia
-│   │   │   ├── plansController.ts      # Planes de Protección y Ahorro con IA
-│   │   │   ├── privacyController.ts    # Derechos ARCO (Ley 1581 de 2012)
-│   │   │   └── adminController.ts      # Salud técnica y ciclo de vida de modelos
+│   │   ├── app.ts, config.ts, index.ts
+│   │   ├── config/         # Swagger/OpenAPI
+│   │   ├── db/             # Prisma y consultas parametrizadas
 │   │   ├── middlewares/
-│   │   │   ├── auth.ts                 # verifyToken, verifyOwnership, requireAdmin
-│   │   │   ├── rateLimiter.ts          # Control de tasa de peticiones
-│   │   │   └── errorHandler.ts         # Manejo global sin exposición de stack traces
-│   │   ├── routes/                     # Rutas versionadas /api/v1/*
-│   │   ├── services/
-│   │   │   ├── tridaCore.ts            # Núcleo orquestador del Guardián
-│   │   │   ├── piiMasker.ts            # Anonimización de PII antes de IA
-│   │   │   ├── riskScoring.ts          # Motor de score y reglas heurísticas
-│   │   │   └── urlAnalyzer.ts          # Validación SSL, dominio y anti-SSRF
-│   │   └── app.ts                      # Configuración de Express y middlewares
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── .env.example
+│   │   ├── modules/        # auth, accounts, transactions, reports, etc.
+│   │   ├── tests/
+│   │   └── utils/
+│   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   ├── api/                        # Cliente HTTP y módulos tipados por dominio
-│   │   ├── components/                 # Componentes UI, layouts y tarjetas del Guardián
-│   │   ├── hooks/                      # Hooks de estado, alertas y tema Dark/Light
-│   │   ├── pages/                      # Dashboard, UrlScanner, Finances, Plans, Privacy
-│   │   ├── constants/                  # Códigos HTTP, umbrales y mensajes en español
-│   │   └── App.tsx
-│   ├── package.json
-│   └── vite.config.ts
+│   │   ├── api/
+│   │   ├── components/
+│   │   ├── context/
+│   │   ├── pages/
+│   │   └── App.tsx, main.tsx
+│   └── package.json
 ├── database/
-│   ├── schema.sql                      # DDL completo, funciones trida.fn_* y RULES
-│   └── seed.sql                        # Catálogo de entidades financieras y datos base
-├── documentacion/
-│   ├── requisitos/                     # RF-001..RF-024 y RNF-001..RNF-014
-│   ├── referencia-tecnica/             # Arquitectura, Patrones y Esquema BD
-│   ├── configuracion/                  # Restricciones y guías de despliegue
-│   └── proceso/                        # Historias de usuario y casos de uso
-├── docker-compose.yml
+│   ├── schema.sql
+│   └── seed_trida_bogota.sql
+├── docs/
 ├── pnpm-workspace.yaml
-└── README.md
+└── pnpm-lock.yaml
 ```
+
+El workspace pnpm contiene únicamente `backend` y `frontend`; no hay
+`package.json` raíz ni scripts de ejecución en la raíz.
 
 ---
 
 ## 9. Modelo y Esquema de Base de Datos (`schema: trida`)
 
-PostgreSQL 17 implementa un esquema relacional normalizado en 3FN bajo el namespace `trida` con la extensión `pgcrypto` y precisión monetaria exacta (`NUMERIC(15, 2)`).
+Las definiciones vigentes están en `database/schema.sql` (instalador del esquema SQL) y `backend/prisma/schema.prisma` (modelos que usa Prisma Client). El esquema Prisma declara PostgreSQL y el namespace `trida`; no existe un modelo de bancos vinculados ni de análisis de URL en el código actual.
 
-### 9.1 Diagrama Entidad-Relación (ER)
+Los modelos Prisma cubren:
 
-```text
-┌──────────────────────────┐       ┌──────────────────────────────────┐
-│          bancos          │       │             usuarios             │
-├──────────────────────────┤       ├──────────────────────────────────┤
-│ PK id_banco       SERIAL │       │ PK id_usuario          SERIAL    │
-│    codigo         UQ     │       │    nombre_completo     VARCHAR   │
-│    nombre         VARCHAR│       │    email               UQ        │
-│    color          VARCHAR│       │    password_hash       TEXT      │
-│    estado         BOOL   │       │    rol                 VARCHAR   │
-└────────────┬─────────────┘       │    mfa_habilitado      BOOL      │
-             │ 1                   │    estado              BOOL      │
-             │                     └─┬──────┬──────┬──────┬──────┬────┘
-             │ N                     │ 1    │ 1    │ 1    │ 1    │ 1
-┌────────────▼─────────────────────┐ │      │      │      │      │
-│       cuentas_vinculadas         │ │      │      │      │      │
-├──────────────────────────────────┤ │      │      │      │      │
-│ PK id_cuenta          SERIAL     │ │      │      │      │      │
-│ FK id_usuario         → usuarios ◄─┘      │      │      │      │
-│ FK id_banco           → bancos   │        │      │      │      │
-│    alias_cuenta       VARCHAR    │        │      │      │      │
-│    ultimos_digitos    CHAR(4)    │        │      │      │      │
-│    tipo_producto      VARCHAR    │        │      │      │      │
-│    lectura_notif      BOOL       │        │      │      │      │
-└────────────┬─────────────────────┘        │      │      │      │
-             │ 1                            │      │      │      │
-             │ N                            │      │      │      │
-┌────────────▼─────────────────────┐        │      │      │      │
-│       eventos_financieros        │        │      │      │      │
-├──────────────────────────────────┤        │      │      │      │
-│ PK id_evento          SERIAL     │        │      │      │      │
-│ FK id_usuario         → usuarios ◄────────┘      │      │      │
-│ FK id_cuenta          → cuentas  │               │      │      │
-│    tipo_evento        VARCHAR    │               │      │      │
-│    es_ingreso         BOOLEAN    │               │      │      │
-│    categoria_gasto    VARCHAR    │               │      │      │
-│    monto              NUMERIC    │               │      │      │
-│    comercio_remitente VARCHAR    │               │      │      │
-│    canal_origen       VARCHAR    │               │      │      │
-│    score_riesgo       NUMERIC    │               │      │      │
-│    explicacion_ia     TEXT       │               │      │      │
-└────────────┬─────────────────────┘               │      │      │
-             │ 1                                   │      │      │
-             │                                     │      │      │
-             │       ┌─────────────────────────────┘      │      │
-             │       ▼                                    │      │
-             │  ┌──────────────────────────────────┐      │      │
-             │  │          analisis_urls           │      │      │
-             │  ├──────────────────────────────────┤      │      │
-             │  │ PK id_analisis        SERIAL     │      │      │
-             │  │ FK id_usuario         → usuarios │      │      │
-             │  │    url_analizada      TEXT       │      │      │
-             │  │    dominio            VARCHAR    │      │      │
-             │  │    veredicto          VARCHAR    │      │      │
-             │  │    score_riesgo       NUMERIC    │      │      │
-             │  │    ssl_valido         BOOLEAN    │      │      │
-             │  │    explicacion_ia     TEXT       │      │      │
-             │  └────────────────┬─────────────────┘      │      │
-             │                   │ 1                      │      │
-             │ N                 │ N                      │      │
-             ▼                   ▼                        │      │
-┌──────────────────────────────────────────┐              │      │
-│                 alertas                  │              │      │
-├──────────────────────────────────────────┤              │      │
-│ PK id_alerta             SERIAL          │              │      │
-│ FK id_usuario            → usuarios      │              │      │
-│ FK id_evento             → eventos (opt) │              │      │
-│ FK id_analisis_url       → urls (opt)    │              │      │
-│    nivel_criticidad      VARCHAR         │              │      │
-│    titulo                VARCHAR         │              │      │
-│    recomendacion_accion  TEXT            │              │      │
-│    estado_validacion     VARCHAR         │              │      │
-└──────────────────────────────────────────┘              │      │
-                                                          │      │
-┌──────────────────────────────────┐       ┌──────────────▼──────┴────┐
-│       perfiles_crediticios       │       │         planes_ia          │
-├──────────────────────────────────┤       ├──────────────────────────┤
-│ PK id_perfil          SERIAL     │       │ PK id_plan          SERIAL │
-│ FK id_usuario         → usuarios ◄───────┤ FK id_usuario       → usu. │
-│    puntaje_salud      SMALLINT   │       │    tipo_plan        VARCHAR│
-│    nivel_riesgo       VARCHAR    │       │    titulo           VARCHAR│
-│    relacion_deuda_ing NUMERIC    │       │    resumen_ia       TEXT   │
-│    cupo_total         NUMERIC    │       │    recomendaciones  JSONB  │
-│    cupo_utilizado     NUMERIC    │       │    progreso_pct     NUMERIC│
-│    diagnostico_ia     TEXT       │       │    estado           VARCHAR│
-└──────────────────────────────────┘       └──────────────────────────┘
+| Área | Modelos / tablas principales |
+| --- | --- |
+| Identidad y seguridad | `usuario` / `usuarios`, `perfil_financiero`, `dispositivo` / `dispositivos`, `ubicacion` / `ubicaciones`, `log_auditoria` / `logs_auditoria` |
+| Finanzas | `cuenta` / `cuentas`, `categoria` / `categorias`, `transaccion` / `transacciones` |
+| Archivo de transacciones | `transaccion_archivo_exportacion`, `evento_transaccion_archivado` |
+| Análisis y planificación | `patron_comportamiento`, `presupuesto` / `presupuestos`, `meta_ahorro` / `metas_ahorro`, `aporte_meta` / `aportes_meta`, `consejo_financiero` / `consejos_financieros`, `alerta_fraude` / `alertas_fraude`, `analisis_gastos`, `reporte_mensual` / `reportes_mensuales` |
 
-┌──────────────────────────────────┐       ┌──────────────────────────┐
-│        reportes_guardian         │       │      logs_auditoria      │
-├──────────────────────────────────┤       ├──────────────────────────┤
-│ PK id_reporte            SERIAL  │       │ PK id_log           SERIAL │
-│ FK id_usuario            → usu.  │       │ FK id_usuario       → usu. │
-│    periodo_mes           CHAR(7) │       │    tipo_accion      VARCHAR│
-│    situaciones_sospech   INTEGER │       │    entidad_afectada VARCHAR│
-│    estafas_evitadas      INTEGER │       │    descripcion      TEXT   │
-│    monto_protegido       NUMERIC │       │    fecha_accion     TIMESTZ│
-│    total_ingresos        NUMERIC │       │    direccion_ip     INET   │
-│    total_gastos          NUMERIC │       └──────────────────────────┘
-│    ahorro_logrado        NUMERIC │         ⛔ UPDATE y DELETE bloqueados
-│    resumen_ejecutivo_ia  TEXT    │            por RULE en PostgreSQL
-└──────────────────────────────────┘
-```
+`database/schema.sql` incluye extensiones, restricciones, índices y lógica SQL adicional necesaria para la aplicación. Mantén ese archivo y el schema Prisma alineados al cambiar la base. Los campos monetarios usan `NUMERIC`/`Decimal`; revisa los tipos concretos en los archivos de esquema antes de escribir consultas o scripts.
 
-*(Adicionalmente, las tablas `dispositivos` e `historico_de_ubicacion` se vinculan 1:N a `usuarios` para validar dispositivos de confianza y coherencia geográfica).*
+## 10. Documentación de la API REST (`/api/v2`)
 
-### 9.2 Resumen de Tablas del Esquema
+La API está montada bajo `/api/v2`. Las operaciones y esquemas completos provienen de Swagger/OpenAPI, disponible en `http://localhost:3000/api/docs` y `/api/docs.json` cuando `NODE_ENV` no es `production`. No se exponen rutas `/api/v1`.
 
-| Tabla | Descripción | Restricciones / Notas Clave |
-| --- | --- | --- |
-| `bancos` | Catálogo de 12 entidades financieras y billeteras digitales en Colombia. | `codigo` único (`bancolombia`, `nequi`, `daviplata`, `davivienda`, etc.). |
-| `usuarios` | Titulares protegidos (`USUARIO`) y administradores (`ADMINISTRADOR`). | `password_hash` con `bcrypt`, soporte MFA TOTP y `consentimiento_arco`. |
-| `cuentas_vinculadas` | Productos financieros vinculados para lectura de movimientos/notificaciones. | Solo almacena `ultimos_digitos` (`CHAR(4)`), jamás claves ni PAN completos. |
-| `dispositivos` | Dispositivos registrados del usuario para detectar accesos inusuales. | `chk_fechas_dispositivo`: `fecha_ultimo_uso >= fecha_primer_uso`. |
-| `historico_de_ubicacion` | Contexto geográfico (`INET`, país, ciudad, lat/lon) por dispositivo. | Validación de rango geográfico (`latitud` -90..90, `longitud` -180..180). |
-| `eventos_financieros` | Movimientos enviados/recibidos, alertas bancarias, SMS y cobros recurrentes. | `monto >= 0`, `score_riesgo` (0–100), `categoria_gasto` y `explicacion_ia`. |
-| `analisis_urls` | Historial de sitios web verificados y enlaces extraídos de mensajes. | `veredicto` (`SEGURO`, `PRECAUCION`, `PELIGROSO`), SSL y *typosquatting*. |
-| `alertas` | Alertas preventivas generadas con acción recomendada y feedback del usuario. | `nivel_criticidad` (`BAJA`, `MEDIA`, `ALTA`, `CRITICA`) y `estado_validacion`. |
-| `perfiles_crediticios` | Diagnóstico dinámico de salud crediticia, deuda/ingreso y uso de cupos. | `puntaje_salud` (0–100) y estado (`SALUDABLE`, `EN_OBSERVACION`, `SOBREENDEUDAMIENTO`). |
-| `planes_ia` | Planes activos de `PROTECCION` y `AHORRO` generados por la IA. | Lista de tareas accionables en `JSONB` y cálculo de `progreso_porcentaje`. |
-| `reportes_guardian` | Consolidado mensual de situaciones sospechosas, ahorro y monto protegido. | Único por `(id_usuario, periodo_mes)` en formato `YYYY-MM`. |
-| `logs_auditoria` | Bitácora inmutable de seguridad, accesos y ejercicio de derechos ARCO. | **Inmutable por motor**: `CREATE RULE logs_no_update` y `logs_no_delete`. |
+Las operaciones protegidas requieren:
 
-### 9.3 Catálogo de Funciones Almacenadas (`trida.fn_*`)
-
-| Función SQL | Parámetros | Propósito |
-| --- | --- | --- |
-| `trida.fn_bancos()` | — | Lista las entidades financieras y billeteras activas del catálogo. |
-| `trida.fn_login($1)` | `email VARCHAR` | Recupera credenciales, rol y estado MFA para autenticación. |
-| `trida.fn_registrar_evento($1..$9)` | `id_usuario, id_cuenta, tipo, ...` | Persiste un movimiento o notificación junto con su score y categoría. |
-| `trida.fn_registrar_analisis_url($1..$7)` | `id_usuario, url, dominio, ...` | Almacena el resultado del escáner de seguridad de un sitio web. |
-| `trida.fn_alertas_usuario($1, $2)` | `id_usuario INT, nivel VARCHAR` | Consulta alertas preventivas del usuario filtrables por criticidad. |
-| `trida.fn_validar_alerta_usuario($1..$3)` | `id_alerta, id_usuario, estado` | Registra confirmación (`LEGITIMA` / `ESTAFA_CONFIRMADA`) y calibra perfil. |
-| `trida.fn_resumen_gastos($1, $2, $3)` | `id_usuario, inicio, fin` | Calcula distribución de egresos por categoría, ingresos y gastos hormiga. |
-| `trida.fn_salud_crediticia($1)` | `id_usuario INT` | Obtiene el diagnóstico vigente de vida crediticia del titular. |
-| `trida.fn_planes_activos($1)` | `id_usuario INT` | Retorna los planes activos de Protección/Seguridad y Ahorro. |
-| `trida.fn_consolidar_reporte_guardian($1,$2)` | `id_usuario INT, periodo CHAR(7)` | Consolida las métricas mensuales del Reporte del Guardián. |
-
-### 9.4 Consultas Rápidas de Diagnóstico
-
-```sql
--- Conteo de registros por tabla en el schema trida
-SELECT 'bancos' AS tabla, COUNT(*) AS registros FROM trida.bancos
-UNION ALL SELECT 'usuarios',               COUNT(*) FROM trida.usuarios
-UNION ALL SELECT 'cuentas_vinculadas',     COUNT(*) FROM trida.cuentas_vinculadas
-UNION ALL SELECT 'eventos_financieros',    COUNT(*) FROM trida.eventos_financieros
-UNION ALL SELECT 'analisis_urls',          COUNT(*) FROM trida.analisis_urls
-UNION ALL SELECT 'alertas',                COUNT(*) FROM trida.alertas
-UNION ALL SELECT 'perfiles_crediticios',   COUNT(*) FROM trida.perfiles_crediticios
-UNION ALL SELECT 'planes_ia',              COUNT(*) FROM trida.planes_ia
-UNION ALL SELECT 'reportes_guardian',      COUNT(*) FROM trida.reportes_guardian
-UNION ALL SELECT 'logs_auditoria',         COUNT(*) FROM trida.logs_auditoria
-ORDER BY tabla;
-
--- Efectividad de detección y retroalimentación de usuarios por nivel de alerta
-SELECT nivel_criticidad,
-    COUNT(*) AS total_alertas,
-    COUNT(*) FILTER (WHERE estado_validacion = 'ESTAFA_CONFIRMADA') AS estafas_confirmadas,
-    COUNT(*) FILTER (WHERE estado_validacion = 'LEGITIMA')          AS operaciones_legitimas
-FROM trida.alertas
-GROUP BY nivel_criticidad;
-```
-
----
-
-## 10. Documentación de la API REST (`/api/v1`)
-
-Todos los endpoints protegidos requieren el encabezado HTTP:
 ```http
-Authorization: Bearer <access_token_jwt>
+Authorization: Bearer <jwt>
 ```
 
-### 10.1 Autenticación y Seguridad de Cuenta (`/api/v1/auth`)
+Las rutas de confirmación por correo usan un token firmado de un solo propósito
+y no requieren sesión; el webhook se autentica con sus propios headers.
 
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `POST` | `/api/v1/auth/register` | Pública | Registra un nuevo usuario titular con aceptación de política Habeas Data. |
-| `POST` | `/api/v1/auth/login` | Pública | Autentica credenciales y retorna `accessToken` (15 min) + `refreshToken` (24 h). |
-| `POST` | `/api/v1/auth/mfa/verify` | Parcial | Valida el código temporal TOTP cuando el usuario tiene MFA habilitado. |
-| `POST` | `/api/v1/auth/forgot-password` | Pública | Envía enlace temporal de recuperación (respuesta neutra anti-enumeración). |
-| `POST` | `/api/v1/auth/reset-password` | Pública | Restablece la contraseña mediante token firmado con expiración de 15 min. |
+| Prefijo | Módulo |
+| --- | --- |
+| `/api/v2/auth` | Registro, login, verificación de correo, recuperación, perfil de sesión y cierre de sesión. |
+| `/api/v2/accounts` | Consulta, creación y actualización de cuentas; `DELETE` las desactiva. |
+| `/api/v2/categories` | Categorías financieras. |
+| `/api/v2/transactions` | Consulta y registro de movimientos, estados/categorías, confirmación por correo y archivo anual. El registro manual solo acepta cuentas de tipo `EFECTIVO`. |
+| `/api/v2/integrations` | Webhook `POST /api/v2/integrations/transactions/webhook`; requiere secreto compartido y firma HMAC. |
+| `/api/v2/devices` | Registro y administración de dispositivos. |
+| `/api/v2/alerts` | Alertas y cambios de estado. |
+| `/api/v2/dashboard` | Estadísticas, transacciones/alertas recientes y consejos. |
+| `/api/v2/budgets` | Presupuestos. |
+| `/api/v2/savings` | Metas y aportes de ahorro. |
+| `/api/v2/profile` | Perfil y patrón de comportamiento. |
+| `/api/v2/insights` | Resumen financiero basado en reglas y movimientos. |
+| `/api/v2/reports` | Resúmenes, reportes por categoría y transacciones. |
+| `/api/v2/map` | Estadísticas y ubicaciones de movimientos. |
+| `/api/v2/audit` | Historial de auditoría propio, de solo lectura. |
 
-### 10.2 Centro del Guardián y Reporte Mensual (`/api/v1/guardian`)
+Endpoints operativos:
 
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/guardian/dashboard` | `USUARIO` | Retorna estado de seguridad del mes, alertas activas, gastos, crédito y planes. |
-| `GET` | `/api/v1/guardian/monthly-report` | `USUARIO` | Consulta el Reporte Mensual del Guardián (`?periodo=YYYY-MM`). |
-| `GET` | `/api/v1/guardian/monthly-report/export` | `USUARIO` | Exporta el reporte en formato `PDF`, `XLSX` o `CSV` (`?format=pdf`). |
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| `GET` | `/health` | Comprueba que el proceso responde. |
+| `GET` | `/health/ready` | Comprueba conectividad con PostgreSQL. |
 
-### 10.3 Ingesta de Eventos y Alertas Preventivas (`/api/v1/events` y `/api/v1/alerts`)
-
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `POST` | `/api/v1/events/ingest` | `USUARIO` | Recibe transacción enviada/recibida o notificación SMS/push y calcula score IA. |
-| `GET` | `/api/v1/events` | `USUARIO` | Lista movimientos y notificaciones con filtros combinables (fecha, tipo, monto, categoría). |
-| `GET` | `/api/v1/alerts` | `USUARIO` | Obtiene alertas preventivas (`?nivel=ALTA&estado=PENDIENTE`). |
-| `PATCH` | `/api/v1/alerts/:id/feedback` | `USUARIO` | Marca una alerta como `LEGITIMA` o `ESTAFA_CONFIRMADA` para calibrar el perfil. |
-
-### 10.4 Escáner de Seguridad de Sitios Web (`/api/v1/url-check`)
-
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `POST` | `/api/v1/url-check` | `USUARIO` | Analiza una URL (SSL, antigüedad, redirecciones, *phishing*) y entrega veredicto. |
-| `GET` | `/api/v1/url-check/history` | `USUARIO` | Consulta el historial de sitios verificados por el usuario. |
-
-**Ejemplo de respuesta `POST /api/v1/url-check`:**
-```json
-{
-  "url": "[https://verificacion-seguridad-bancolombia-co.xyz](https://verificacion-seguridad-bancolombia-co.xyz)",
-  "domain": "verificacion-seguridad-bancolombia-co.xyz",
-  "verdict": "PELIGROSO",
-  "riskScore": 96.4,
-  "sslValid": true,
-  "domainAgeDays": 2,
-  "isTyposquatting": true,
-  "explanation": "Este sitio imita el nombre de tu entidad bancaria pero fue registrado hace apenas 2 días bajo una extensión sospechosa.",
-  "immediateAction": "No ingreses tu usuario, clave ni dinámica. Cierra esta página de inmediato."
-}
-```
-
-### 10.5 Finanzas, Vida Crediticia y Planes de IA (`/api/v1/finances` y `/api/v1/plans`)
-
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/finances/expenses-breakdown` | `USUARIO` | Desglosa en qué se va el dinero por categoría y agrupa gastos hormiga. |
-| `GET` | `/api/v1/finances/credit-health` | `USUARIO` | Devuelve puntaje de salud crediticia, relación deuda/ingreso y uso de cupos. |
-| `GET` | `/api/v1/plans` | `USUARIO` | Obtiene los planes vigentes de `PROTECCION` y `AHORRO` del usuario. |
-| `POST` | `/api/v1/plans/generate` | `USUARIO` | Genera o recalibra planes personalizados con IA a partir de datos reales. |
-| `PATCH` | `/api/v1/plans/:id/tasks/:taskId` | `USUARIO` | Marca una recomendación del plan como completada o descartada. |
-
-### 10.6 Cuentas Vinculadas y Privacidad ARCO (`/api/v1/accounts` y `/api/v1/privacy`)
-
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/bancos` | `USUARIO` | Lista el catálogo de entidades financieras y billeteras soportadas. |
-| `POST` | `/api/v1/accounts` | `USUARIO` | Vincula una cuenta o lectura de notificaciones (sin solicitar contraseñas). |
-| `DELETE` | `/api/v1/accounts/:id` | `USUARIO` | Revoca la vinculación de una cuenta con efecto inmediato. |
-| `GET` | `/api/v1/privacy/arco/export` | `USUARIO` | Derecho de Acceso: descarga una copia íntegra de los datos del titular. |
-| `DELETE` | `/api/v1/privacy/arco/delete-account` | `USUARIO` | Derecho de Cancelación: purga definitiva e irreversible de datos personales. |
-
-### 10.7 Administración Técnica (`/api/v1/admin`)
-
-| Método | Endpoint | Auth | Descripción |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/admin/health` | `ADMINISTRADOR` (con MFA) | Monitoreo de salud de módulos, CPU, memoria y latencia p95. |
-| `POST` | `/api/v1/admin/models/retrain` | `ADMINISTRADOR` (con MFA) | Ejecuta reentrenamiento del modelo con dataset 100 % anonimizado. |
+La ruta `/api/v2` por sí sola no es un índice de operaciones. Consulta Swagger o
+los routers en `backend/src/modules/` para los métodos, payloads y respuestas.
+La evaluación de riesgo en el backend es basada en reglas; no es un modelo de
+IA.
 
 ---
 
-## 11. Seguridad, Privacidad y Cumplimiento (Ley 1581)
+## 11. Seguridad y privacidad
 
-TriDa opera bajo estándares estrictos de protección de datos personales (**Ley 1581 de 2012 — Colombia**), controles alineados con **ISO 27001:2022** y mitigación **OWASP Top 10**:
+Controles presentes en el código:
 
-| Control de Seguridad / Privacidad | Estado | Detalle de Implementación |
-| --- | --- | --- |
-| **Principio de Cero Credenciales** | ✅ Activo | Prohibido solicitar o almacenar contraseñas bancarias, claves dinámicas o CVV. |
-| **Enmascaramiento de PII (`PIIMasker`)** | ✅ Activo | Nombres, cédulas y cuentas se anonimizan antes de enviar contexto a Gemini API. |
-| **Cifrado en Tránsito y Reposo** | ✅ Activo | HTTPS con **TLS 1.3** obligatorio y cifrado **AES-256** para datos sensibles en BD. |
-| **Autenticación JWT + MFA** | ✅ Activo | Access tokens (15 min), Refresh tokens (24 h), `bcrypt` (`cost = 12`) y TOTP. |
-| **Aislamiento de Datos (Anti-IDOR)** | ✅ Activo | Middleware `verifyOwnership` + consultas filtradas por `id_usuario` en SQL. |
-| **Protección Anti-SSRF (Escáner URL)** | ✅ Activo | Bloqueo de rangos de IP privadas/locales (`127.0.0.1`, `10.0.0.0/8`, `192.168.0.0/16`). |
-| **Sanitización Anti-XSS** | ✅ Activo | Escape estricto en contenido proveniente de mensajes SMS y notificaciones externas. |
-| **Auditoría Inmutable** | ✅ Activo | `RULES` en PostgreSQL (`logs_no_update` / `logs_no_delete`) + hash SHA-256. |
-| **Derechos ARCO Automatizados** | ✅ Activo | Panel de privacidad para Acceso, Rectificación, Cancelación y Oposición. |
+| Control | Implementación verificable |
+| --- | --- |
+| Autenticación | JWT; `requireAuth` verifica firma, usuario activo y versión vigente del token. |
+| Contraseñas | Hash con `bcryptjs`; las rutas autenticadas aplican controles de acceso por usuario. |
+| Validación y abuso | Esquemas Zod, limitador global y límites específicos en rutas de autenticación. |
+| Cabeceras y origen | Helmet y CORS en Express; la CSP del backend cambia por entorno. Vite genera la CSP del frontend durante el build. |
+| Webhook | Secreto compartido, timestamp de 10 dígitos con ventana de cinco minutos y HMAC-SHA256 del cuerpo original. |
+| Consultas SQL | Las consultas directas usan `queryRaw` parametrizado; Prisma se usa para el resto del acceso relacional. |
+
+HTTPS/TLS depende del proxy o plataforma de despliegue. El código no implementa
+MFA, cifrado AES de datos en reposo, conexión bancaria directa, proveedor de
+IA, SMS/push ni una certificación ISO. Esta descripción no constituye una
+declaración de cumplimiento legal o certificación.
 
 ---
 
 ## 12. Estándares de Desarrollo y Contribución
 
-### Reglas Técnicas y de Código
+### Scripts del backend
 
-- **Gestor de paquetes único**: Usar exclusivamente **`pnpm`** con versiones exactas (`save-exact=true` en `.npmrc`). Está prohibido usar `npm` o `yarn`.
-- **Convención de idiomas**:
-  - **Código en inglés**: variables, funciones, clases, componentes React, rutas API y modelos (`FinancialEvent`, `UrlAnalysis`, `ProtectionPlan`).
-  - **Documentación y UX en español**: comentarios pedagógicos, commits descriptivos, mensajes de error, explicaciones de IA y reportes.
-- **Cabecera pedagógica obligatoria** en todo archivo nuevo:
-  ```typescript
-  // ¿Qué? Descripción breve de la responsabilidad del módulo
-  // ¿Para qué? Caso de uso o beneficio que aporta al usuario o al sistema
-  // ¿Impacto? Cómo afecta a la seguridad, finanzas o estabilidad de TriDa
-  ```
-- **Precisión monetaria**: Utilizar siempre `Decimal` (`Prisma.Decimal` / `decimal.js`) con redondeo `HALF_UP`. Prohibido usar `number` o `float` nativo para dinero.
-- **Diseño Visual (Frontend)**:
-  - **Prohibido usar degradados** (`bg-gradient-*`); usar colores planos con bordes y sombras sutiles.
-  - **Iconografía exclusiva**: utilizar únicamente **`lucide-react`**.
-  - **Dark / Light Mode**: soporte obligatorio con toggle visible (Light `#FFFFFF` / Dark `#0B1D3A`).
-  - **Accesibilidad WCAG 2.1 AA**: toda alerta debe combinar color + ícono + etiqueta textual.
-- **Pruebas y Calidad**: `vitest` con cobertura ≥ 80 % en lógica crítica y validación estricta con `tsc --noEmit` y `pnpm audit`.
+Ejecuta estos comandos desde `backend`:
 
-### Flujo Git y Commits
+| Comando | Resultado |
+| --- | --- |
+| `pnpm dev` | Servidor de desarrollo con recarga. |
+| `pnpm prisma:generate` | Genera Prisma Client. Detén el backend antes de ejecutarlo en Windows. |
+| `pnpm build` | Genera Prisma Client y compila TypeScript a `dist/`. |
+| `pnpm start` | Ejecuta `dist/index.js`; requiere un build previo. |
+| `pnpm typecheck` | Comprueba TypeScript sin emitir archivos. |
+| `pnpm test` | Ejecuta pruebas de contrato con el test runner de Node; no requiere PostgreSQL. |
+| `pnpm test:integration` | Ejecuta pruebas HTTP/PostgreSQL; requiere `TEST_DATABASE_URL` configurada hacia una base exclusiva de pruebas con el esquema instalado. |
+| `pnpm lint` | Ejecuta ESLint. |
+| `pnpm lint:fix` | Ejecuta ESLint con corrección automática. |
+| `pnpm format` | Formatea los archivos TypeScript del backend. |
+| `pnpm format:check` | Comprueba el formato de los archivos TypeScript del backend. |
 
-1. Crear rama desde `develop`: `git checkout -b feat/nombre-funcionalidad develop`
-2. Usar **Conventional Commits**: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`.
-3. Abrir Pull Request hacia `develop` verificando que los tests y linters pasen sin errores.
+La integración rechaza una base cuyo nombre no incluya `test`, `testing`,
+`prueba`, `pruebas` o `ci`, y rechaza que sea la misma base que
+`DATABASE_URL`.
+
+### Scripts del frontend
+
+Ejecuta estos comandos desde `frontend`:
+
+| Comando | Resultado |
+| --- | --- |
+| `pnpm dev` | Servidor Vite de desarrollo en el puerto `5173`. |
+| `pnpm build` | Type-check y build con validación de URL HTTPS pública. |
+| `pnpm build:local` | Type-check y build en modo `development`, con API local predeterminada. |
+| `pnpm type-check` | Comprueba los proyectos TypeScript del frontend. |
+| `pnpm test` | Ejecuta las pruebas Vitest en jsdom. |
+| `pnpm lint` | Ejecuta ESLint. |
+| `pnpm format` | Formatea el frontend. |
+| `pnpm format:check` | Comprueba Prettier en el frontend. |
+| `pnpm preview` | Sirve localmente el build de `dist/`. |
+
+No hay un comando `pnpm dev`, `pnpm build` o `pnpm test` en la raíz: cambia al
+workspace correspondiente antes de ejecutarlo. Los nombres de variables y
+modelos del backend siguen el esquema de base de datos existente; conserva sus
+convenciones y tipos al modificar módulos. Los commits tipo Conventional
+Commits son una recomendación, no una validación automática del repositorio.
 
 ---
 
 ## 13. Estado del Proyecto y Licencia
 
-| Módulo | Estado | Versión |
-| --- | --- | --- |
-| Autenticación, MFA y Control de Privacidad (ARCO) | ✅ Implementado | MVP 1.0 |
-| Dashboard Unificado del Guardián | ✅ Implementado | MVP 1.0 |
-| Ingesta de Movimientos y Notificaciones (SMS/Push) | ✅ Implementado | MVP 1.0 |
-| Escáner de Seguridad de Sitios Web (URLs) | ✅ Implementado | MVP 1.0 |
-| Radiografía de Gastos y Diagnóstico de Vida Crediticia | ✅ Implementado | MVP 1.0 |
-| Generador y Seguimiento de Planes de Protección y Ahorro (IA) | ✅ Implementado | MVP 1.0 |
-| Reporte Mensual del Guardián y Exportación (PDF/XLSX/CSV) | ✅ Implementado | MVP 1.0 |
-| Bitácora Inmutable en PostgreSQL (`RULES`) | ✅ Implementado | MVP 1.0 |
-| Caché Distribuida y Colas Prioritarias con Redis | 🔜 Planificado | v2.0 |
-| Microservicio ML Local en Python (TensorFlow / Scikit-learn) | 🔜 Planificado | v2.0 |
-
-### Licencia
-
-Este proyecto se distribuye bajo la licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para más detalles.
+El estado funcional se refleja en los módulos y rutas descritos en este
+documento. En el árbol actual no se encontró un archivo de licencia; consulta
+al responsable del repositorio antes de redistribuir el proyecto.
 
 ---
 
 <div align="center">
 
-**TriDa — Tu Guardián Financiero y de Ciberseguridad Personal con Inteligencia Artificial**
+**TriDa — Aplicación web de finanzas personales**
 
-*MVP 2026 · Revisión 1.0*
+*README actualizado según los manifiestos y el código del workspace*
 
 </div>

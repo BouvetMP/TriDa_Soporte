@@ -95,7 +95,44 @@ describe("NewTransactionModal", () => {
       screen.getByRole("link", { name: "Agregar una cuenta de efectivo" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Guardar Transacción" }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: "Guardar Transacción" })
+        .hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("submits manual movements from an active cash account", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(true);
+    render(
+      <MemoryRouter>
+        <NewTransactionModal
+          isOpen
+          onClose={vi.fn()}
+          categories={[]}
+          onSubmit={onSubmit}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Monto (COP)" }), {
+      target: { value: "12500" },
+    });
+    fireEvent.change(screen.getByLabelText("Establecimiento / Comercio"), {
+      target: { value: "Mercado local" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Guardar Transacción" }),
+    );
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_cuenta: 1,
+          monto: 12500,
+          tipo_movimiento: "GASTO",
+          comercio: "Mercado local",
+        }),
+      );
+    });
   });
 });

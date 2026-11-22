@@ -69,6 +69,17 @@ async function bootstrap() {
         separator: "============================================",
       });
     });
+    httpServer.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        logger.error("server.port_in_use", error, { port });
+      } else {
+        logger.error("server.listen_failed", error, { port });
+      }
+
+      void shutdown("LISTEN_ERROR").then(() => {
+        process.exitCode = 1;
+      });
+    });
   } catch (error) {
     logger.error("server.start_failed", error);
     if (!shutdownRequested) {

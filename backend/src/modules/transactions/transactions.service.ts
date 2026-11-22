@@ -4,6 +4,10 @@ import { queryRaw } from "../../db/queryRaw.js";
 import { buildTransactionArchiveCsv, fingerprintExternalEvent } from "./transaction-archive.js";
 import { riskService } from "../alerts/risk.service.js";
 import { isEmailConfigured, sendEmail } from "../../utils/mailer.js";
+import {
+  createCriticalAlertEmailTemplate,
+  createTransactionConfirmationEmailTemplate,
+} from "../../utils/transaction-email-templates.js";
 import { logger } from "../../utils/logger.js";
 import { getTransactionBalanceDelta } from "./transaction-balance.js";
 import {
@@ -31,18 +35,6 @@ type TransactionCreationOrigin =
 
 const isUniqueConstraintError = (error: unknown): boolean =>
   typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
-
-const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (character) => {
-    const entities: Record<string, string> = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    };
-    return entities[character] ?? character;
-  });
 
 export class TransactionError extends AppError {
   constructor(message: string, statusCode = 400, code = "TRANSACTION_ERROR") {
@@ -693,19 +685,16 @@ export class TransactionsService {
       );
       const confirmationUrl = new URL("/transactions/confirm", config.FRONTEND_URL);
       confirmationUrl.hash = `/transactions/confirm?token=${encodeURIComponent(token)}`;
-      const safeUrl = escapeHtml(confirmationUrl.toString());
-      const safeMerchant = escapeHtml(data.comercio ?? data.descripcion ?? "Gasto");
+      const email = createTransactionConfirmationEmailTemplate(
+        new Intl.NumberFormat("es-CO", {
+          style: "currency",
+          currency: "COP",
+        }).format(Number(data.monto)),
+        data.comercio ?? data.descripcion ?? "Gasto",
+        confirmationUrl.toString(),
+      );
       try {
-        await sendEmail(
-          user.email,
-          "Confirma un gasto de TriDa",
-          `<p>Se registró un gasto automático de <strong>${new Intl.NumberFormat("es-CO", {
-            style: "currency",
-            currency: "COP",
-          }).format(
-            Number(data.monto),
-          )}</strong> en ${safeMerchant}.</p><p><a href="${safeUrl}">Revisar el movimiento</a></p><p>Tienes 15 minutos para responder. Solo se acepta una decisión por gasto; abrir el enlace no lo consume ni confirma el gasto.</p>`,
-        );
+        await sendEmail(user.email, "Confirma un gasto de TriDa", email.html, email.text);
         await prisma.transaccion.update({
           where: { id_transaccion: transaction.id_transaccion },
           data: { confirmacion_correo_enviado_en: new Date() },
@@ -873,10 +862,13 @@ export class TransactionsService {
         );
       }
       try {
+        const alertsUrl = new URL("/security", config.FRONTEND_URL).toString();
+        const email = createCriticalAlertEmailTemplate(alertsUrl);
         await sendEmail(
           result.email,
           "Alerta crítica de seguridad de TriDa",
-          `<p>Se rechazó un gasto automático no reconocido y se generó una alerta crítica en tu cuenta de TriDa.</p><p>Revisa la alerta y protege tus cuentas vinculadas.</p>`,
+          email.html,
+          email.text,
         );
       } catch (error) {
         logger.error("transaction.critical_alert_email_send_failed", error, {

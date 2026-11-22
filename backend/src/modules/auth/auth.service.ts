@@ -13,6 +13,10 @@ import {
   verifyEmailVerificationToken,
 } from "./email-verification.js";
 import { isEmailConfigured, sendEmail } from "../../utils/mailer.js";
+import {
+  createEmailVerificationTemplate,
+  createPasswordResetEmailTemplate,
+} from "./email-templates.js";
 import { AppError } from "../../utils/AppError.js";
 import { logger } from "../../utils/logger.js";
 import { comparePassword, hashPassword } from "../../utils/password.js";
@@ -274,16 +278,14 @@ export class AuthService {
     const token = createEmailVerificationToken(userId, email, JWT_SECRET);
     const verificationUrl = new URL("/verify-email", config.FRONTEND_URL);
     verificationUrl.hash = new URLSearchParams({ token }).toString();
-    const escapedVerificationUrl = verificationUrl
-      .toString()
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;");
+    const verificationEmail = createEmailVerificationTemplate(verificationUrl.toString());
 
     try {
       await sendEmail(
         email,
         "Verifica tu correo de TriDa",
-        `<p>Tu cuenta de TriDa fue creada. Confirma tu correo para activarla.</p><p><a href="${escapedVerificationUrl}">Verificar correo</a></p><p>El enlace vence en 15 minutos.</p>`,
+        verificationEmail.html,
+        verificationEmail.text,
       );
     } catch (error) {
       logger.error("email.verification_send_failed", error);
@@ -358,12 +360,8 @@ export class AuthService {
       throw new Error("La configuración SMTP está incompleta");
     }
 
-    const escapedResetUrl = resetUrl.toString().replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-    await sendEmail(
-      email,
-      "Restablecer contraseña",
-      `<p>Solicitaste restablecer tu contraseña.</p><p><a href="${escapedResetUrl}">Restablecer contraseña</a></p><p>El enlace vence en 20 minutos y solo puede utilizarse una vez.</p>`,
-    );
+    const resetEmail = createPasswordResetEmailTemplate(resetUrl.toString());
+    await sendEmail(email, "Restablecer contraseña", resetEmail.html, resetEmail.text);
   }
 
   private async getPasswordResetUser(token: string) {

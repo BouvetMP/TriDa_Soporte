@@ -1,12 +1,26 @@
-import { useEffect, useRef } from "react";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
-import L from "leaflet";
+import { useEffect, useRef, useState } from "react";
+import {
+  LngLatBounds,
+  Map as MapLibreMap,
+  NavigationControl,
+  Popup,
+  setWorkerUrl,
+  type GeoJSONSource,
+} from "maplibre-gl";
+import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { AlertTriangle, Building2, Calendar } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCurrency, formatDate } from "@/utils/Formatters";
 import { getRiskBadgeClass, getRiskLabel } from "@/utils/Risk";
 import type { GeoTransaction } from "@/types";
+import { buildTransactionFeatureCollection } from "./map-transaction-features";
+
+setWorkerUrl(mapLibreWorkerUrl);
+
+const TRANSACTION_SOURCE_ID = "transaction-locations";
+const TRANSACTION_LAYER_ID = "transaction-points";
+const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 interface InteractiveExpenseMapProps {
   transactions: GeoTransaction[];
@@ -14,70 +28,19 @@ interface InteractiveExpenseMapProps {
   onSelectTransaction: (transaction: GeoTransaction) => void;
 }
 
-interface MapViewControllerProps {
-  transactions: GeoTransaction[];
-  selectedTransaction: GeoTransaction | null;
-}
+function createTransactionPopup(transaction: GeoTransaction) {
+  const content = document.createElement("div");
+  const merchant = document.createElement("strong");
+  const details = document.createElement("p");
 
-function MapViewController({
-  transactions,
-  selectedTransaction,
-}: MapViewControllerProps) {
-  const map = useMap();
-  const previous = useRef({
-    transactionIds: "",
-    selectedId: null as number | null,
-  });
-  const transactionIds = transactions
-    .map((transaction) => transaction.id_transaccion)
-    .join(",");
+  content.className = "trida-map-popup-content";
+  merchant.className = "trida-map-popup-merchant";
+  details.className = "trida-map-popup-details";
+  merchant.textContent = transaction.comercio || "Comercio no especificado";
+  details.textContent = `${formatCurrency(transaction.monto)} · ${formatDate(transaction.fecha_transaccion)}`;
+  content.append(merchant, details);
 
-  useEffect(() => {
-    if (previous.current.transactionIds !== transactionIds) {
-      previous.current = {
-        transactionIds,
-        selectedId: selectedTransaction?.id_transaccion ?? null,
-      };
-      if (transactions.length === 1) {
-        const [transaction] = transactions;
-        map.setView([transaction.latitud, transaction.longitud], 13);
-      } else {
-        map.fitBounds(
-          L.latLngBounds(
-            transactions.map(
-              (transaction) =>
-                [transaction.latitud, transaction.longitud] as L.LatLngTuple,
-            ),
-          ),
-          { padding: [24, 24], maxZoom: 13 },
-        );
-      }
-      return;
-    }
-
-    if (
-      selectedTransaction &&
-      previous.current.selectedId !== selectedTransaction.id_transaccion
-    ) {
-      previous.current.selectedId = selectedTransaction.id_transaccion;
-      map.flyTo(
-        [selectedTransaction.latitud, selectedTransaction.longitud],
-        Math.max(map.getZoom(), 13),
-        { duration: 0.4 },
-      );
-    }
-  }, [map, selectedTransaction, transactionIds, transactions]);
-
-  return null;
-}
-
-function createTransactionIcon(selected: boolean) {
-  return L.divIcon({
-    className: "trida-map-marker-icon",
-    html: `<span class="trida-map-marker${selected ? " trida-map-marker-selected" : ""}"></span>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
+  return content;
 }
 
 export function InteractiveExpenseMap({
@@ -85,6 +48,144 @@ export function InteractiveExpenseMap({
   selectedTransaction,
   onSelectTransaction,
 }: InteractiveExpenseMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const popupRef = useRef<Popup | null>(null);
+  const transactionsRef = useRef(transactions);
+  const onSelectTransactionRef = useRef(onSelectTransaction);
+  const previousView = useRef({
+    transactionIds: "",
+    selectedId: null as number | null,
+  });
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let hasLoaded = false;
+    const map = new MapLibreMap({
+      container,
+      style: MAP_STYLE_URL,
+      center: [-74.0721, 4.711],
+      zoom: 5,
+      renderWorldCopies: false,
+    });
+    mapRef.current = map;
+    map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+
+    map.once("style.load", () => {
+      hasLoaded = true;
+      map.addSource(TRANSACTION_SOURCE_ID, {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
+      });
+      map.addLayer({
+        id: TRANSACTION_LAYER_ID,
+        type: "circle",
+        source: TRANSACTION_SOURCE_ID,
+        paint: {
+          "circle-radius": ["case", ["==", ["get", "selected"], true], 10, 7],
+          "circle-color": [
+            "case",
+            ["==", ["get", "selected"], true],
+            "#EF4444",
+            ["get", "color"],
+          ],
+          "circle-stroke-color": "#FFFFFF",
+          "circle-stroke-width": 2,
+          "circle-opacity": 0.95,
+        },
+      });
+      map.on("click", TRANSACTION_LAYER_ID, (event) => {
+        const feature = event.features?.[0];
+        const transactionId = Number(feature?.properties?.id_transaccion);
+        const transaction = transactionsRef.current.find(
+          (item) => item.id_transaccion === transactionId,
+        );
+        if (!transaction) return;
+
+        onSelectTransactionRef.current(transaction);
+        popupRef.current?.remove();
+        popupRef.current = new Popup({
+          offset: 12,
+          className: "trida-map-popup",
+        })
+          .setLngLat([transaction.longitud, transaction.latitud])
+          .setDOMContent(createTransactionPopup(transaction))
+          .addTo(map);
+      });
+      map.on("mouseenter", TRANSACTION_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", TRANSACTION_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "";
+      });
+      setMapError(false);
+      setMapReady(true);
+    });
+    map.on("error", () => {
+      if (!hasLoaded) setMapError(true);
+    });
+
+    return () => {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      mapRef.current = null;
+      map.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    transactionsRef.current = transactions;
+    onSelectTransactionRef.current = onSelectTransaction;
+  }, [onSelectTransaction, transactions]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const source = map.getSource(TRANSACTION_SOURCE_ID) as GeoJSONSource;
+    const selectedId = selectedTransaction?.id_transaccion ?? null;
+    const transactionIds = transactions
+      .map((transaction) => transaction.id_transaccion)
+      .join(",");
+
+    source.setData(buildTransactionFeatureCollection(transactions, selectedId));
+
+    if (previousView.current.transactionIds !== transactionIds) {
+      previousView.current = { transactionIds, selectedId };
+      if (transactions.length === 1) {
+        const [transaction] = transactions;
+        map.flyTo({
+          center: [transaction.longitud, transaction.latitud],
+          zoom: 13,
+          duration: 0,
+        });
+      } else {
+        const bounds = new LngLatBounds();
+        transactions.forEach((transaction) => {
+          bounds.extend([transaction.longitud, transaction.latitud]);
+        });
+        map.fitBounds(bounds, { padding: 24, maxZoom: 13, duration: 500 });
+      }
+      return;
+    }
+
+    if (selectedTransaction && previousView.current.selectedId !== selectedId) {
+      previousView.current.selectedId = selectedId;
+      map.flyTo({
+        center: [selectedTransaction.longitud, selectedTransaction.latitud],
+        zoom: Math.max(map.getZoom(), 13),
+        duration: 400,
+      });
+    }
+  }, [mapReady, selectedTransaction, transactions]);
+
   if (transactions.length === 0) {
     return (
       <Card className="flex h-[560px] items-center justify-center border-[var(--color-border)] bg-[var(--color-bg-card)] p-6 text-center text-sm text-[var(--color-text-muted)]">
@@ -96,57 +197,51 @@ export function InteractiveExpenseMap({
   return (
     <Card className="border-[var(--color-border)] bg-[var(--color-bg-card)] overflow-hidden flex flex-col h-[560px]">
       <div className="relative min-h-[300px] flex-1">
-        <MapContainer
-          center={[4.711, -74.0721]}
-          zoom={6}
-          scrollWheelZoom
+        <div
+          ref={containerRef}
+          role="region"
+          aria-label="Mapa interactivo de gastos"
           className="h-full w-full"
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            referrerPolicy="no-referrer"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapViewController
-            transactions={transactions}
-            selectedTransaction={selectedTransaction}
-          />
-          {transactions.map((transaction) => {
-            const selected =
-              selectedTransaction?.id_transaccion ===
-              transaction.id_transaccion;
-            return (
-              <Marker
-                key={`${transaction.id_transaccion}-${selected}`}
-                position={[transaction.latitud, transaction.longitud]}
-                icon={createTransactionIcon(selected)}
-                title={transaction.comercio || "Transacción"}
-                alt={`Transacción ${transaction.id_transaccion}`}
-                eventHandlers={{
-                  click: () => onSelectTransaction(transaction),
-                }}
-              >
-                <Popup>
-                  <strong>
-                    {transaction.comercio || "Comercio no especificado"}
-                  </strong>
-                  <br />
-                  {formatCurrency(transaction.monto)} ·{" "}
-                  {formatDate(transaction.fecha_transaccion)}
-                </Popup>
-              </Marker>
-            );
-          })}
-        </MapContainer>
+        />
+        {!mapReady && !mapError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-card)] text-sm text-[var(--color-text-muted)]">
+            Cargando mapa…
+          </div>
+        )}
+        {mapError && (
+          <div
+            role="alert"
+            className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg-card)] p-6 text-center text-sm text-[var(--color-text-muted)]"
+          >
+            No se pudo cargar el mapa base. Verifica tu conexión e inténtalo de
+            nuevo.
+          </div>
+        )}
       </div>
 
       <p
         role="note"
         className="border-t border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-muted)]"
       >
-        El mapa carga mosaicos de OpenStreetMap, un proveedor externo que recibe
-        solicitudes asociadas a las zonas visualizadas. No se envía la URL de
-        esta página como referencia.
+        Mapa de OpenFreeMap. Datos ©{" "}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          OpenStreetMap
+        </a>{" "}
+        · Estilo ©{" "}
+        <a
+          href="https://openmaptiles.org/"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          OpenMapTiles
+        </a>
+        .
       </p>
 
       {selectedTransaction && (

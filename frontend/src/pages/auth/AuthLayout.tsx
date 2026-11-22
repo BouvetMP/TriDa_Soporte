@@ -11,12 +11,14 @@ interface AuthLayoutProps {
   title: string;
   subtitle: string;
   children: React.ReactNode;
+  centerHeader?: boolean;
 }
 
 export const AuthLayout: React.FC<AuthLayoutProps> = ({
   title,
   subtitle,
   children,
+  centerHeader = false,
 }) => {
   const { theme, toggleTheme } = useTheme();
 
@@ -67,7 +69,9 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
 
         {/* Tarjeta contenedora principal */}
         <Card className="p-6 sm:p-8 backdrop-blur-md bg-surface/90 shadow-2xl border-border">
-          <div className="mb-6 space-y-1">
+          <div
+            className={`mb-6 space-y-1 ${centerHeader ? "text-center" : ""}`}
+          >
             <h2 className="text-xl font-bold text-text-primary">{title}</h2>
             <p className="text-xs text-text-muted">{subtitle}</p>
           </div>

@@ -25,6 +25,8 @@
   --color-primary-hover-rgb: 139 92 246;
   --color-primary-contrast: #211a31;
   --color-primary-contrast-rgb: 33 26 49;
+  --map-popup-bg: #5b3a9d;
+  --map-popup-hover: #4a2d80;
 
   --color-income: #10b981;
   --color-income-rgb: 16 185 129;
@@ -101,6 +103,8 @@
   --color-primary-hover-rgb: 87 57 178;
   --color-primary-contrast: #ffffff;
   --color-primary-contrast-rgb: 255 255 255;
+  --map-popup-bg: #5739b2;
+  --map-popup-hover: #462a96;
 
   --color-income: #059669;
   --color-income-rgb: 5 150 105;
@@ -136,23 +140,39 @@ body {
     color 0.2s ease;
 }
 
-.trida-map-marker-icon {
-  border: 0;
-  background: transparent;
+.trida-map-popup .maplibregl-popup-content {
+  border: 1px solid var(--map-popup-hover);
+  border-radius: 12px;
+  background: var(--map-popup-bg);
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
 }
 
-.trida-map-marker {
+.trida-map-popup .maplibregl-popup-tip {
+  border-top-color: var(--map-popup-bg);
+  border-right-color: var(--map-popup-bg);
+  border-bottom-color: var(--map-popup-bg);
+  border-left-color: var(--map-popup-bg);
+}
+
+.trida-map-popup .maplibregl-popup-close-button {
+  color: #fff;
+  font-size: 18px;
+}
+
+.trida-map-popup .maplibregl-popup-close-button:hover {
+  background: var(--map-popup-hover);
+  color: #fff;
+}
+
+.trida-map-popup-merchant {
   display: block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #fff;
-  border-radius: 9999px;
-  background: var(--color-primary);
-  box-shadow: 0 1px 5px rgb(0 0 0 / 0.5);
+  padding-right: 12px;
+  font-size: 13px;
 }
 
-.trida-map-marker-selected {
-  width: 20px;
-  height: 20px;
-  background: var(--color-expense);
+.trida-map-popup-details {
+  margin: 4px 0 0;
+  color: rgb(255 255 255 / 0.88);
+  font-size: 12px;
 }

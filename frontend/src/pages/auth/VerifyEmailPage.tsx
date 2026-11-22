@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AuthLayout } from "./AuthLayout";
 import { AuthApi } from "@/api/Auth";
-import { AlertCircle, CheckCircle2, LoaderCircle, MailCheck } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  LoaderCircle,
+  MailCheck,
+} from "lucide-react";
 
 export const VerifyEmailPage: React.FC = () => {
   const [token] = useState(
@@ -51,6 +56,7 @@ export const VerifyEmailPage: React.FC = () => {
     <AuthLayout
       title="Verificación de correo"
       subtitle="Confirma el correo asociado a tu cuenta de TriDa"
+      centerHeader
     >
       <div className="space-y-5 text-center">
         <div
@@ -78,12 +84,15 @@ export const VerifyEmailPage: React.FC = () => {
                 ? "No se pudo confirmar"
                 : "Estamos verificando tu correo"}
           </h2>
-          <p role="status" className="mt-2 text-sm leading-6 text-text-secondary">
+          <p
+            role="status"
+            className="mt-2 text-center text-sm leading-6 text-text-secondary"
+          >
             {message}
           </p>
         </div>
         {status === "verified" && (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-income/20 bg-income/5 p-3 text-xs text-text-secondary">
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-income/20 bg-income/5 p-3 text-center text-xs text-text-secondary">
             <MailCheck className="h-4 w-4 text-income" />
             Tu cuenta ya está lista para iniciar sesión.
           </div>
@@ -94,7 +103,7 @@ export const VerifyEmailPage: React.FC = () => {
           onClick={(event) => {
             if (status === "verifying") event.preventDefault();
           }}
-          className={`block w-full rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+          className={`block w-full rounded-xl px-4 py-3 text-center text-sm font-semibold transition-colors ${
             status === "verifying"
               ? "pointer-events-none bg-surface-hover text-text-muted"
               : "bg-primary text-primary-contrast hover:bg-primary-hover"
