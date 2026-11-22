@@ -14,19 +14,19 @@ import { AlertBadge } from "@/components/alerts/AlertBadge";
 import { formatCurrency, formatDate } from "@/utils/Formatters";
 import { Link } from "react-router-dom";
 import { Select } from "@/components/ui/Select";
+import { useAccount } from "@/hooks/useAccount";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
   BellRing,
   PiggyBank,
-  User as UserIcon,
-  Mail,
-  Shield,
+  Wallet,
 } from "lucide-react";
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
+  const { selectedAccount } = useAccount();
 
   const { data, isLoading, periodDays, setPeriodDays, markAdviceRead } =
     useDashboard();
@@ -39,56 +39,38 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Banner de bienvenida */}
-      <Card className="bg-gradient-to-r from-primary/10 via-surface to-surface border-primary/20 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-lg text-primary">
-            ¡Hola, {user?.nombre_completo}!
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-text-secondary">
-            Has iniciado sesión correctamente. Tu conexión con TriDa v2 está
-            diseñada para ayudarte a organizar tus finanzas.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-hover border border-border">
-              <UserIcon className="w-5 h-5 text-primary shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase font-semibold text-text-muted">
-                  Nombre
-                </p>
-                <p className="text-xs font-semibold text-text-primary truncate">
-                  {user?.nombre_completo}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-hover border border-border">
-              <Mail className="w-5 h-5 text-income shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase font-semibold text-text-muted">
-                  Email
-                </p>
-                <p className="text-xs font-semibold text-text-primary truncate">
-                  {user?.email}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-hover border border-border">
-              <Shield className="w-5 h-5 text-saving shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase font-semibold text-text-muted">
-                  Rol
-                </p>
-                <p className="text-xs font-semibold text-text-primary">
-                  {user?.rol}
-                </p>
-              </div>
-            </div>
+      <Card className="relative overflow-hidden border-primary/25 bg-gradient-to-br from-primary/20 via-surface to-surface shadow-sm">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-10 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl"
+        />
+        <CardContent className="relative grid gap-6 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-8">
+          <div className="max-w-2xl">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Tu panorama financiero
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
+              Hola, {user?.nombre_completo?.split(" ")[0] || "bienvenido"}
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Revisa tus movimientos, cuida tu presupuesto y mantén tus finanzas
+              bajo control desde un solo lugar.
+            </p>
           </div>
+          {selectedAccount && (
+            <div className="min-w-0 rounded-2xl border border-border bg-surface/80 p-4 sm:min-w-64">
+              <div className="flex items-center gap-2 text-xs font-medium text-text-muted">
+                <Wallet className="h-4 w-4 text-primary" />
+                Cuenta activa
+              </div>
+              <p className="mt-2 truncate text-sm font-semibold text-text-primary">
+                {selectedAccount.nombre}
+              </p>
+              <p className="mt-1 text-xl font-bold tracking-tight text-primary">
+                {formatCurrency(selectedAccount.saldo_actual)}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -99,8 +81,7 @@ export const DashboardPage: React.FC = () => {
               Resumen Financiero
             </h2>
             <p className="text-sm text-text-muted mt-1">
-              El saldo es consolidado; los ingresos, gastos y categorías
-              corresponden al periodo seleccionado.
+              Datos de {selectedAccount?.nombre ?? "tu cuenta"} durante el periodo seleccionado.
             </p>
           </div>
           <div className="w-full sm:w-48">

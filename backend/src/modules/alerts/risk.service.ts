@@ -44,6 +44,9 @@ export function getGeoRiskPenalty(distanceKm: number, speedKmH: number) {
 }
 
 export const MIN_HISTORICAL_TRANSACTIONS_FOR_AVERAGE = 10;
+const BURST_WINDOW_MINUTES = 10;
+const MIN_PRIOR_EXPENSES_FOR_BURST = 2;
+const BURST_RISK_SCORE = 30;
 
 export class RiskService {
   async evaluateRisk(
@@ -82,6 +85,28 @@ export class RiskService {
         score += 25;
         razones.push(
           `Monto (${monto.toFixed(2)}) excede 3 veces el promedio del usuario (${avgMonto.toFixed(2)})`,
+        );
+      }
+    }
+
+    // Los pendientes cuentan para detectar ráfagas, pero no contaminan el promedio histórico.
+    if (input.tipo_movimiento === "GASTO") {
+      const recentExpenseCount = await transaction.transaccion.count({
+        where: {
+          id_usuario: input.id_usuario,
+          tipo_movimiento: "GASTO",
+          estado: { in: ["PENDIENTE", "CONFIRMADA", "APROBADA"] },
+          fecha_transaccion: {
+            gte: new Date(input.fecha_transaccion.getTime() - BURST_WINDOW_MINUTES * 60 * 1000),
+            lt: input.fecha_transaccion,
+          },
+        },
+      });
+
+      if (recentExpenseCount >= MIN_PRIOR_EXPENSES_FOR_BURST) {
+        score += BURST_RISK_SCORE;
+        razones.push(
+          `Ráfaga de gastos: 3 o más movimientos en ${BURST_WINDOW_MINUTES} minutos (incluido este gasto)`,
         );
       }
     }

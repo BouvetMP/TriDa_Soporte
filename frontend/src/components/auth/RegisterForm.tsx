@@ -115,7 +115,7 @@ export const RegisterForm: React.FC = () => {
       <Input
         label="Teléfono (Opcional)"
         type="tel"
-        placeholder="+57 300 123 4567"
+        placeholder="300 123 4567"
         value={telefono}
         onChange={(e) => setTelefono(e.target.value)}
         leftIcon={<Phone className="w-4 h-4 text-text-muted" />}

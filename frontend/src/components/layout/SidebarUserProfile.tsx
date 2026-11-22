@@ -31,6 +31,11 @@ export const SidebarUserProfile: React.FC = () => {
           <button
             type="button"
             onClick={toggleTheme}
+            aria-label={
+              theme === "dark"
+                ? "Cambiar a modo claro"
+                : "Cambiar a modo oscuro"
+            }
             className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
             title={
               theme === "dark"
@@ -41,13 +46,13 @@ export const SidebarUserProfile: React.FC = () => {
             {theme === "dark" ? (
               <Sun className="w-4 h-4 text-budget-warn" />
             ) : (
-              <Moon className="w-4 h-4 text-indigo-600" />
+              <Moon className="w-4 h-4 text-primary" />
             )}
           </button>
 
           <button
             type="button"
-            onClick={logout}
+            onClick={() => void logout()}
             className="p-1.5 rounded-md text-text-muted hover:text-expense hover:bg-expense/10 transition-colors"
             title="Cerrar sesión"
           >

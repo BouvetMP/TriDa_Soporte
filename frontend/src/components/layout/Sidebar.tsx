@@ -10,6 +10,7 @@ import { SidebarNav } from "./SidebarNav";
 import { SidebarUserProfile } from "./SidebarUserProfile";
 import { cn } from "@/utils/cn";
 import { AlertsApi } from "@/api/Alerts";
+import { useAccount } from "@/hooks/useAccount";
 
 interface SidebarProps {
   isOpenMobile: boolean;
@@ -21,12 +22,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const { pathname } = useLocation();
+  const { selectedAccountId } = useAccount();
   const [pendingAlertsCount, setPendingAlertsCount] = useState(0);
 
   useEffect(() => {
     let active = true;
     const refreshPendingAlerts = () => {
-      AlertsApi.getPendingCount()
+      AlertsApi.getPendingCount(selectedAccountId ?? undefined)
         .then((response) => {
           if (active) {
             setPendingAlertsCount(response.count);
@@ -43,7 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       active = false;
       window.removeEventListener("trida-alerts-updated", refreshPendingAlerts);
     };
-  }, [pathname]);
+  }, [pathname, selectedAccountId]);
 
   return (
     <>

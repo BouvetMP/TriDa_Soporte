@@ -62,7 +62,16 @@ app.use(
     exposedHeaders: ["X-Request-Id"],
   }),
 );
-app.use(express.json({ limit: "1mb" }));
+app.use(
+  express.json({
+    limit: "1mb",
+    verify: (req, _res, body) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = Buffer.isBuffer(body)
+        ? body
+        : Buffer.from(JSON.stringify(body));
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 
 app.use(apiRateLimiter);

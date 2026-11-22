@@ -269,6 +269,16 @@ cd backend
 pnpm seed:admin
 ```
 
+### Datos de demostración para una cuenta existente
+
+Para poblar una cuenta existente, abre `database/seed-test-data.sql` en el editor SQL de tu cliente PostgreSQL conectado a la base de pruebas. Reemplaza los dos valores de ejemplo al inicio del bloque (`v_expected_database` y `v_email`) por el nombre exacto de la base y el correo del usuario; luego ejecuta el script allí.
+
+El script verifica que la base activa tenga el nombre exacto indicado, que ese nombre identifique una base de pruebas y que el usuario exista. También aborta si ya encuentra cuentas o categorías demo, para evitar duplicados. Si la base no tiene el esquema actualizado, primero ejecuta `database/schema.sql` sobre esa base.
+
+Agrega cuentas, categorías, movimientos geolocalizados, presupuestos, metas y alertas de demostración. No crea usuarios ni utiliza la configuración `DATABASE_URL` del backend.
+
+Para ver esos datos en la aplicación local, configura `DATABASE_URL` del backend hacia esa base de pruebas. Las pruebas de contrato (`pnpm test`) no requieren PostgreSQL. Las pruebas de integración (`pnpm test:integration`) deben usar otra base exclusiva mediante `TEST_DATABASE_URL`; el backend comprueba que sea distinta de `DATABASE_URL`.
+
 ---
 
 ## 7. Variables de Entorno

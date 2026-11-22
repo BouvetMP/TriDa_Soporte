@@ -4,6 +4,7 @@ import { calculatePercentage } from "../../utils/decimal-money.js";
 import type { AddFundsInput, CreateSavingsInput, UpdateSavingsInput } from "./savings.schemas.js";
 import { AppError } from "../../utils/AppError.js";
 import { deriveSavingsState, type SavingsState } from "./savings.state.js";
+import { dateOnlyValue, isTodayOrFutureDate } from "../../utils/date.js";
 
 type SavingRecord = {
   id_meta: number;
@@ -99,11 +100,26 @@ export const savingsService = {
         monto_objetivo: true,
         estado: true,
         fecha_completada: true,
+        fecha_limite: true,
       },
     });
 
     if (!existing) {
       throw new SavingsError("Meta de ahorro no encontrada", 404);
+    }
+
+    if (
+      data.fecha_limite &&
+      !isTodayOrFutureDate(data.fecha_limite) &&
+      (!existing.fecha_limite ||
+        dateOnlyValue(data.fecha_limite) !==
+          dateOnlyValue(existing.fecha_limite))
+    ) {
+      throw new SavingsError(
+        "La fecha límite no puede ser anterior a hoy",
+        400,
+        "INVALID_SAVINGS_DEADLINE",
+      );
     }
 
     const montoObjetivo =

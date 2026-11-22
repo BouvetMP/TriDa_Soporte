@@ -3,13 +3,22 @@
  * ¿Para qué? Integrar la Sidebar, la barra superior móvil y renderizar el contenido con <Outlet />.
  */
 import React, { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
-import { Menu, ShieldCheck } from "lucide-react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Menu } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { NAV_ITEMS } from "@/constants/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/Toast";
 import { registerCurrentDevice } from "@/utils/deviceRegistration";
+import { cn } from "@/utils/cn";
+
+const MOBILE_NAV_PATHS = [
+  "/dashboard",
+  "/transactions",
+  "/accounts",
+  "/budgets",
+  "/map",
+];
 
 const CurrentDeviceRegistration: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
@@ -45,15 +54,21 @@ const CurrentDeviceRegistration: React.FC = () => {
 export const AppLayout: React.FC = () => {
   const [isOpenMobile, setIsOpenMobile] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+  const mobileNavItems = NAV_ITEMS.filter(
+    (item) =>
+      MOBILE_NAV_PATHS.includes(item.path) &&
+      (!item.roles || (user && item.roles.includes(user.rol))),
+  );
 
   // Obtiene el título de la vista actual según la ruta
   const currentNavItem = NAV_ITEMS.find(
     (item) => item.path === location.pathname,
   );
-  const pageTitle = currentNavItem ? currentNavItem.label : "TriDa v2";
+  const pageTitle = currentNavItem ? currentNavItem.label : "TriDa";
 
   return (
-    <div className="flex h-dvh w-screen overflow-hidden bg-background">
+    <div className="flex h-dvh w-full overflow-hidden bg-background">
       <CurrentDeviceRegistration />
       {/* Sidebar Lateral */}
       <Sidebar
@@ -80,15 +95,41 @@ export const AppLayout: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1.5 text-primary font-bold text-xs">
-            <ShieldCheck className="w-4 h-4" />
+            <img src="/trida-logo.svg" alt="" className="h-5 w-5 rounded" />
             <span>TriDa</span>
           </div>
         </header>
 
         {/* Zona de scroll principal (<Outlet /> renderiza las páginas hijas) */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
           <Outlet />
         </main>
+        <nav
+          aria-label="Navegación principal móvil"
+          className="grid grid-cols-5 border-t border-border bg-surface px-1 pb-[env(safe-area-inset-bottom)] lg:hidden"
+        >
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                aria-label={item.label}
+                className={({ isActive }) =>
+                  cn(
+                    "flex min-w-0 flex-col items-center gap-1 px-1 py-2 text-[10px] font-medium transition-colors",
+                    isActive
+                      ? "text-primary"
+                      : "text-text-muted hover:text-text-primary",
+                  )
+                }
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                <span className="w-full truncate text-center">{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );

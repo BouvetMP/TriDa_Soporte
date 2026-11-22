@@ -32,13 +32,25 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
   return (
     <>
-      <Card className="relative overflow-hidden group hover:border-primary/40 transition-all duration-200">
+      <Card
+        className="group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"
+        style={{
+          background: `linear-gradient(145deg, ${account.color || "#8B5CF6"}22, var(--color-surface) 58%)`,
+        }}
+      >
         <div
-          className="absolute top-0 bottom-0 left-0 w-1.5"
-          style={{ backgroundColor: account.color || "var(--color-primary)" }}
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full blur-3xl"
+          style={{
+            background: `${account.color || "#8B5CF6"}2b`,
+          }}
+        />
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: account.color || "var(--color-primary)" }}
         />
 
-        <CardHeader className="flex flex-row items-center justify-between pb-2 pl-6">
+        <CardHeader className="relative flex flex-row items-center justify-between pb-2 pl-6">
           <div className="flex items-center gap-3 min-w-0">
             <AccountBadge tipo={account.tipo} showIconOnly />
             <div className="min-w-0">
@@ -73,7 +85,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </CardHeader>
 
-        <CardContent className="pl-6 pt-2 space-y-3">
+        <CardContent className="relative space-y-3 pl-6 pt-2">
           <div>
             <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
               Saldo actual

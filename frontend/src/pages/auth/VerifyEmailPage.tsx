@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AuthLayout } from "./AuthLayout";
 import { AuthApi } from "@/api/Auth";
+import { AlertCircle, CheckCircle2, LoaderCircle, MailCheck } from "lucide-react";
 
 export const VerifyEmailPage: React.FC = () => {
   const [token] = useState(
@@ -51,21 +52,53 @@ export const VerifyEmailPage: React.FC = () => {
       title="Verificación de correo"
       subtitle="Confirma el correo asociado a tu cuenta de TriDa"
     >
-      <div className="space-y-4 text-center">
-        <p
-          role="status"
-          className={
-            status === "error"
-              ? "text-sm text-expense"
-              : "text-sm text-text-secondary"
-          }
+      <div className="space-y-5 text-center">
+        <div
+          className={`mx-auto flex h-16 w-16 items-center justify-center rounded-2xl ${
+            status === "verified"
+              ? "bg-income/10 text-income"
+              : status === "error"
+                ? "bg-expense/10 text-expense"
+                : "bg-primary/10 text-primary"
+          }`}
         >
-          {message}
-        </p>
+          {status === "verified" ? (
+            <CheckCircle2 className="h-8 w-8" />
+          ) : status === "error" ? (
+            <AlertCircle className="h-8 w-8" />
+          ) : (
+            <LoaderCircle className="h-8 w-8 animate-spin" />
+          )}
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">
+            {status === "verified"
+              ? "Correo confirmado"
+              : status === "error"
+                ? "No se pudo confirmar"
+                : "Estamos verificando tu correo"}
+          </h2>
+          <p role="status" className="mt-2 text-sm leading-6 text-text-secondary">
+            {message}
+          </p>
+        </div>
+        {status === "verified" && (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-income/20 bg-income/5 p-3 text-xs text-text-secondary">
+            <MailCheck className="h-4 w-4 text-income" />
+            Tu cuenta ya está lista para iniciar sesión.
+          </div>
+        )}
         <Link
           to="/login"
           aria-disabled={status === "verifying"}
-          className="block w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-contrast"
+          onClick={(event) => {
+            if (status === "verifying") event.preventDefault();
+          }}
+          className={`block w-full rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+            status === "verifying"
+              ? "pointer-events-none bg-surface-hover text-text-muted"
+              : "bg-primary text-primary-contrast hover:bg-primary-hover"
+          }`}
         >
           Ir al inicio de sesión
         </Link>

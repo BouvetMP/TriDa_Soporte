@@ -19,6 +19,8 @@ export const SidebarAccountSelector: React.FC = () => {
     useAccount();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -32,6 +34,50 @@ export const SidebarAccountSelector: React.FC = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>('[aria-checked="true"]')
+      ?.focus();
+  }, [isOpen]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isOpen) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setIsOpen(false);
+      triggerRef.current?.focus();
+      return;
+    }
+
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitemradio"]',
+      ) ?? [],
+    );
+    if (items.length === 0) return;
+
+    event.preventDefault();
+    const activeIndex = items.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    const currentIndex =
+      activeIndex >= 0
+        ? activeIndex
+        : items.findIndex((item) => item.getAttribute("aria-checked") === "true");
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : (currentIndex +
+              (event.key === "ArrowDown" ? 1 : -1) +
+              items.length) %
+            items.length;
+    items[nextIndex]?.focus();
+  };
 
   const getAccountIcon = (tipo?: AccountType) => {
     switch (tipo) {
@@ -51,14 +97,22 @@ export const SidebarAccountSelector: React.FC = () => {
   );
 
   return (
-    <div className="px-3 py-3 border-b border-border" ref={dropdownRef}>
+    <div
+      className="px-3 py-3 border-b border-border"
+      ref={dropdownRef}
+    >
       <p className="block text-[10px] font-semibold tracking-wider text-text-muted uppercase mb-1 px-1">
         Cuenta seleccionada
       </p>
 
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => accounts.length > 1 && setIsOpen(!isOpen)}
+        disabled={accounts.length < 2}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-controls="sidebar-account-menu"
         className="w-full flex items-center justify-between p-2.5 rounded-lg bg-surface border border-border hover:bg-surface-hover transition-all text-left"
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -71,7 +125,7 @@ export const SidebarAccountSelector: React.FC = () => {
           </div>
           <div className="min-w-0">
             <p className="text-xs font-semibold text-text-primary truncate">
-              {selectedAccount ? selectedAccount.nombre : "Todas mis cuentas"}
+              {selectedAccount ? selectedAccount.nombre : "Crea tu primera cuenta"}
             </p>
             <p className="text-[11px] font-medium text-text-secondary">
               {selectedAccount
@@ -87,31 +141,15 @@ export const SidebarAccountSelector: React.FC = () => {
 
       {/* Menú desplegable */}
       {isOpen && (
-        <div className="absolute left-3 right-3 mt-1.5 z-50 rounded-xl bg-surface border border-border shadow-xl p-1 max-h-60 overflow-y-auto">
-          {/* Opción "Todas las cuentas" */}
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedAccountId(null);
-              setIsOpen(false);
-            }}
-            className={`w-full flex items-center justify-between p-2 rounded-lg text-xs transition-colors ${
-              selectedAccountId === null
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-text-primary hover:bg-surface-hover"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-primary" />
-              <span>Todas mis cuentas</span>
-            </div>
-            {selectedAccountId === null && (
-              <Check className="w-3.5 h-3.5 text-primary" />
-            )}
-          </button>
-
-          <div className="my-1 border-t border-border" />
-
+        <div
+          id="sidebar-account-menu"
+          ref={menuRef}
+          role="menu"
+          aria-label="Seleccionar cuenta financiera"
+          tabIndex={-1}
+          onKeyDown={handleKeyDown}
+          className="absolute left-3 right-3 mt-1.5 z-50 rounded-xl bg-surface border border-border shadow-xl p-1 max-h-60 overflow-y-auto"
+        >
           {/* Cuentas individuales */}
           {accounts.map((account) => {
             const isSelected = selectedAccountId === account.id_cuenta;
@@ -119,6 +157,9 @@ export const SidebarAccountSelector: React.FC = () => {
               <button
                 key={account.id_cuenta}
                 type="button"
+                role="menuitemradio"
+                aria-checked={isSelected}
+                tabIndex={isSelected ? 0 : -1}
                 onClick={() => {
                   setSelectedAccountId(account.id_cuenta);
                   setIsOpen(false);

@@ -6,18 +6,25 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { NewTransactionModal } from "./NewTransactionModal";
+
+const mocks = vi.hoisted(() => ({
+  hasCashAccount: true,
+}));
 
 vi.mock("@/hooks/useAccount", () => ({
   useAccount: () => ({
-    accounts: [
-      {
-        id_cuenta: 1,
-        nombre: "Cuenta de efectivo",
-        tipo: "EFECTIVO",
-        estado: true,
-      },
-    ],
+    accounts: mocks.hasCashAccount
+      ? [
+          {
+            id_cuenta: 1,
+            nombre: "Cuenta de efectivo",
+            tipo: "EFECTIVO",
+            estado: true,
+          },
+        ]
+      : [],
     selectedAccount: null,
   }),
 }));
@@ -32,6 +39,7 @@ vi.mock("@/components/ui/Toast", () => ({
 
 afterEach(() => {
   cleanup();
+  mocks.hasCashAccount = true;
 });
 
 describe("NewTransactionModal", () => {
@@ -68,5 +76,26 @@ describe("NewTransactionModal", () => {
     await waitFor(() => {
       expect(screen.queryByText(validationMessage)).toBeNull();
     });
+  });
+
+  it("offers a route to add a cash account when none exists", () => {
+    mocks.hasCashAccount = false;
+    render(
+      <MemoryRouter>
+        <NewTransactionModal
+          isOpen
+          onClose={vi.fn()}
+          categories={[]}
+          onSubmit={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Agregar una cuenta de efectivo" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Guardar Transacción" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

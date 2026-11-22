@@ -3,6 +3,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { CreateSavingsGoalPayload } from "@/types";
+import { dateOnlyInBogota } from "@/utils/Date";
 
 interface NewSavingsGoalModalProps {
   isOpen: boolean;
@@ -20,6 +21,15 @@ export function NewSavingsGoalModal({
   const [montoActual, setMontoActual] = useState<string>("");
   const [fechaLimite, setFechaLimite] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const today = dateOnlyInBogota(new Date());
+
+  const handleClose = () => {
+    setNombre("");
+    setMontoObjetivo("");
+    setMontoActual("");
+    setFechaLimite("");
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,18 +45,14 @@ export function NewSavingsGoalModal({
     setSubmitting(false);
 
     if (success) {
-      setNombre("");
-      setMontoObjetivo("");
-      setMontoActual("");
-      setFechaLimite("");
-      onClose();
+      handleClose();
     }
   };
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title="Nueva Meta de Ahorro"
       isSubmitting={submitting}
     >
@@ -92,9 +98,13 @@ export function NewSavingsGoalModal({
             <Input
               label="Fecha Límite (Opcional)"
               type="date"
+              min={today}
               value={fechaLimite}
               onChange={(e) => setFechaLimite(e.target.value)}
             />
+            <p className="mt-1 text-xs text-text-muted">
+              Elige hoy o una fecha futura para completar tu objetivo.
+            </p>
           </div>
         </div>
 
@@ -102,7 +112,7 @@ export function NewSavingsGoalModal({
           <Button
             type="button"
             variant="outline"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitting}
           >
             Cancelar

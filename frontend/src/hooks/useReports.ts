@@ -60,6 +60,7 @@ export function useReports(initialFilters?: ReportFilters) {
 
   const fetchReport = useCallback(async () => {
     const currentRequestId = ++requestId.current;
+    setReportData(null);
     const dateRange = getReportDateRange(filters);
     if (!dateRange) {
       setReportData(null);

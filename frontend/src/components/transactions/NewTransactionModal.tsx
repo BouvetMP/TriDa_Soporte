@@ -9,6 +9,7 @@ import { useAccount } from "@/hooks/useAccount";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/Toast";
 import { getCurrentDeviceRecordId } from "@/utils/deviceRegistration";
+import { Link } from "react-router-dom";
 
 interface NewTransactionModalProps {
   isOpen: boolean;
@@ -195,10 +196,22 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
           </div>
         )}
         {activeAccounts.length === 0 && (
-          <p role="status" className="text-sm text-text-secondary">
-            Los movimientos manuales requieren una cuenta de efectivo. Los
-            movimientos de otras cuentas se recibirán automáticamente.
-          </p>
+          <div
+            role="status"
+            className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4"
+          >
+            <p className="text-sm text-text-secondary">
+              Los movimientos manuales son solo para efectivo. Los movimientos
+              de bancos y billeteras se reciben automáticamente.
+            </p>
+            <Link
+              to="/accounts"
+              onClick={onClose}
+              className="inline-flex items-center text-sm font-semibold text-primary hover:underline"
+            >
+              Agregar una cuenta de efectivo
+            </Link>
+          </div>
         )}
 
         <div>

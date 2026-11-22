@@ -86,7 +86,7 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
           <input
             id="profile-phone"
             type="tel"
-            placeholder="+57 300 000 0000"
+            placeholder="300 000 0000"
             value={telefono}
             onChange={(e) => setTelefono(e.target.value)}
             className="w-full pl-10 pr-3 py-2 bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded-lg text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary-500)]"

@@ -35,7 +35,7 @@ export const insightsService = {
       WHERE id_usuario = $1
         AND fecha_transaccion >= $2
         AND estado IN ('CONFIRMADA', 'APROBADA')
-        AND ($3::int IS NULL OR id_cuenta = $3)
+        AND ($3::int IS NULL OR id_cuenta = $3 OR id_cuenta_destino = $3)
       `,
       userId,
       desde,
@@ -65,7 +65,7 @@ export const insightsService = {
         AND t.tipo_movimiento = 'GASTO'
         AND t.fecha_transaccion >= $2
         AND t.estado IN ('CONFIRMADA', 'APROBADA')
-        AND ($3::int IS NULL OR t.id_cuenta = $3)
+        AND ($3::int IS NULL OR t.id_cuenta = $3 OR t.id_cuenta_destino = $3)
       GROUP BY c.id_categoria, c.nombre, c.icono, c.color
       ORDER BY total DESC
       LIMIT 5
@@ -93,7 +93,7 @@ export const insightsService = {
         AND tipo_movimiento = 'GASTO'
         AND fecha_transaccion >= $2
         AND estado IN ('CONFIRMADA', 'APROBADA')
-        AND ($3::int IS NULL OR id_cuenta = $3)
+        AND ($3::int IS NULL OR id_cuenta = $3 OR id_cuenta_destino = $3)
       GROUP BY comercio
       ORDER BY total DESC
       LIMIT 5
@@ -118,7 +118,7 @@ export const insightsService = {
       LEFT JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
         AND a.fecha_detectada >= $2
-        AND ($3::int IS NULL OR t.id_cuenta = $3)
+        AND ($3::int IS NULL OR t.id_cuenta = $3 OR t.id_cuenta_destino = $3)
       `,
       userId,
       desde,

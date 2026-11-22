@@ -104,6 +104,8 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
         message: "El movimiento se ha registrado correctamente.",
       });
       await Promise.all([fetchTransactions(), refreshAccounts()]);
+      window.dispatchEvent(new Event("trida-transactions-updated"));
+      window.dispatchEvent(new Event("trida-alerts-updated"));
       return true;
     } catch (error) {
       const err = error as Error;
@@ -131,6 +133,7 @@ export const useTransactions = (initialFilters: TransactionFilters = {}) => {
             : "Transacción rechazada.",
       });
       await Promise.all([fetchTransactions(), refreshAccounts()]);
+      window.dispatchEvent(new Event("trida-transactions-updated"));
       window.dispatchEvent(new Event("trida-alerts-updated"));
       return true;
     } catch (error) {

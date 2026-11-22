@@ -15,14 +15,12 @@ export interface Category {
 export interface CreateCategoryPayload {
   nombre: string;
   tipo: TipoCategoria;
-  icono?: string;
   color?: string;
 }
 
 export interface UpdateCategoryPayload {
   nombre?: string;
   tipo?: TipoCategoria;
-  icono?: string;
   color?: string;
   estado?: boolean;
 }

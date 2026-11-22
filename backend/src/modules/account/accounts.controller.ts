@@ -65,17 +65,6 @@ export class AccountsController {
     }
   }
 
-  async delete(req: Request, res: Response, next: NextFunction) {
-    try {
-      const userId = req.user!.id_usuario;
-      const accountId = parseId(req.params.id);
-      await accountService.delete(userId, accountId);
-
-      sendSuccess(res, { id_cuenta: accountId }, "Cuenta eliminada exitosamente");
-    } catch (error) {
-      next(error);
-    }
-  }
 }
 
 export const accountsController = new AccountsController();

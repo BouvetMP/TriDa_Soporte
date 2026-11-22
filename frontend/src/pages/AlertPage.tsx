@@ -31,7 +31,7 @@ export const AlertsPage: React.FC = () => {
             Centro de Alertas de Fraude
           </h1>
           <p className="text-sm text-[var(--color-text-subtle)] mt-1">
-            Monitorea anomalías detectadas por TriDa v2 en tus transacciones.
+            Monitorea anomalías detectadas por TriDa en tus transacciones.
           </p>
         </div>
       </div>

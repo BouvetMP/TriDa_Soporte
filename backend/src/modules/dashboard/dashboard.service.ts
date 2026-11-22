@@ -45,7 +45,7 @@ export const dashboardService = {
         AND fecha_transaccion >= $2
         AND fecha_transaccion <= $3
         AND estado IN ('CONFIRMADA', 'APROBADA')
-        AND ($4::int IS NULL OR id_cuenta = $4)
+        AND ($4::int IS NULL OR id_cuenta = $4 OR id_cuenta_destino = $4)
       `,
       userId,
       fechaInicio,
@@ -142,7 +142,7 @@ export const dashboardService = {
       FROM trida.alertas_fraude a
       JOIN trida.transacciones t ON t.id_transaccion = a.id_transaccion
       WHERE a.id_usuario = $1
-        AND ($3::int IS NULL OR t.id_cuenta = $3)
+        AND ($3::int IS NULL OR t.id_cuenta = $3 OR t.id_cuenta_destino = $3)
       ORDER BY a.fecha_detectada DESC
       LIMIT $2
       `,
@@ -243,13 +243,13 @@ export const dashboardService = {
   },
 
   async getRecentAdvice(userId: number, limit = 5, accountId?: number) {
+    void accountId;
     const safeLimit = Math.max(1, Math.min(limit, 50));
     const rows = await prisma.consejo_financiero.findMany({
       where: {
         id_usuario: userId,
         leido: false,
         tipo: "GASTO",
-        ...(accountId === undefined ? {} : { id_cuenta: accountId }),
       },
       orderBy: { fecha_generado: "desc" },
       take: safeLimit,

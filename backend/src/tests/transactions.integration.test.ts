@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import dotenv from "dotenv";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createPasswordResetToken } from "../modules/auth/reset-token.js";
 import { fingerprintExternalEvent } from "../modules/transactions/transaction-archive.js";
+import { createTransactionConfirmationToken } from "../modules/transactions/transaction-confirmation-token.js";
 
 dotenv.config();
 
@@ -41,6 +42,24 @@ process.env.JWT_EXPIRES_IN = "8h";
 process.env.SMTP_ENABLED = "false";
 const transactionWebhookSecret = "integration-webhook-secret-for-tests-32";
 process.env.TRANSACTION_WEBHOOK_SECRET = transactionWebhookSecret;
+
+function createSignedWebhookRequest(payload: unknown, secret = transactionWebhookSecret) {
+  const body = JSON.stringify(payload);
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = createHmac("sha256", secret)
+    .update(`${timestamp}.${body}`)
+    .digest("hex");
+
+  return {
+    body,
+    headers: {
+      "content-type": "application/json",
+      "x-trida-webhook-secret": secret,
+      "x-trida-timestamp": timestamp,
+      "x-trida-signature": signature,
+    },
+  };
+}
 
 type SuccessEnvelope<T> = {
   success: true;
@@ -132,7 +151,7 @@ test("transaction routes keep account balances consistent across creation and re
         : null,
       8 * 60 * 60,
     );
-    const authorization = { authorization: `Bearer ${login.data.token}` };
+    let authorization = { authorization: `Bearer ${login.data.token}` };
     const loggedInUser = await prisma.usuario.findUnique({
       where: { id_usuario: login.data.usuario.id_usuario },
       select: { ultimo_acceso: true },
@@ -238,6 +257,83 @@ test("transaction routes keep account balances consistent across creation and re
     const account = await readJson<SuccessEnvelope<{ id_cuenta: number }>>(accountResponse);
     const accountId = account.data.id_cuenta;
 
+    const dashboardStatsResponse = await fetch(`${baseUrl}/dashboard/stats`, {
+      headers: authorization,
+    });
+    assert.equal(dashboardStatsResponse.status, 200);
+    const dashboardStats =
+      await readJson<SuccessEnvelope<{ saldo_total: number }>>(dashboardStatsResponse);
+    assert.equal(dashboardStats.data.saldo_total, 100);
+
+    const confirmationAccount = await prisma.cuenta.create({
+      data: {
+        id_usuario: userId,
+        nombre: "Cuenta para prueba de confirmación",
+        tipo: "EFECTIVO",
+        saldo_inicial: 100,
+        saldo_actual: 100,
+      },
+    });
+    const confirmationEvent = {
+      fuente: "CONFIRMATION_TEST",
+      id_evento: randomUUID(),
+      id_cuenta: confirmationAccount.id_cuenta,
+      monto: 11,
+      tipo_movimiento: "GASTO" as const,
+      descripcion: "Prueba de decisión de un solo uso",
+    };
+    const pendingConfirmation = await prisma.transaccion.create({
+      data: {
+        id_usuario: userId,
+        id_cuenta: confirmationAccount.id_cuenta,
+        tipo_movimiento: "GASTO",
+        monto: confirmationEvent.monto,
+        descripcion: confirmationEvent.descripcion,
+        canal: "webhook",
+        fuente_externa: confirmationEvent.fuente,
+        id_evento_externo: confirmationEvent.id_evento,
+        huella_evento_externo: fingerprintExternalEvent(confirmationEvent),
+        estado: "PENDIENTE",
+      },
+    });
+    const confirmationToken = createTransactionConfirmationToken(
+      { id_usuario: userId, id_transaccion: pendingConfirmation.id_transaccion },
+      process.env.JWT_SECRET!,
+    );
+    const readConfirmationResponse = await fetch(
+      `${baseUrl}/transactions/email-confirmation?token=${encodeURIComponent(confirmationToken)}`,
+    );
+    assert.equal(readConfirmationResponse.status, 200);
+    const firstConfirmationResponse = await fetch(
+      `${baseUrl}/transactions/email-confirmation`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: confirmationToken, decision: "FUI_YO" }),
+      },
+    );
+    assert.equal(firstConfirmationResponse.status, 200);
+    const replayedConfirmationResponse = await fetch(
+      `${baseUrl}/transactions/email-confirmation`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: confirmationToken, decision: "FUI_YO" }),
+      },
+    );
+    assert.equal(replayedConfirmationResponse.status, 409);
+    assert.equal(
+      Number(
+        (
+          await prisma.cuenta.findUniqueOrThrow({
+            where: { id_cuenta: confirmationAccount.id_cuenta },
+            select: { saldo_actual: true },
+          })
+        ).saldo_actual,
+      ),
+      89,
+    );
+
     const archivedEvent = {
       fuente: "SIMULADOR",
       id_evento: randomUUID(),
@@ -333,14 +429,11 @@ test("transaction routes keep account balances consistent across creation and re
       100,
     );
 
+    const archivedReplayRequest = createSignedWebhookRequest(archivedEvent);
     const archivedReplayResponse = await fetch(`${baseUrl}/integrations/transactions/webhook`, {
       method: "POST",
-      headers: {
-        ...authorization,
-        "content-type": "application/json",
-        "x-trida-webhook-secret": transactionWebhookSecret,
-      },
-      body: JSON.stringify(archivedEvent),
+      headers: { ...authorization, ...archivedReplayRequest.headers },
+      body: archivedReplayRequest.body,
     });
     assert.equal(archivedReplayResponse.status, 200);
     const archivedReplay =
@@ -351,13 +444,14 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(archivedReplay.data.duplicado, true);
     assert.equal(archivedReplay.data.archivado, true);
 
+    const conflictingArchivedReplayRequest = createSignedWebhookRequest({
+      ...archivedEvent,
+      monto: 43,
+    });
     const conflictingArchivedReplay = await fetch(`${baseUrl}/integrations/transactions/webhook`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-trida-webhook-secret": transactionWebhookSecret,
-      },
-      body: JSON.stringify({ ...archivedEvent, monto: 43 }),
+      headers: conflictingArchivedReplayRequest.headers,
+      body: conflictingArchivedReplayRequest.body,
     });
     assert.equal(conflictingArchivedReplay.status, 409);
 
@@ -387,26 +481,25 @@ test("transaction routes keep account balances consistent across creation and re
       monto: 15,
       tipo_movimiento: "TRANSFERENCIA",
     };
+    const invalidWebhookRequest = createSignedWebhookRequest(
+      transferEvent,
+      "incorrect-webhook-secret",
+    );
     const invalidWebhookSecretResponse = await fetch(
       `${baseUrl}/integrations/transactions/webhook`,
       {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-trida-webhook-secret": "incorrect-webhook-secret",
-        },
-        body: JSON.stringify(transferEvent),
+        headers: invalidWebhookRequest.headers,
+        body: invalidWebhookRequest.body,
       },
     );
     assert.equal(invalidWebhookSecretResponse.status, 401);
 
+    const transferRequest = createSignedWebhookRequest(transferEvent);
     const transferResponse = await fetch(`${baseUrl}/integrations/transactions/webhook`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-trida-webhook-secret": transactionWebhookSecret,
-      },
-      body: JSON.stringify(transferEvent),
+      headers: transferRequest.headers,
+      body: transferRequest.body,
     });
     assert.equal(transferResponse.status, 201);
     const transfer = await readJson<
@@ -419,13 +512,11 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(transfer.data.estado, "CONFIRMADA");
     assert.equal(transfer.data.duplicado, false);
 
+    const duplicateTransferRequest = createSignedWebhookRequest(transferEvent);
     const duplicateTransferResponse = await fetch(`${baseUrl}/integrations/transactions/webhook`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-trida-webhook-secret": transactionWebhookSecret,
-      },
-      body: JSON.stringify(transferEvent),
+      headers: duplicateTransferRequest.headers,
+      body: duplicateTransferRequest.body,
     });
     assert.equal(duplicateTransferResponse.status, 200);
     const duplicateTransfer = await readJson<
@@ -437,15 +528,16 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(duplicateTransfer.data.id_transaccion, transfer.data.id_transaccion);
     assert.equal(duplicateTransfer.data.duplicado, true);
 
+    const conflictingTransferRequest = createSignedWebhookRequest({
+      ...transferEvent,
+      monto: 16,
+    });
     const conflictingTransferResponse = await fetch(
       `${baseUrl}/integrations/transactions/webhook`,
       {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-trida-webhook-secret": transactionWebhookSecret,
-        },
-        body: JSON.stringify({ ...transferEvent, monto: 16 }),
+        headers: conflictingTransferRequest.headers,
+        body: conflictingTransferRequest.body,
       },
     );
     assert.equal(conflictingTransferResponse.status, 409);
@@ -605,7 +697,7 @@ test("transaction routes keep account balances consistent across creation and re
       headers: { ...authorization, "content-type": "application/json" },
       body: JSON.stringify({
         nombre: "Meta de integración",
-        monto_objetivo: 100,
+        monto_objetivo: 1020,
         monto_actual: 20,
       }),
     });
@@ -620,12 +712,12 @@ test("transaction routes keep account balances consistent across creation and re
     const addFundsResponse = await fetch(`${baseUrl}/savings/${saving.data.id_meta}/funds`, {
       method: "POST",
       headers: { ...authorization, "content-type": "application/json" },
-      body: JSON.stringify({ monto: 80 }),
+      body: JSON.stringify({ monto: 1000 }),
     });
     assert.equal(addFundsResponse.status, 200);
     const completedSaving =
       await readJson<SuccessEnvelope<{ monto_actual: number; estado: string }>>(addFundsResponse);
-    assert.equal(completedSaving.data.monto_actual, 100);
+    assert.equal(completedSaving.data.monto_actual, 1020);
     assert.equal(completedSaving.data.estado, "COMPLETADA");
 
     const savedContributions = await prisma.aporte_meta.aggregate({
@@ -633,7 +725,7 @@ test("transaction routes keep account balances consistent across creation and re
       _sum: { monto: true },
       _count: { _all: true },
     });
-    assert.equal(Number(savedContributions._sum.monto), 100);
+    assert.equal(Number(savedContributions._sum.monto), 1020);
     assert.equal(savedContributions._count._all, 2);
 
     const addFundsToCompletedResponse = await fetch(
@@ -641,7 +733,7 @@ test("transaction routes keep account balances consistent across creation and re
       {
         method: "POST",
         headers: { ...authorization, "content-type": "application/json" },
-        body: JSON.stringify({ monto: 1 }),
+        body: JSON.stringify({ monto: 1000 }),
       },
     );
     assert.equal(addFundsToCompletedResponse.status, 409);
@@ -817,6 +909,8 @@ test("transaction routes keep account balances consistent across creation and re
       body: JSON.stringify({
         nombre: "Cuenta del segundo usuario",
         tipo: "BANCO",
+        entidad: "Banco de pruebas",
+        numero_enmascarado: "4321",
         saldo_inicial: 5,
       }),
     });
@@ -828,7 +922,7 @@ test("transaction routes keep account balances consistent across creation and re
     });
     assert.equal(crossUserResponse.status, 404);
     const crossUserError = await readJson<FailureEnvelope>(crossUserResponse);
-    assert.equal(crossUserError.error.code, "NOT_FOUND");
+    assert.equal(crossUserError.error.code, "ACCOUNT_ERROR");
 
     const transactionCountBeforeInvalidRequest = await prisma.transaccion.count({
       where: { id_usuario: userId },
@@ -968,6 +1062,7 @@ test("transaction routes keep account balances consistent across creation and re
         monto: 25,
         tipo_movimiento: "GASTO",
         pais: "Colombia",
+        fecha_transaccion: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
       }),
     });
     assert.equal(transactionResponse.status, 201);
@@ -1076,7 +1171,7 @@ test("transaction routes keep account balances consistent across creation and re
     assert.equal(resolveAgainResponse.status, 409);
     const resolveAgainError = await readJson<FailureEnvelope>(resolveAgainResponse);
     assert.equal(resolveAgainError.success, false);
-    assert.equal(resolveAgainError.error.code, "CONFLICT");
+    assert.equal(resolveAgainError.error.code, "TRANSACTION_ERROR");
 
     const rejected = await prisma.transaccion.create({
       data: {
@@ -1143,35 +1238,27 @@ test("transaction routes keep account balances consistent across creation and re
       method: "DELETE",
       headers: authorization,
     });
-    assert.equal(deleteResponse.status, 200);
-    const pendingDeletionAudit = await prisma.log_auditoria.findFirst({
-      where: {
-        id_usuario: userId,
-        tipo_accion: "TRANSACCION_ELIMINADA",
-        entidad_afectada: "transacciones",
-        id_entidad: pending.id_transaccion,
-      },
-    });
-    assert.ok(pendingDeletionAudit);
-    assert.match(pendingDeletionAudit?.descripcion ?? "", /tipo=INGRESO/);
-    assert.match(pendingDeletionAudit?.descripcion ?? "", /estado=CONFIRMADA/);
-    assert.equal(
-      Number(
-        (
-          await prisma.cuenta.findUniqueOrThrow({
-            where: { id_cuenta: accountId },
-            select: { saldo_actual: true },
-          })
-        ).saldo_actual,
-      ),
-      75,
+    assert.equal(deleteResponse.status, 409);
+    const deleteError = await readJson<FailureEnvelope>(deleteResponse);
+    assert.equal(deleteError.error.code, "INDIVIDUAL_TRANSACTION_DELETE_DISABLED");
+    assert.ok(
+      await prisma.transaccion.findUnique({
+        where: { id_transaccion: pending.id_transaccion },
+      }),
     );
 
     const deleteCreatedResponse = await fetch(
       `${baseUrl}/transactions/${created.data.transaction.id_transaccion}`,
       { method: "DELETE", headers: authorization },
     );
-    assert.equal(deleteCreatedResponse.status, 200);
+    assert.equal(deleteCreatedResponse.status, 409);
+    const deleteCreatedError = await readJson<FailureEnvelope>(deleteCreatedResponse);
+    assert.equal(deleteCreatedError.error.code, "INDIVIDUAL_TRANSACTION_DELETE_DISABLED");
+    assert.ok(
+      await prisma.transaccion.findUnique({
+        where: { id_transaccion: created.data.transaction.id_transaccion },
+      }),
+    );
     assert.equal(
       Number(
         (
@@ -1181,7 +1268,7 @@ test("transaction routes keep account balances consistent across creation and re
           })
         ).saldo_actual,
       ),
-      100,
+      85,
     );
 
     const budgetDate = new Date(
@@ -1546,6 +1633,21 @@ test("transaction routes keep account balances consistent across creation and re
       { method: "DELETE", headers: authorization },
     );
     assert.equal(deleteDeviceResponse.status, 200);
+
+    const revokedSessionResponse = await fetch(`${baseUrl}/auth/me`, {
+      headers: authorization,
+    });
+    assert.equal(revokedSessionResponse.status, 401);
+
+    const refreshedLoginResponse = await fetch(`${baseUrl}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "TestPassword123!" }),
+    });
+    assert.equal(refreshedLoginResponse.status, 200);
+    const refreshedLogin =
+      await readJson<SuccessEnvelope<{ token: string }>>(refreshedLoginResponse);
+    authorization = { authorization: `Bearer ${refreshedLogin.data.token}` };
 
     const reRegisteredDeviceResponse = await fetch(`${baseUrl}/devices`, {
       method: "POST",

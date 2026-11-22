@@ -4,7 +4,6 @@ import { AppError } from "../../utils/AppError.js";
 type CategoryData = {
   nombre?: string;
   tipo?: "INGRESO" | "GASTO" | "AHORRO";
-  icono?: string | null;
   color?: string;
   estado?: boolean;
 };
@@ -81,8 +80,8 @@ export class CategoriesService {
         id_usuario: userId,
         nombre: data.nombre.trim(),
         tipo: data.tipo ?? "GASTO",
-        icono: data.icono ?? "tag",
-        color: data.color ?? "#2563eb",
+        icono: null,
+        color: data.color ?? "#8B5CF6",
       },
     });
 
@@ -124,7 +123,6 @@ export class CategoriesService {
     const updateData: CategoryData = {};
     if (data.nombre !== undefined) updateData.nombre = data.nombre;
     if (data.tipo !== undefined) updateData.tipo = data.tipo;
-    if (data.icono !== undefined) updateData.icono = data.icono;
     if (data.color !== undefined) updateData.color = data.color;
     if (data.estado !== undefined) updateData.estado = data.estado;
 

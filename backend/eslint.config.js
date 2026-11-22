@@ -4,6 +4,9 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
+import { fileURLToPath } from "node:url";
+
+const tsconfigRootDir = fileURLToPath(new URL(".", import.meta.url));
 
 export default tseslint.config(
   {
@@ -15,6 +18,9 @@ export default tseslint.config(
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
+      parserOptions: {
+        tsconfigRootDir,
+      },
       globals: {
         ...globals.node,
       },

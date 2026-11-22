@@ -22,10 +22,24 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
   const [nombre, setNombre] = useState("");
   const [entidad, setEntidad] = useState("");
   const [tipo, setTipo] = useState<AccountType>("BANCO");
-  const [numeroEnmascarado, setNumeroEnmascarado] = useState("");
+  const [numeroCuenta, setNumeroCuenta] = useState("");
   const [saldoInicial, setSaldoInicial] = useState<string>("0");
-  const [color, setColor] = useState("#6366F1");
+  const [color, setColor] = useState("#8B5CF6");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const resetForm = () => {
+    setNombre("");
+    setEntidad("");
+    setTipo("BANCO");
+    setNumeroCuenta("");
+    setSaldoInicial("0");
+    setColor("#8B5CF6");
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +49,24 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
         type: "error",
         title: "Campo requerido",
         message: "Por favor asigna un nombre a la cuenta.",
+      });
+      return;
+    }
+
+    const accountNumberDigits = numeroCuenta.replace(/\D/g, "");
+    if (tipo !== "EFECTIVO" && !entidad.trim()) {
+      showToast({
+        type: "error",
+        title: "Entidad requerida",
+        message: "Indica el banco o la entidad financiera de la cuenta.",
+      });
+      return;
+    }
+    if (tipo !== "EFECTIVO" && accountNumberDigits.length < 4) {
+      showToast({
+        type: "error",
+        title: "Número de cuenta requerido",
+        message: "Ingresa el número completo de la cuenta.",
       });
       return;
     }
@@ -54,9 +86,12 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
     try {
       await onSubmit({
         nombre: nombre.trim(),
-        entidad: entidad.trim() || undefined,
+        entidad: tipo === "EFECTIVO" ? undefined : entidad.trim(),
         tipo,
-        numero_enmascarado: numeroEnmascarado.trim() || undefined,
+        numero_enmascarado:
+          tipo === "EFECTIVO"
+            ? undefined
+            : accountNumberDigits.slice(-4),
         saldo_inicial: parsedSaldo,
         color,
       });
@@ -67,12 +102,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
         message: `La cuenta "${nombre}" ha sido agregada con éxito.`,
       });
 
-      setNombre("");
-      setEntidad("");
-      setTipo("BANCO");
-      setNumeroEnmascarado("");
-      setSaldoInicial("0");
-      onClose();
+      handleClose();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Error al crear la cuenta.";
@@ -89,7 +119,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       isSubmitting={isSubmitting}
       title="Agregar Nueva Cuenta"
       description="Registra un banco, tarjeta, billetera digital o dinero en efectivo"
@@ -120,10 +150,11 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
           />
 
           <Input
-            label="Entidad Financiera (Opcional)"
+            label={`Entidad Financiera${tipo === "EFECTIVO" ? " (Opcional)" : " *"}`}
             placeholder="Ej: Bancolombia, Davivienda, Nu"
             value={entidad}
             onChange={(e) => setEntidad(e.target.value)}
+            required={tipo !== "EFECTIVO"}
           />
         </div>
 
@@ -139,13 +170,22 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
             required
           />
 
-          <Input
-            label="Últimos 4 dígitos (Opcional)"
-            placeholder="Ej: 4321"
-            maxLength={4}
-            value={numeroEnmascarado}
-            onChange={(e) => setNumeroEnmascarado(e.target.value)}
-          />
+          {tipo !== "EFECTIVO" && (
+            <div>
+              <Input
+                label="Número completo de cuenta *"
+                placeholder="Escribe el número completo"
+                inputMode="numeric"
+                autoComplete="off"
+                value={numeroCuenta}
+                onChange={(e) => setNumeroCuenta(e.target.value)}
+                required
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Por seguridad, solo guardamos y mostramos los últimos 4 dígitos.
+              </p>
+            </div>
+          )}
         </div>
 
         <div>
@@ -170,7 +210,7 @@ export const NewAccountModal: React.FC<NewAccountModalProps> = ({
         </div>
 
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="ghost" onClick={handleClose}>
             Cancelar
           </Button>
           <Button type="submit" variant="primary" isLoading={isSubmitting}>

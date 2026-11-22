@@ -18,6 +18,7 @@ export interface CreateAccountPayload {
   nombre: string;
   entidad?: string;
   tipo: AccountType;
+  /** Exactly the last four digits; the full account number never leaves the browser. */
   numero_enmascarado?: string;
   color?: string;
   saldo_inicial?: number;

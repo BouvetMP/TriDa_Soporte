@@ -56,6 +56,14 @@ type FailedLoginState = {
 };
 
 export class AuthService {
+  async purgeExpiredAuditLogs(): Promise<number> {
+    const retentionCutoff = new Date(Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const result = await prisma.log_auditoria.deleteMany({
+      where: { fecha_accion: { lt: retentionCutoff } },
+    });
+    return result.count;
+  }
+
   async register(data: RegisterInput) {
     const emailVerificationRequired = config.NODE_ENV !== "test";
     if (emailVerificationRequired && !isEmailConfigured()) {
@@ -148,7 +156,7 @@ export class AuthService {
           intentos_login_fallidos = pending_attempt.next_attempt_count,
           bloqueado_hasta = CASE
             WHEN pending_attempt.next_attempt_count >= ${LOGIN_MAX_FAILED_ATTEMPTS}
-              THEN NOW() + make_interval(hours => ${LOGIN_LOCK_DURATION_HOURS})
+              THEN NOW() + make_interval(hours => ${LOGIN_LOCK_DURATION_HOURS}::int)
             ELSE NULL
           END
         FROM pending_attempt
@@ -182,11 +190,6 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ipAddress?: string) {
-    const retentionCutoff = new Date(Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    await prisma.log_auditoria.deleteMany({
-      where: { fecha_accion: { lt: retentionCutoff } },
-    });
-
     const user = await prisma.usuario.findUnique({
       where: { email },
     });

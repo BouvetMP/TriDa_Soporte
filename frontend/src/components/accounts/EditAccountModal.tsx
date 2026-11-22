@@ -24,8 +24,8 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
   const [nombre, setNombre] = useState("");
   const [entidad, setEntidad] = useState("");
   const [tipo, setTipo] = useState<AccountType>("BANCO");
-  const [numeroEnmascarado, setNumeroEnmascarado] = useState("");
-  const [color, setColor] = useState("#6366F1");
+  const [numeroCuenta, setNumeroCuenta] = useState("");
+  const [color, setColor] = useState("#8B5CF6");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -33,8 +33,8 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
       setNombre(account.nombre);
       setEntidad(account.entidad || "");
       setTipo(account.tipo);
-      setNumeroEnmascarado(account.numero_enmascarado || "");
-      setColor(account.color || "#6366F1");
+      setNumeroCuenta("");
+      setColor(account.color || "#8B5CF6");
     }
   }, [account]);
 
@@ -51,14 +51,39 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
       return;
     }
 
+    const accountNumberDigits = numeroCuenta.replace(/\D/g, "");
+    if (tipo !== "EFECTIVO" && !entidad.trim()) {
+      showToast({
+        type: "error",
+        title: "Entidad requerida",
+        message: "Indica el banco o la entidad financiera de la cuenta.",
+      });
+      return;
+    }
+    if (
+      tipo !== "EFECTIVO" &&
+      accountNumberDigits.length < 4 &&
+      !account.numero_enmascarado
+    ) {
+      showToast({
+        type: "error",
+        title: "Número de cuenta requerido",
+        message: "Ingresa el número completo de la cuenta.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       await onSubmit(account.id_cuenta, {
         nombre: nombre.trim(),
-        entidad: entidad.trim() || undefined,
+        entidad: tipo === "EFECTIVO" ? undefined : entidad.trim(),
         tipo,
-        numero_enmascarado: numeroEnmascarado.trim() || undefined,
+        numero_enmascarado:
+          tipo !== "EFECTIVO" && accountNumberDigits.length >= 4
+            ? accountNumberDigits.slice(-4)
+            : undefined,
         color,
       });
 
@@ -113,19 +138,33 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
           />
 
           <Input
-            label="Entidad Financiera"
+            label={`Entidad Financiera${tipo === "EFECTIVO" ? " (Opcional)" : " *"}`}
             value={entidad}
             onChange={(e) => setEntidad(e.target.value)}
+            required={tipo !== "EFECTIVO"}
           />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Últimos 4 dígitos"
-            maxLength={4}
-            value={numeroEnmascarado}
-            onChange={(e) => setNumeroEnmascarado(e.target.value)}
-          />
+          {tipo !== "EFECTIVO" && (
+            <div>
+              <Input
+                label="Nuevo número completo (opcional)"
+                placeholder={
+                  account?.numero_enmascarado
+                    ? `Actual termina en ${account.numero_enmascarado}`
+                    : "Escribe el número completo"
+                }
+                inputMode="numeric"
+                autoComplete="off"
+                value={numeroCuenta}
+                onChange={(e) => setNumeroCuenta(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Solo se guardan y muestran los últimos 4 dígitos.
+              </p>
+            </div>
+          )}
         </div>
 
         <div>

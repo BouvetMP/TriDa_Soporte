@@ -63,6 +63,11 @@ export const errorHandler = (
       statusCode = 404;
       code = "NOT_FOUND";
     }
+    else if (err.code === "P2034") {
+      message = "La operación tuvo un conflicto de concurrencia. Inténtalo nuevamente.";
+      statusCode = 409;
+      code = "SERIALIZATION_CONFLICT";
+    }
 
     logger.error("request.database_error", err, {
       requestId: res.locals.requestId ?? "unknown",

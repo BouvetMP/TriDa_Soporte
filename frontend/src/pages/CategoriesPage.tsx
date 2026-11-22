@@ -79,8 +79,8 @@ export const CategoriesPage: React.FC = () => {
           aria-hidden="true"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{
-            color: category.color ?? "#6366f1",
-            backgroundColor: `${category.color ?? "#6366f1"}20`,
+            color: category.color ?? "#8b5cf6",
+            backgroundColor: `${category.color ?? "#8b5cf6"}20`,
           }}
         >
           <Tag className="h-5 w-5" />

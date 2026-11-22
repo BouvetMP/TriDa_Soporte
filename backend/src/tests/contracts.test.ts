@@ -40,7 +40,10 @@ import {
 } from "../modules/alerts/alerts.schemas.js";
 import { getAlertTransactionDecision } from "../modules/alerts/alerts.service.js";
 import { getUnifiedRiskLevel } from "../utils/risk.js";
-import { updateCategorySchema } from "../modules/categories/category.schemas.js";
+import {
+  createCategorySchema,
+  updateCategorySchema,
+} from "../modules/categories/category.schemas.js";
 import { AUDIT_RETENTION_DAYS } from "../modules/auth/auth.service.js";
 import { getAuthenticatedUserKey, getEmailKey } from "../middlewares/rateLimit.middleware.js";
 import { config } from "../config.js";
@@ -287,12 +290,54 @@ test("risk amount comparison requires at least ten historical transactions", asy
             _avg: { monto: new Prisma.Decimal(10) },
             _count: { id_transaccion: countTx },
           }),
+          count: async () => 0,
         },
       } as unknown as Prisma.TransactionClient,
     );
 
   assert.equal((await evaluate(9)).score_riesgo, 0);
   assert.equal((await evaluate(10)).score_riesgo, 40);
+});
+
+test("risk evaluation flags the third expense in ten minutes, including pending ones", async () => {
+  let countQuery: unknown;
+  const riskService = new RiskService();
+  const result = await riskService.evaluateRisk(
+    {
+      id_usuario: 1,
+      monto: 10,
+      tipo_movimiento: "GASTO",
+      fecha_transaccion: new Date("2026-11-21T12:00:00.000Z"),
+    },
+    {
+      transaccion: {
+        aggregate: async () => ({
+          _avg: { monto: null },
+          _count: { id_transaccion: 0 },
+        }),
+        count: async (args: Parameters<Prisma.TransactionClient["transaccion"]["count"]>[0]) => {
+          countQuery = args;
+          return 2;
+        },
+      },
+    } as unknown as Prisma.TransactionClient,
+  );
+
+  assert.deepEqual(countQuery, {
+    where: {
+      id_usuario: 1,
+      tipo_movimiento: "GASTO",
+      estado: { in: ["PENDIENTE", "CONFIRMADA", "APROBADA"] },
+      fecha_transaccion: {
+        gte: new Date("2026-11-21T11:50:00.000Z"),
+        lt: new Date("2026-11-21T12:00:00.000Z"),
+      },
+    },
+  });
+  assert.equal(result.score_riesgo, 30);
+  assert.equal(result.nivel_riesgo, "MEDIO");
+  assert.equal(result.estado_evaluacion, "REVISAR");
+  assert.match(result.razones[0], /Ráfaga de gastos/);
 });
 
 test("application errors carry stable module and domain codes", () => {
@@ -367,12 +412,47 @@ function runErrorHandler(error: unknown) {
 test("account schema accepts the documented snake_case contract only", () => {
   const documented = createAccountSchema.parse({
     nombre: "Cuenta principal",
+    entidad: "Banco de Bogotá",
     tipo: "BANCO",
-    numero_enmascarado: "****1234",
+    numero_enmascarado: "1234",
     saldo_inicial: 250,
   });
-  assert.equal(documented.numero_enmascarado, "****1234");
+  assert.equal(documented.numero_enmascarado, "1234");
   assert.equal(documented.saldo_inicial, 250);
+  assert.equal(
+    createAccountSchema.parse({
+      nombre: "Efectivo",
+      tipo: "EFECTIVO",
+    }).numero_enmascarado,
+    undefined,
+  );
+  assert.equal(
+    createAccountSchema.safeParse({
+      nombre: "Cuenta sin entidad",
+      tipo: "BANCO",
+      numero_enmascarado: "1234",
+    }).success,
+    false,
+  );
+  assert.equal(
+    createAccountSchema.safeParse({
+      nombre: "Cuenta",
+      entidad: "Banco",
+      tipo: "BANCO",
+      numero_enmascarado: "123456789",
+    }).success,
+    false,
+  );
+  assert.equal(
+    createAccountSchema.safeParse({
+      nombre: "Cuenta",
+      entidad: "Banco",
+      tipo: "BANCO",
+      numero_enmascarado: "1234",
+      color: "red",
+    }).success,
+    false,
+  );
   assert.equal(
     createAccountSchema.safeParse({
       nombre: "Cuenta secundaria",
@@ -591,6 +671,18 @@ test("failed login audit uses 90-day retention", () => {
 });
 
 test("inactive categories can be reactivated through state update", () => {
+  assert.equal(
+    createCategorySchema.parse({ nombre: "Comida", tipo: "GASTO" }).color,
+    "#8B5CF6",
+  );
+  assert.equal(
+    createCategorySchema.safeParse({
+      nombre: "Comida",
+      tipo: "GASTO",
+      icono: "utensils",
+    }).success,
+    false,
+  );
   assert.equal(updateCategorySchema.safeParse({ estado: true }).success, true);
   assert.equal(updateCategorySchema.safeParse({ estado: false }).success, true);
   assert.equal(updateCategorySchema.safeParse({ estado: "true" }).success, false);
@@ -649,6 +741,22 @@ test("route IDs and monetary values are bounded and normalized", () => {
       nombre: "Ahorro",
       monto_objetivo: 100,
       monto_actual: 100,
+    }).success,
+    true,
+  );
+  assert.equal(
+    createSavingsSchema.safeParse({
+      nombre: "Ahorro vencido",
+      monto_objetivo: 100,
+      fecha_limite: "2000-01-01",
+    }).success,
+    false,
+  );
+  assert.equal(
+    createSavingsSchema.safeParse({
+      nombre: "Ahorro futuro",
+      monto_objetivo: 100,
+      fecha_limite: "2099-12-31",
     }).success,
     true,
   );

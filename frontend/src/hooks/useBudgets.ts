@@ -90,6 +90,9 @@ export function useBudgets(initialFilters?: BudgetFilters) {
 
   useEffect(() => {
     fetchBudgets();
+    window.addEventListener("trida-transactions-updated", fetchBudgets);
+    return () =>
+      window.removeEventListener("trida-transactions-updated", fetchBudgets);
   }, [fetchBudgets]);
 
   const createBudget = async (

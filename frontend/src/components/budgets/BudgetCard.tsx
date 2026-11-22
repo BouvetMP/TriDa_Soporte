@@ -19,6 +19,7 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
   const isExceeded = porcentaje >= 100;
   const isNearLimit = porcentaje >= alertaPorcentaje && !isExceeded;
   const restante = Math.max(0, montoLimite - montoGastado);
+  const progreso = Math.max(0, Math.min(porcentaje, 100));
 
   const getProgressColor = () => {
     if (isExceeded) return "bg-[var(--color-danger)]";
@@ -57,6 +58,7 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
               onClick={() => onEdit(budget)}
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-hover)] transition-colors"
               title="Editar presupuesto"
+              aria-label={`Editar presupuesto de ${budget.categoria?.nombre || "categoría no asignada"}`}
             >
               <Edit2 className="w-4 h-4" />
             </button>
@@ -65,6 +67,7 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
               onClick={() => onDelete(budget)}
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)] transition-colors"
               title="Eliminar presupuesto"
+              aria-label={`Eliminar presupuesto de ${budget.categoria?.nombre || "categoría no asignada"}`}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -116,10 +119,18 @@ export function BudgetCard({ budget, onEdit, onDelete }: BudgetCardProps) {
         </div>
 
         {/* Barra de progreso */}
-        <div className="w-full bg-[var(--color-bg-secondary)] h-2.5 rounded-full overflow-hidden mb-2">
+        <div
+          className="w-full bg-[var(--color-bg-secondary)] h-2.5 rounded-full overflow-hidden mb-2"
+          role="progressbar"
+          aria-label={`Presupuesto de ${budget.categoria?.nombre || "categoría no asignada"}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progreso}
+          aria-valuetext={`${porcentaje.toFixed(1)}%`}
+        >
           <div
             className={`h-full transition-all duration-300 rounded-full ${getProgressColor()}`}
-            style={{ width: `${Math.min(porcentaje, 100)}%` }}
+            style={{ width: `${progreso}%` }}
           />
         </div>
       </div>

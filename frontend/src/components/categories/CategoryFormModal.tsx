@@ -29,16 +29,14 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
 }) => {
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState<TipoCategoria>("GASTO");
-  const [icono, setIcono] = useState("");
-  const [color, setColor] = useState("#6366f1");
+  const [color, setColor] = useState("#8b5cf6");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setNombre(category?.nombre ?? "");
     setTipo(category?.tipo ?? "GASTO");
-    setIcono(category?.icono ?? "");
-    setColor(category?.color ?? "#6366f1");
+    setColor(category?.color ?? "#8b5cf6");
   }, [category, isOpen]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -48,7 +46,6 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
       const succeeded = await onSubmit({
         nombre: nombre.trim(),
         tipo,
-        icono: icono.trim() || undefined,
         color,
       });
       if (succeeded) onClose();
@@ -97,15 +94,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
           </select>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input
-            label="Icono (opcional)"
-            value={icono}
-            onChange={(event) => setIcono(event.target.value)}
-            maxLength={50}
-            placeholder="Ej. shopping-cart"
-          />
-          <div>
+        <div>
             <label
               htmlFor="category-color"
               className="mb-1 block text-sm font-medium text-text-secondary"
@@ -119,7 +108,6 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
               onChange={(event) => setColor(event.target.value)}
               className="h-10 w-full cursor-pointer rounded-lg border border-border bg-surface p-1"
             />
-          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border pt-4">

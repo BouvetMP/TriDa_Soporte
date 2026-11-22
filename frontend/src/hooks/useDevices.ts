@@ -9,7 +9,7 @@ export const useDevices = () => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const { showToast } = useToast();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const fetchDevices = useCallback(async () => {
     setIsLoading(true);
@@ -85,8 +85,10 @@ export const useDevices = () => {
       showToast({
         type: "success",
         title: "Dispositivo eliminado",
-        message: "El dispositivo ha sido desvinculado exitosamente.",
+        message:
+          "El dispositivo fue desvinculado y todas las sesiones se cerraron. Inicia sesión nuevamente.",
       });
+      await logout(true);
       return true;
     } catch (error) {
       const err = error as Error;

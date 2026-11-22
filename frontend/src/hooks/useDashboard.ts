@@ -14,6 +14,7 @@ export const useDashboard = () => {
 
   const fetchDashboardData = useCallback(async () => {
     const currentRequestId = ++requestId.current;
+    setData(null);
     setIsLoading(true);
     try {
       const metrics = await DashboardApi.getStats(

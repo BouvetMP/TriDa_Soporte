@@ -2,11 +2,13 @@
 // ¿Para qué? Cargar variables de entorno y validar tipos/formatos antes de arrancar el servidor.
 // ¿Impacto? Evita que la app funcione con secretos inseguros o URLs faltantes (RS-003, RS-004).
 
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { z } from "zod";
 import { logger } from "./utils/logger.js";
 
-dotenv.config();
+dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 
 const envSchema = z.object({
   // Servidor

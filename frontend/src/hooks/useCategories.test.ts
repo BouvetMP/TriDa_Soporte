@@ -116,6 +116,35 @@ describe("useCategories", () => {
     });
   });
 
+  it("does not retry a failed automatic load until explicitly refreshed", async () => {
+    const originalShowToast = mocks.showToast;
+    mocks.getAll.mockRejectedValueOnce(new Error("Network unavailable"));
+
+    try {
+      const { result, rerender } = renderHook(() => useCategories(), { wrapper });
+      await waitFor(() => {
+        expect(mocks.getAll).toHaveBeenCalledTimes(1);
+        expect(mocks.showToast).toHaveBeenCalledTimes(1);
+      });
+
+      mocks.showToast = vi.fn();
+      rerender();
+      expect(mocks.getAll).toHaveBeenCalledTimes(1);
+
+      mocks.getAll.mockResolvedValue([
+        { id_categoria: 1, nombre: "Comida", tipo: "GASTO" },
+      ]);
+      await act(async () => {
+        await result.current.refreshCategories();
+      });
+
+      expect(mocks.getAll).toHaveBeenCalledTimes(2);
+      expect(result.current.categories).toHaveLength(1);
+    } finally {
+      mocks.showToast = originalShowToast;
+    }
+  });
+
   it("keeps the shared cache scoped to the authenticated user", async () => {
     mocks.getAll
       .mockResolvedValueOnce([

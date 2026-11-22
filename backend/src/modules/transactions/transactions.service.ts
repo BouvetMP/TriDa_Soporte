@@ -692,7 +692,7 @@ export class TransactionsService {
         config.JWT_SECRET,
       );
       const confirmationUrl = new URL("/transactions/confirm", config.FRONTEND_URL);
-      confirmationUrl.searchParams.set("token", token);
+      confirmationUrl.hash = `/transactions/confirm?token=${encodeURIComponent(token)}`;
       const safeUrl = escapeHtml(confirmationUrl.toString());
       const safeMerchant = escapeHtml(data.comercio ?? data.descripcion ?? "Gasto");
       try {
@@ -704,7 +704,7 @@ export class TransactionsService {
             currency: "COP",
           }).format(
             Number(data.monto),
-          )}</strong> en ${safeMerchant}.</p><p><a href="${safeUrl}">Revisar el movimiento</a></p><p>El enlace es de un solo uso y vence en 15 minutos. Abrirlo no confirma el gasto.</p>`,
+          )}</strong> en ${safeMerchant}.</p><p><a href="${safeUrl}">Revisar el movimiento</a></p><p>Tienes 15 minutos para responder. Solo se acepta una decisión por gasto; abrir el enlace no lo consume ni confirma el gasto.</p>`,
         );
         await prisma.transaccion.update({
           where: { id_transaccion: transaction.id_transaccion },

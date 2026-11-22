@@ -54,9 +54,10 @@ export class AccountsService {
       data: {
         id_usuario: userId,
         nombre: data.nombre,
-        entidad: data.entidad,
+        entidad: data.tipo === "EFECTIVO" ? null : data.entidad,
         tipo: data.tipo,
-        numero_enmascarado: data.numero_enmascarado,
+        numero_enmascarado:
+          data.tipo === "EFECTIVO" ? null : data.numero_enmascarado,
         color: data.color,
         saldo_inicial: data.saldo_inicial,
         saldo_actual: data.saldo_inicial,
@@ -71,29 +72,32 @@ export class AccountsService {
   }
 
   async updateAccount(userId: number, accountId: number, data: UpdateAccountInput) {
-    await this.getAccountById(userId, accountId);
+    const existing = await this.getAccountById(userId, accountId);
+    const tipo = data.tipo ?? existing.tipo;
+    const entidad = data.entidad ?? existing.entidad;
+    const numero = data.numero_enmascarado ?? existing.numero_enmascarado;
+
+    if (tipo !== "EFECTIVO" && !entidad?.trim()) {
+      throw new AccountError("La entidad financiera es requerida");
+    }
+    if (tipo !== "EFECTIVO" && !numero) {
+      throw new AccountError("El número de cuenta es requerido");
+    }
+
+    const updateData =
+      data.tipo === "EFECTIVO"
+        ? { ...data, entidad: null, numero_enmascarado: null }
+        : data;
 
     const account = await prisma.cuenta.update({
       where: { id_cuenta: accountId },
-      data,
+      data: updateData,
     });
     return formatAccount(account);
   }
 
   async update(userId: number, accountId: number, data: UpdateAccountInput) {
     return this.updateAccount(userId, accountId, data);
-  }
-
-  async deleteAccount(userId: number, accountId: number) {
-    await this.getAccountById(userId, accountId);
-
-    return prisma.cuenta.delete({
-      where: { id_cuenta: accountId },
-    });
-  }
-
-  async delete(userId: number, accountId: number) {
-    return this.deleteAccount(userId, accountId);
   }
 
   async deactivate(userId: number, accountId: number) {

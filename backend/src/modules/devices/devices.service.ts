@@ -145,6 +145,10 @@ export class DevicesService {
       const deletedDevice = await transaction.dispositivo.delete({
         where: { id_dispositivo: deviceId },
       });
+      await transaction.usuario.update({
+        where: { id_usuario: userId },
+        data: { token_version: { increment: 1 } },
+      });
       await transaction.log_auditoria.create({
         data: {
           id_usuario: userId,

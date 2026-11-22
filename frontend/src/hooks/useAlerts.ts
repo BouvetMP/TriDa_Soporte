@@ -10,6 +10,8 @@ import { useToast } from "@/components/ui/Toast";
 import { useAccount } from "@/hooks/useAccount";
 
 export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
+  const { selectedAccountId, refreshAccounts } = useAccount();
+  const { showToast } = useToast();
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
   const [pendingCount, setPendingCount] = useState<number>(0);
 
@@ -26,14 +28,13 @@ export const useAlerts = (initialParams: ListAlertsQueryParams = {}) => {
     sort_by: "fecha_detectada",
     sort_order: "desc",
     ...initialParams,
+    id_cuenta: selectedAccountId ?? undefined,
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const requestId = useRef(0);
   const pendingCountRequestId = useRef(0);
   const isMounted = useRef(false);
-  const { showToast } = useToast();
-  const { selectedAccountId, refreshAccounts } = useAccount();
 
   useEffect(() => {
     setQueryParams((prev) => ({

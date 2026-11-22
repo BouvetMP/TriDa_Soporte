@@ -8,6 +8,7 @@ import type {
   UpdateSavingsGoalPayload,
   EstadoMeta,
 } from "@/types";
+import { dateOnlyInBogota } from "@/utils/Date";
 
 interface EditSavingsGoalModalProps {
   goal: SavingsGoal | null;
@@ -27,6 +28,7 @@ export function EditSavingsGoalModal({
   const [fechaLimite, setFechaLimite] = useState<string>("");
   const [estado, setEstado] = useState<EstadoMeta>("ACTIVA");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const today = dateOnlyInBogota(new Date());
 
   useEffect(() => {
     if (goal) {
@@ -105,9 +107,13 @@ export function EditSavingsGoalModal({
           <Input
             label="Fecha Límite"
             type="date"
+            min={today}
             value={fechaLimite}
             onChange={(e) => setFechaLimite(e.target.value)}
           />
+          <p className="mt-1 text-xs text-text-muted">
+            Las nuevas fechas límite deben ser hoy o posteriores.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-4 border-t border-[var(--color-border)]">

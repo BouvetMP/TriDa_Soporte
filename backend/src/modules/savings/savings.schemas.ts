@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { nonNegativeMoney, positiveMoney } from "../../utils/money.js";
 import { MAX_POSTGRES_INT } from "../../utils/params.js";
+import { isTodayOrFutureDate } from "../../utils/date.js";
 
 export const savingsIdSchema = z.coerce.number().int().positive().max(MAX_POSTGRES_INT);
 
@@ -14,7 +15,16 @@ export const createSavingsSchema = z
     monto_actual: nonNegativeMoney.default(0),
     fecha_limite: z.iso.date().or(z.iso.datetime()).or(z.date()).nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((goal, context) => {
+    if (goal.fecha_limite && !isTodayOrFutureDate(goal.fecha_limite)) {
+      context.addIssue({
+        code: "custom",
+        path: ["fecha_limite"],
+        message: "La fecha límite no puede ser anterior a hoy",
+      });
+    }
+  });
 
 export const updateSavingsSchema = z
   .object({

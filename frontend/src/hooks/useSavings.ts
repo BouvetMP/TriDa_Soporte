@@ -67,11 +67,15 @@ export function useSavings(initialEstado?: EstadoMeta) {
     payload: CreateSavingsGoalPayload,
   ): Promise<boolean> => {
     try {
-      await savingsApi.createGoal(payload);
+      const createdGoal = await savingsApi.createGoal(payload);
       showToast({
         type: "success",
-        title: "Meta Creada",
-        message: "Tu meta de ahorro ha sido creada con éxito.",
+        title:
+          createdGoal.estado === "COMPLETADA" ? "¡Meta completada!" : "Meta creada",
+        message:
+          createdGoal.estado === "COMPLETADA"
+            ? "Tu ahorro inicial alcanzó el objetivo."
+            : "Tu meta de ahorro ha sido creada con éxito.",
       });
       await fetchSavings();
       return true;
@@ -138,11 +142,17 @@ export function useSavings(initialEstado?: EstadoMeta) {
     payload: CreateContributionPayload,
   ): Promise<boolean> => {
     try {
-      await savingsApi.addContribution(payload);
+      const updatedGoal = await savingsApi.addContribution(payload);
       showToast({
         type: "success",
-        title: "Aporte Registrado",
-        message: "¡Excelente! Tu aporte ha sido sumado a la meta.",
+        title:
+          updatedGoal.estado === "COMPLETADA"
+            ? "¡Meta completada!"
+            : "Aporte registrado",
+        message:
+          updatedGoal.estado === "COMPLETADA"
+            ? `¡Felicitaciones! Completaste tu meta "${updatedGoal.nombre}".`
+            : "¡Excelente! Tu aporte ha sido sumado a la meta.",
       });
       await fetchSavings();
       return true;

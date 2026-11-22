@@ -7,16 +7,32 @@ import { config } from "./config.js";
 import { prisma } from "./db/prisma.js";
 import { closeMailer } from "./utils/mailer.js";
 import { logger } from "./utils/logger.js";
+import { authService } from "./modules/auth/auth.service.js";
 
 let httpServer: Server | undefined;
 let shutdownRequested = false;
 let shutdownPromise: Promise<void> | undefined;
+let auditCleanupTimer: NodeJS.Timeout | undefined;
+
+async function purgeExpiredAuditLogs() {
+  try {
+    const count = await authService.purgeExpiredAuditLogs();
+    if (count > 0) {
+      logger.info("audit.retention_purged", { count });
+    }
+  } catch (error) {
+    logger.error("audit.retention_purge_failed", error);
+  }
+}
 
 async function bootstrap() {
   try {
     // Verificar conexión a PostgreSQL
     await prisma.$connect();
     logger.info("database.connected");
+    await purgeExpiredAuditLogs();
+    auditCleanupTimer = setInterval(() => void purgeExpiredAuditLogs(), 24 * 60 * 60 * 1000);
+    auditCleanupTimer.unref();
 
     if (shutdownRequested) {
       return;
@@ -71,6 +87,11 @@ function shutdown(signal: string): Promise<void> {
   shutdownPromise = (async () => {
     logger.info("server.shutdown_started", { signal });
     let failed = false;
+
+    if (auditCleanupTimer) {
+      clearInterval(auditCleanupTimer);
+      auditCleanupTimer = undefined;
+    }
 
     try {
       const server = httpServer;

@@ -74,7 +74,7 @@ model cuenta {
   entidad            String?  @db.VarChar(100)
   tipo               String   @db.VarChar(20)
   numero_enmascarado String?  @db.VarChar(20)
-  color              String   @default("#6366F1") @db.VarChar(20)
+  color              String   @default("#8B5CF6") @db.VarChar(20)
   saldo_inicial      Decimal  @default(0) @db.Decimal(15, 2)
   saldo_actual       Decimal  @default(0) @db.Decimal(15, 2)
   estado             Boolean  @default(true)
@@ -96,7 +96,7 @@ model categoria {
   nombre         String   @db.VarChar(80)
   tipo           String   @db.VarChar(10)
   icono          String?  @db.VarChar(50)
-  color          String   @default("#6366F1") @db.VarChar(20)
+  color          String   @default("#8B5CF6") @db.VarChar(20)
   es_default     Boolean  @default(false)
   estado         Boolean  @default(true)
   fecha_creacion DateTime @default(now()) @db.Timestamptz

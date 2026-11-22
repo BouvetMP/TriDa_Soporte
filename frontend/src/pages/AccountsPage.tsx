@@ -72,7 +72,7 @@ export const AccountsPage: React.FC = () => {
 
       {/* Tarjeta de Resumen Global */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-primary/10 via-surface to-surface border-primary/20">
+        <Card className="bg-primary/10 border-primary/20">
           <CardHeader className="pb-1">
             <CardTitle className="text-xs font-semibold text-text-muted uppercase">
               Patrimonio Total en Cuentas
@@ -136,8 +136,8 @@ export const AccountsPage: React.FC = () => {
             No tienes cuentas registradas
           </h3>
           <p className="text-xs text-text-muted max-w-sm mx-auto mt-1 mb-4">
-            Agrega tu primera cuenta bancaria o billetera para comenzar a
-            registrar tus movimientos.
+            Registra tu primera cuenta para continuar. Después podrás trabajar
+            con ella y cambiar de cuenta cuando lo necesites.
           </p>
           <Button
             variant="primary"

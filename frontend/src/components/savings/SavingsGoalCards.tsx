@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatDateOnly } from "@/utils/Formatters";
+import { dateOnlyInBogota } from "@/utils/Date";
 import type { SavingsGoal, EstadoMeta } from "@/types";
 
 interface SavingsGoalCardProps {
@@ -32,6 +33,12 @@ export function SavingsGoalCard({
       : 0);
   const isCompleted = goal.estado === "COMPLETADA" || porcentaje >= 100;
   const restante = Math.max(0, goal.monto_objetivo - goal.monto_actual);
+  const progreso = Math.max(0, Math.min(porcentaje, 100));
+  const deadline = goal.fecha_limite?.slice(0, 10);
+  const isOverdue =
+    !isCompleted &&
+    deadline !== undefined &&
+    deadline < dateOnlyInBogota(new Date());
 
   const getStatusBadge = (estado: EstadoMeta) => {
     switch (estado) {
@@ -71,6 +78,7 @@ export function SavingsGoalCard({
               onClick={() => onEdit(goal)}
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-hover)] transition-colors"
               title="Editar meta"
+              aria-label={`Editar meta ${goal.nombre}`}
             >
               <Edit2 className="w-4 h-4" />
             </button>
@@ -79,6 +87,7 @@ export function SavingsGoalCard({
               onClick={() => onDelete(goal)}
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)] transition-colors"
               title="Eliminar meta"
+              aria-label={`Eliminar meta ${goal.nombre}`}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -95,6 +104,11 @@ export function SavingsGoalCard({
             </span>
           )}
         </div>
+        {isOverdue && (
+          <p className="mb-3 rounded-lg bg-budget-warn/10 px-3 py-2 text-xs font-medium text-budget-warn">
+            La fecha objetivo ya pasó. Actualízala para continuar con un nuevo plazo.
+          </p>
+        )}
 
         {/* Montos */}
         <div className="flex justify-between items-baseline mb-2">
@@ -117,14 +131,22 @@ export function SavingsGoalCard({
         </div>
 
         {/* Barra de progreso */}
-        <div className="w-full bg-[var(--color-bg-secondary)] h-2.5 rounded-full overflow-hidden mb-2">
+        <div
+          className="w-full bg-[var(--color-bg-secondary)] h-2.5 rounded-full overflow-hidden mb-2"
+          role="progressbar"
+          aria-label={`Progreso de la meta ${goal.nombre}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progreso}
+          aria-valuetext={`${porcentaje.toFixed(1)}%`}
+        >
           <div
             className={`h-full transition-all duration-300 rounded-full ${
               isCompleted
                 ? "bg-[var(--color-success)]"
                 : "bg-[var(--color-primary)]"
             }`}
-            style={{ width: `${Math.min(porcentaje, 100)}%` }}
+            style={{ width: `${progreso}%` }}
           />
         </div>
 

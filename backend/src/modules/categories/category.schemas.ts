@@ -12,13 +12,12 @@ export const createCategorySchema = z
   .object({
     nombre: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres").max(80),
     tipo: categoryTypeEnum,
-    icono: z.string().trim().max(50).optional(),
     color: z
       .string()
       .trim()
-      .regex(/^#[0-9A-Fa-f]{6}$/, "Color hex inválido (ej. #6366F1)")
+      .regex(/^#[0-9A-Fa-f]{6}$/, "Color hex inválido (ej. #8B5CF6)")
       .optional()
-      .default("#6366F1"),
+      .default("#8B5CF6"),
   })
   .strict();
 
@@ -26,7 +25,6 @@ export const updateCategorySchema = z
   .object({
     nombre: z.string().trim().min(2).max(80).optional(),
     tipo: categoryTypeEnum.optional(),
-    icono: z.string().trim().max(50).optional(),
     color: z
       .string()
       .trim()

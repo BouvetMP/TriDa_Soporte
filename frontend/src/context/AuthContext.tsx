@@ -17,7 +17,7 @@ export interface AuthContextType {
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (credentials: RegisterCredentials) => Promise<RegisterResponseData>;
-  logout: () => Promise<void>;
+  logout: (skipServerRevocation?: boolean) => Promise<void>;
   updateProfile: (payload: UpdateProfilePayload) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -122,11 +122,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const logout = useCallback(async () => {
-    try {
-      await AuthApi.logout();
-    } catch (error) {
-      console.error("No se pudo revocar la sesión en el servidor:", error);
+  const logout = useCallback(async (skipServerRevocation = false) => {
+    if (!skipServerRevocation) {
+      try {
+        await AuthApi.logout();
+      } catch (error) {
+        console.error("No se pudo revocar la sesión en el servidor:", error);
+      }
     }
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);

@@ -182,9 +182,9 @@ Los siguientes requisitos de versiones anteriores del documento no están implem
 
 ## 11. Errores actuales
 
-### E1. Eliminar un dispositivo no revoca los JWT existentes — prioridad alta
+### E1. Revocación de sesiones al eliminar un dispositivo — resuelto
 
-El servicio elimina el registro del dispositivo y añade un evento de auditoría, pero no incrementa `token_version` ni invalida sesiones. Los JWT no están vinculados a un identificador de dispositivo, así que un token previamente emitido puede seguir pasando autenticación hasta vencer o revocarse por otra operación. La acción de borrar un dispositivo no cumple la expectativa de revocar sus sesiones.
+La eliminación incrementa `token_version` dentro de la misma transacción que elimina el dispositivo y escribe el evento de auditoría. Así se invalidan todos los JWT vigentes del usuario, ya que hoy los tokens no están vinculados a un identificador de dispositivo. El cliente cierra también la sesión actual y solicita volver a iniciar sesión.
 
 ### E2. El filtro por cuenta del feed de alertas del Dashboard omite transferencias recibidas — prioridad media
 

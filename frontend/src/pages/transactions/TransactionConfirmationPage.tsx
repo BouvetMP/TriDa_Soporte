@@ -8,10 +8,16 @@ import type {
 } from "@/types/Transaction";
 import { formatCurrency, formatDate } from "@/utils/Formatters";
 import { Button } from "@/components/ui/Button";
+import { CheckCircle2, CircleAlert, LoaderCircle, ShieldCheck } from "lucide-react";
 
 export const TransactionConfirmationPage: React.FC = () => {
   const [token] = useState(
-    () => new URLSearchParams(window.location.search).get("token") ?? "",
+    () => {
+      const hashQuery = window.location.hash.startsWith("#/")
+        ? window.location.hash.slice(window.location.hash.indexOf("?"))
+        : "";
+      return new URLSearchParams(hashQuery).get("token") ?? "";
+    },
   );
   const [confirmation, setConfirmation] =
     useState<EmailTransactionConfirmation | null>(null);
@@ -59,13 +65,13 @@ export const TransactionConfirmationPage: React.FC = () => {
         decision,
       );
       setResult(response);
-      setConfirmation((current) =>
-        current ? { ...current, estado: response.estado, puede_responder: false } : current,
-      );
       setMessage(
         decision === "FUI_YO"
           ? "El gasto fue confirmado y el saldo de la cuenta fue actualizado."
           : "El gasto fue rechazado y se registró una alerta crítica de seguridad.",
+      );
+      setConfirmation((current) =>
+        current ? { ...current, estado: response.estado, puede_responder: false } : current,
       );
     } catch (error) {
       const errorMessage =
@@ -92,39 +98,69 @@ export const TransactionConfirmationPage: React.FC = () => {
       title="Confirma el movimiento"
       subtitle="Revisar el enlace no confirma ni rechaza el gasto."
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
+        <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+            {isLoading ? (
+              <LoaderCircle className="h-5 w-5 animate-spin" />
+            ) : result?.decision === "FUI_YO" ? (
+              <CheckCircle2 className="h-5 w-5 text-income" />
+            ) : result?.decision === "NO_FUI_YO" || !token ? (
+              <CircleAlert className="h-5 w-5 text-risk-critical" />
+            ) : (
+              <ShieldCheck className="h-5 w-5" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-primary">
+              {isLoading
+                ? "Verificando el movimiento"
+                : result?.decision === "FUI_YO"
+                  ? "Movimiento confirmado"
+                  : result?.decision === "NO_FUI_YO"
+                    ? "Movimiento rechazado"
+                    : confirmation
+                      ? "Revisa los detalles antes de responder"
+                      : "No se pudo verificar el enlace"}
+            </p>
+            <p
+              role={result?.decision === "NO_FUI_YO" || !token ? "alert" : "status"}
+              className="mt-1 text-xs leading-5 text-text-secondary"
+            >
+              {message}
+            </p>
+          </div>
+        </div>
+
         {confirmation && (
-          <dl className="space-y-2 rounded-lg border border-border bg-surface p-4 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-secondary">Monto</dt>
-              <dd className="font-semibold">{formatCurrency(confirmation.monto)}</dd>
+          <dl className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-surface p-4 text-sm">
+            <div className="col-span-2 rounded-xl bg-surface-hover p-3">
+              <dt className="text-xs font-medium text-text-muted">Monto del movimiento</dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-text-primary">
+                {formatCurrency(confirmation.monto)}
+              </dd>
             </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-secondary">Comercio</dt>
-              <dd className="text-right">
+            <div className="min-w-0 rounded-xl border border-border p-3">
+              <dt className="text-xs text-text-muted">Comercio</dt>
+              <dd className="mt-1 truncate font-medium text-text-primary">
                 {confirmation.comercio ||
                   confirmation.descripcion ||
                   "Gasto automático"}
               </dd>
             </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-secondary">Cuenta</dt>
-              <dd>{confirmation.nombre_cuenta ?? "Cuenta vinculada"}</dd>
+            <div className="min-w-0 rounded-xl border border-border p-3">
+              <dt className="text-xs text-text-muted">Cuenta</dt>
+              <dd className="mt-1 truncate font-medium text-text-primary">
+                {confirmation.nombre_cuenta ?? "Cuenta vinculada"}
+              </dd>
             </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-secondary">Fecha</dt>
-              <dd>{formatDate(confirmation.fecha_transaccion)}</dd>
+            <div className="col-span-2 flex items-center justify-between gap-4 border-t border-border pt-3">
+              <dt className="text-xs text-text-muted">Fecha</dt>
+              <dd className="text-right text-xs font-medium text-text-secondary">
+                {formatDate(confirmation.fecha_transaccion)}
+              </dd>
             </div>
           </dl>
-        )}
-
-        {message && (
-          <p
-            role={result?.decision === "NO_FUI_YO" ? "alert" : "status"}
-            className="text-center text-sm text-text-secondary"
-          >
-            {message}
-          </p>
         )}
 
         {confirmation?.puede_responder && !result && (
@@ -133,6 +169,7 @@ export const TransactionConfirmationPage: React.FC = () => {
               type="button"
               onClick={() => void respond("FUI_YO")}
               disabled={isLoading}
+              className="min-h-11"
             >
               Sí, fui yo
             </Button>
@@ -141,16 +178,17 @@ export const TransactionConfirmationPage: React.FC = () => {
               variant="outline"
               onClick={() => void respond("NO_FUI_YO")}
               disabled={isLoading}
+              className="min-h-11"
             >
               No fui yo
             </Button>
           </div>
         )}
 
-        {!confirmation?.puede_responder && (
+        {!isLoading && !confirmation?.puede_responder && (
           <Link
             to="/login"
-            className="block text-center text-sm font-semibold text-primary"
+            className="block rounded-xl border border-border px-4 py-3 text-center text-sm font-semibold text-primary transition-colors hover:bg-surface-hover"
           >
             Ir al inicio de sesión
           </Link>

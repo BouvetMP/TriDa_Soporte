@@ -65,7 +65,6 @@ export const authController = {
       const result = await authService.verifyResetToken(token);
       if (!result.valid) {
         throw new AppError(result.error || "Token inválido", 401, "INVALID_RESET_TOKEN");
-        return;
       }
       sendSuccess(res, result);
     } catch (error) {

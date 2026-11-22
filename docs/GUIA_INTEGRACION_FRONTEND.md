@@ -87,11 +87,11 @@ Hay un límite general de 150 solicitudes por IP/minuto y, para rutas de autenti
 | `POST /auth/forgot-password` | Solicitar recuperación | `email` |
 | `POST /auth/verify-reset-token` | Verificar token de recuperación | `{ "token": "..." }` |
 | `POST /auth/reset-password` | Cambiar clave con token de recuperación | `token`, `password_nueva` |
-| `GET /transactions/email-confirmation?token=...` | Consultar un gasto desde el enlace del correo; no lo resuelve | Token de un solo uso, válido 15 minutos |
+| `GET /transactions/email-confirmation?token=...` | Consultar un gasto desde el enlace fragmentado del correo; no lo resuelve ni consume la opción de responder | Enlace válido 15 minutos |
 | `POST /transactions/email-confirmation` | Confirmar o rechazar el gasto | `token`, `decision` (`FUI_YO` o `NO_FUI_YO`) |
 | `POST /integrations/transactions/webhook` | Recibir un evento del simulador o una fuente externa | Cabecera `X-TriDa-Webhook-Secret` y evento documentado en OpenAPI |
 
-El registro valida una contraseña de 10 a 72 caracteres, con mayúscula, minúscula y número. `SMTP_ENABLED` controla el correo en el backend y está desactivado por defecto temporalmente. Cuando está en `false`, el registro no envía correo, marca las cuentas nuevas como verificadas y permite iniciar sesión también a cuentas previamente no verificadas; la respuesta incluye `emailVerificationRequired: false`. La recuperación por correo responde `503` con un mensaje de indisponibilidad. Cuando se establece `SMTP_ENABLED=true`, deben configurarse `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `EMAIL_USER`, `EMAIL_PASS` y `EMAIL_FROM`; el registro envía un enlace y exige verificar el correo antes de iniciar sesión (`emailVerificationRequired: true`). `FRONTEND_URL` debe apuntar al frontend para construir los enlaces. Las respuestas de registro no revelan si el correo ya tenía una cuenta.
+El registro valida una contraseña de 12 a 72 caracteres, con mayúscula, minúscula y carácter especial. `SMTP_ENABLED` controla el correo en el backend y está desactivado por defecto temporalmente. Cuando está en `false`, el registro no envía correo, marca las cuentas nuevas como verificadas y permite iniciar sesión también a cuentas previamente no verificadas; la respuesta incluye `emailVerificationRequired: false`. La recuperación por correo responde `503` con un mensaje de indisponibilidad. Cuando se establece `SMTP_ENABLED=true`, deben configurarse `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `EMAIL_USER`, `EMAIL_PASS` y `EMAIL_FROM`; el registro envía un enlace y exige verificar el correo antes de iniciar sesión (`emailVerificationRequired: true`). `FRONTEND_URL` debe apuntar al frontend para construir los enlaces. Las respuestas de registro no revelan si el correo ya tenía una cuenta.
 
 El login responde en el envoltorio usual de autenticación; los datos están en `data` y contienen `token` y `usuario`. Las credenciales de una cuenta sin verificar reciben el mismo error genérico que unas credenciales inválidas.
 
@@ -115,7 +115,7 @@ Después del login, enviar el token obtenido en `data.token` como:
 Authorization: Bearer <JWT>
 ```
 
-Las rutas de cuentas, categorías, movimientos, dispositivos, alertas, dashboard, presupuestos, ahorros, perfil, insights, reportes y mapa requieren JWT. Las dos rutas `email-confirmation` son públicas y se autorizan con el token de un solo uso; el webhook se autoriza exclusivamente con `X-TriDa-Webhook-Secret`. No enviar el JWT de sesión en la URL.
+Las rutas de cuentas, categorías, movimientos, dispositivos, alertas, dashboard, presupuestos, ahorros, perfil, insights, reportes y mapa requieren JWT. Las dos rutas `email-confirmation` son públicas y se autorizan con el token de confirmación firmado; el enlace permite una sola decisión de negocio y las respuestas repetidas se rechazan con `409`. El webhook se autoriza exclusivamente con `X-TriDa-Webhook-Secret`. No enviar el JWT de sesión en la URL.
 
 Centralizar la creación de peticiones HTTP en un cliente API que adjunte el bearer token, serialice JSON y gestione errores. Si una petición devuelve `401`, limpiar el estado de sesión y llevar al usuario al login. El backend usa bearer tokens; no asumir que ya existe una sesión con cookie HttpOnly.
 
@@ -191,7 +191,7 @@ Opcionales: `id_categoria`, `id_dispositivo`, `ciudad`, `pais`, `latitud`, `long
 
 El webhook recibe `fuente`, `id_evento`, `id_cuenta`, `monto` y `tipo_movimiento`; las transferencias también requieren `id_cuenta_destino`. Ambos IDs de cuenta deben pertenecer al mismo usuario y estar activos. Los eventos se deduplican por cuenta, fuente e ID externo. No se asigna categoría durante la ingesta: debe elegirse después con `PATCH /transactions/:id/category`. Una transferencia debita la cuenta de origen y acredita la cuenta destino en una operación atómica, y no se cuenta como ingreso o gasto.
 
-Los gastos recibidos por webhook se guardan como `PENDIENTE` y no afectan el saldo hasta que el usuario los confirme. TriDa envía un enlace de un solo uso válido por 15 minutos; un `GET` solo muestra el movimiento y no lo confirma, para evitar que los escáneres de correo consuman el enlace. `NO_FUI_YO` rechaza el movimiento y registra una alerta crítica. Configura `TRANSACTION_WEBHOOK_SECRET` con al menos 32 caracteres y el SMTP requerido para que el webhook acepte gastos.
+Los gastos recibidos por webhook se guardan como `PENDIENTE` y no afectan el saldo hasta que el usuario los confirme. TriDa envía un enlace válido por 15 minutos. Un `GET` solo muestra el movimiento y no consume la opción de responder, para evitar que los escáneres de correo la gasten; la decisión final solo puede aplicarse una vez. `NO_FUI_YO` rechaza el movimiento y registra una alerta crítica. Configura `TRANSACTION_WEBHOOK_SECRET` con al menos 32 caracteres y el SMTP requerido para que el webhook acepte gastos.
 
 Filtros de `GET /transactions`: `limit`, `offset`, `estado`, `nivel_riesgo`, `tipo_movimiento`, `id_cuenta`, `id_categoria`, `search`, `min_monto`, `max_monto`, `fecha_inicio`, `fecha_fin`, `sort_by`, `sort_order`. Ordenamientos admitidos en el contrato: `fecha_transaccion`, `monto`, `tipo_movimiento`, `nivel_riesgo`; dirección `asc` o `desc`.
 

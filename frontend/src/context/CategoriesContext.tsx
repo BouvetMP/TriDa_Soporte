@@ -55,6 +55,7 @@ const CategoriesState = ({
   const [hasLoaded, setHasLoaded] = useState(false);
   const requestId = useRef(0);
   const pendingRequest = useRef<Promise<Category[] | null> | null>(null);
+  const hasAttemptedLoad = useRef(false);
   const { showToast } = useToast();
 
   useEffect(
@@ -75,8 +76,10 @@ const CategoriesState = ({
       } else {
         if (hasLoaded) return categories;
         if (pendingRequest.current) return pendingRequest.current;
+        if (hasAttemptedLoad.current) return null;
       }
 
+      hasAttemptedLoad.current = true;
       const currentRequestId = ++requestId.current;
       setIsLoading(true);
 

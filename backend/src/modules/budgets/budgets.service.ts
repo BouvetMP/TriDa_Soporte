@@ -68,10 +68,10 @@ export const budgetsService = {
             WHERE t.id_categoria = p.id_categoria
               AND t.id_usuario = p.id_usuario
               AND t.tipo_movimiento = 'GASTO'
-              AND t.fecha_transaccion >= make_date(p.anio, p.mes, 1)
-              AND t.fecha_transaccion < make_date(p.anio, p.mes, 1) + INTERVAL '1 month'
+              AND t.fecha_transaccion >= (make_date(p.anio, p.mes, 1)::timestamp AT TIME ZONE 'America/Bogota')
+              AND t.fecha_transaccion < ((make_date(p.anio, p.mes, 1) + INTERVAL '1 month') AT TIME ZONE 'America/Bogota')
               AND t.estado IN ('CONFIRMADA', 'APROBADA')
-              AND ($2::int IS NULL OR t.id_cuenta = $2)
+              AND ($2::int IS NULL OR t.id_cuenta = $2 OR t.id_cuenta_destino = $2)
           ), 0)::numeric AS gastado
         FROM trida.presupuestos p
         LEFT JOIN trida.categorias c ON c.id_categoria = p.id_categoria

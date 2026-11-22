@@ -26,6 +26,12 @@ export function NewBudgetModal({
   const [montoLimite, setMontoLimite] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
 
+  const handleClose = () => {
+    setIdCategoria("");
+    setMontoLimite("");
+    onClose();
+  };
+
   const expenseCategories = categories.filter((c) => c.tipo === "GASTO");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,9 +48,7 @@ export function NewBudgetModal({
     setSubmitting(false);
 
     if (success) {
-      setIdCategoria("");
-      setMontoLimite("");
-      onClose();
+      handleClose();
     }
   };
 
@@ -59,7 +63,7 @@ export function NewBudgetModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title="Nuevo Presupuesto"
       isSubmitting={submitting}
     >
@@ -91,7 +95,7 @@ export function NewBudgetModal({
           <Button
             type="button"
             variant="outline"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitting}
           >
             Cancelar

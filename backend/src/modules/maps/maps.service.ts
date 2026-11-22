@@ -90,7 +90,7 @@ export const mapService = {
       WHERE t.id_usuario = $1
         AND u.latitud IS NOT NULL
         AND u.longitud IS NOT NULL
-        AND ($2::int IS NULL OR t.id_cuenta = $2)
+        AND ($2::int IS NULL OR t.id_cuenta = $2 OR t.id_cuenta_destino = $2)
       `,
       userId,
       accountId ?? null,
@@ -120,7 +120,9 @@ export const mapService = {
 
     if (filters.id_cuenta !== undefined) {
       params.push(filters.id_cuenta);
-      conditions.push(`t.id_cuenta = $${params.length}`);
+      conditions.push(
+        `(t.id_cuenta = $${params.length} OR t.id_cuenta_destino = $${params.length})`,
+      );
     }
 
     if (filters.nivel_riesgo && filters.nivel_riesgo !== "ALL") {

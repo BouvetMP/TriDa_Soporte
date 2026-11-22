@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS trida.cuentas (
     entidad            VARCHAR(100),
     tipo               VARCHAR(20) NOT NULL,
     numero_enmascarado VARCHAR(20),
-    color              VARCHAR(20) NOT NULL DEFAULT '#6366F1',
+    color              VARCHAR(20) NOT NULL DEFAULT '#8B5CF6',
     saldo_inicial      NUMERIC(15, 2) NOT NULL DEFAULT 0,
     saldo_actual       NUMERIC(15, 2) NOT NULL DEFAULT 0,
     estado             BOOLEAN NOT NULL DEFAULT TRUE,
@@ -85,12 +85,41 @@ CREATE TABLE IF NOT EXISTS trida.categorias (
     nombre         VARCHAR(80) NOT NULL,
     tipo           VARCHAR(10) NOT NULL,
     icono          VARCHAR(50),
-    color          VARCHAR(20) NOT NULL DEFAULT '#6366F1',
+    color          VARCHAR(20) NOT NULL DEFAULT '#8B5CF6',
     es_default     BOOLEAN NOT NULL DEFAULT FALSE,
     estado         BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_categoria_tipo CHECK (tipo IN ('INGRESO', 'GASTO', 'AHORRO')),
     CONSTRAINT uq_categoria_user  UNIQUE (id_usuario, nombre)
+);
+
+INSERT INTO trida.categorias (
+    id_usuario, nombre, tipo, icono, color, es_default, estado
+)
+SELECT NULL, defaults.nombre, defaults.tipo, NULL, defaults.color, TRUE, TRUE
+FROM (
+    VALUES
+        ('Alimentación', 'GASTO', '#8B5CF6'),
+        ('Vivienda', 'GASTO', '#6D5BD0'),
+        ('Transporte', 'GASTO', '#7C6FC4'),
+        ('Salud', 'GASTO', '#9B8AFB'),
+        ('Educación', 'GASTO', '#5B4BA8'),
+        ('Servicios', 'GASTO', '#A78BFA'),
+        ('Compras', 'GASTO', '#8173B8'),
+        ('Entretenimiento', 'GASTO', '#B39DDB'),
+        ('Otros gastos', 'GASTO', '#6B7280'),
+        ('Salario', 'INGRESO', '#6D5BD0'),
+        ('Ingresos adicionales', 'INGRESO', '#8B5CF6'),
+        ('Otros ingresos', 'INGRESO', '#9B8AFB'),
+        ('Ahorro', 'AHORRO', '#7C6FC4')
+) AS defaults(nombre, tipo, color)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM trida.categorias AS category
+    WHERE category.id_usuario IS NULL
+      AND category.es_default = TRUE
+      AND category.tipo = defaults.tipo
+      AND LOWER(category.nombre) = LOWER(defaults.nombre)
 );
 
 -- ----------------------------------------------------------------------------
@@ -800,15 +829,17 @@ BEGIN
         END IF;
     END IF;
 
-    v_inicio_mes := DATE_TRUNC('month', NEW.fecha_transaccion);
+    v_inicio_mes :=
+        DATE_TRUNC('month', NEW.fecha_transaccion AT TIME ZONE 'America/Bogota')
+        AT TIME ZONE 'America/Bogota';
 
     SELECT p.limite_mensual
     INTO v_limite
     FROM trida.presupuestos AS p
     WHERE p.id_usuario = NEW.id_usuario
       AND p.id_categoria = NEW.id_categoria
-      AND p.mes = EXTRACT(MONTH FROM NEW.fecha_transaccion)::SMALLINT
-      AND p.anio = EXTRACT(YEAR FROM NEW.fecha_transaccion)::SMALLINT
+      AND p.mes = EXTRACT(MONTH FROM NEW.fecha_transaccion AT TIME ZONE 'America/Bogota')::SMALLINT
+      AND p.anio = EXTRACT(YEAR FROM NEW.fecha_transaccion AT TIME ZONE 'America/Bogota')::SMALLINT
     FOR UPDATE;
 
     IF NOT FOUND THEN
@@ -1171,7 +1202,10 @@ RETURNS TABLE (
 )
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
     WITH periodo AS (
-        SELECT COALESCE(p_mes, DATE_TRUNC('month', NOW())::DATE) AS inicio
+        SELECT DATE_TRUNC(
+            'month',
+            COALESCE(p_mes::TIMESTAMP, NOW() AT TIME ZONE 'America/Bogota')
+        )::DATE AS inicio
     )
     SELECT
         COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'INGRESO'), 0),
@@ -1188,8 +1222,8 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     FROM trida.transacciones t, periodo p
     WHERE t.id_usuario = p_id_usuario
       AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
-      AND t.fecha_transaccion >= p.inicio
-      AND t.fecha_transaccion <  p.inicio + INTERVAL '1 month';
+      AND t.fecha_transaccion >= p.inicio::TIMESTAMP AT TIME ZONE 'America/Bogota'
+      AND t.fecha_transaccion < (p.inicio + INTERVAL '1 month') AT TIME ZONE 'America/Bogota';
 $$;
 
 CREATE OR REPLACE FUNCTION trida.fn_gastos_por_categoria(
@@ -1209,7 +1243,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     LEFT JOIN trida.categorias c ON c.id_categoria = t.id_categoria
     WHERE t.id_usuario = p_id_usuario
       AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
       AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
       AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
     GROUP BY c.id_categoria, c.nombre, c.color, c.icono
@@ -1227,16 +1261,18 @@ RETURNS TABLE (
 )
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
     SELECT
-        EXTRACT(YEAR FROM t.fecha_transaccion)::SMALLINT,
-        EXTRACT(MONTH FROM t.fecha_transaccion)::SMALLINT,
+        EXTRACT(YEAR FROM t.fecha_transaccion AT TIME ZONE 'America/Bogota')::SMALLINT,
+        EXTRACT(MONTH FROM t.fecha_transaccion AT TIME ZONE 'America/Bogota')::SMALLINT,
         COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'INGRESO'), 0),
         COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'GASTO'), 0),
         COALESCE(SUM(t.monto) FILTER (WHERE t.tipo_movimiento = 'AHORRO'), 0)
     FROM trida.transacciones t
     WHERE t.id_usuario = p_id_usuario
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
-      AND t.fecha_transaccion >= DATE_TRUNC('month', NOW())
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
+      AND t.fecha_transaccion >= (
+          DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Bogota')
           - (COALESCE(p_meses, 6) || ' months')::INTERVAL
+      ) AT TIME ZONE 'America/Bogota'
     GROUP BY 1, 2 ORDER BY 1, 2;
 $$;
 
@@ -1254,7 +1290,7 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     WHERE t.id_usuario = p_id_usuario
       AND t.tipo_movimiento IN ('GASTO', 'AHORRO')
       AND t.comercio IS NOT NULL
-      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta)
+      AND (p_id_cuenta IS NULL OR t.id_cuenta = p_id_cuenta OR t.id_cuenta_destino = p_id_cuenta)
       AND (p_fecha_desde IS NULL OR t.fecha_transaccion >= p_fecha_desde)
       AND (p_fecha_hasta IS NULL OR t.fecha_transaccion <= p_fecha_hasta)
     GROUP BY t.comercio 
@@ -1438,5 +1474,15 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     ORDER BY fecha_inicio DESC
     LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 12), 60));
 $$;
+
+-- Backfill de seguridad: usuarios que ya tenían dispositivos no deben confiar
+-- automáticamente el siguiente dispositivo registrado como el primero.
+UPDATE trida.usuarios u
+SET dispositivo_historial_registrado = TRUE
+WHERE EXISTS (
+   SELECT 1
+   FROM trida.dispositivos d
+   WHERE d.id_usuario = u.id_usuario
+);
 
 COMMIT;

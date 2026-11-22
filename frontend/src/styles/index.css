@@ -3,36 +3,35 @@
 @tailwind utilities;
 
 :root {
-  /* TEMA OSCURO (Por Defecto) */
-  --color-bg: #0b0f19;
-  --color-bg-rgb: 11 15 25;
-  --color-surface: #111827;
-  --color-surface-rgb: 17 24 39;
-  --color-surface-hover: #1f2937;
-  --color-surface-hover-rgb: 31 41 55;
-  --color-border: #1f2937;
-  --color-border-rgb: 31 41 55;
+  --color-bg: #111117;
+  --color-bg-rgb: 17 17 23;
+  --color-surface: #1a1922;
+  --color-surface-rgb: 26 25 34;
+  --color-surface-hover: #252330;
+  --color-surface-hover-rgb: 37 35 48;
+  --color-border: #343141;
+  --color-border-rgb: 52 49 65;
 
-  --color-text-primary: #f9fafb;
-  --color-text-primary-rgb: 249 250 251;
-  --color-text-secondary: #9ca3af;
-  --color-text-secondary-rgb: 156 163 175;
-  --color-text-muted: #6b7280;
-  --color-text-muted-rgb: 107 114 128;
+  --color-text-primary: #f7f5fb;
+  --color-text-primary-rgb: 247 245 251;
+  --color-text-secondary: #c0bacd;
+  --color-text-secondary-rgb: 192 186 205;
+  --color-text-muted: #8d879b;
+  --color-text-muted-rgb: 141 135 155;
 
-  --color-primary: #6366f1;
-  --color-primary-rgb: 99 102 241;
-  --color-primary-hover: #4f46e5;
-  --color-primary-hover-rgb: 79 70 229;
-  --color-primary-contrast: #ffffff;
-  --color-primary-contrast-rgb: 255 255 255;
+  --color-primary: #a78bfa;
+  --color-primary-rgb: 167 139 250;
+  --color-primary-hover: #8b5cf6;
+  --color-primary-hover-rgb: 139 92 246;
+  --color-primary-contrast: #211a31;
+  --color-primary-contrast-rgb: 33 26 49;
 
   --color-income: #10b981;
   --color-income-rgb: 16 185 129;
   --color-expense: #ef4444;
   --color-expense-rgb: 239 68 68;
-  --color-saving: #3b82f6;
-  --color-saving-rgb: 59 130 246;
+  --color-saving: #9b8afb;
+  --color-saving-rgb: 155 138 251;
 
   /* Colores de Riesgo / Alertas */
   --risk-low: #10b981;
@@ -69,7 +68,7 @@
   --color-warning-light: rgb(var(--color-budget-warn-rgb) / 0.12);
 
   /* Paleta de Categorías */
-  --cat-1: #6366f1;
+  --cat-1: #8b5cf6;
   --cat-2: #ec4899;
   --cat-3: #8b5cf6;
   --cat-4: #14b8a6;
@@ -80,27 +79,26 @@
 }
 
 [data-theme="light"] {
-  /* TEMA CLARO */
-  --color-bg: #f8fafc;
-  --color-bg-rgb: 248 250 252;
+  --color-bg: #f8f7fc;
+  --color-bg-rgb: 248 247 252;
   --color-surface: #ffffff;
   --color-surface-rgb: 255 255 255;
-  --color-surface-hover: #f1f5f9;
-  --color-surface-hover-rgb: 241 245 249;
-  --color-border: #e2e8f0;
-  --color-border-rgb: 226 232 240;
+  --color-surface-hover: #f0eef7;
+  --color-surface-hover-rgb: 240 238 247;
+  --color-border: #e3dfed;
+  --color-border-rgb: 227 223 237;
 
-  --color-text-primary: #0f172a;
-  --color-text-primary-rgb: 15 23 42;
-  --color-text-secondary: #475569;
-  --color-text-secondary-rgb: 71 85 105;
-  --color-text-muted: #94a3b8;
-  --color-text-muted-rgb: 148 163 184;
+  --color-text-primary: #251e35;
+  --color-text-primary-rgb: 37 30 53;
+  --color-text-secondary: #625a73;
+  --color-text-secondary-rgb: 98 90 115;
+  --color-text-muted: #8d869b;
+  --color-text-muted-rgb: 141 134 155;
 
-  --color-primary: #4f46e5;
-  --color-primary-rgb: 79 70 229;
-  --color-primary-hover: #4338ca;
-  --color-primary-hover-rgb: 67 56 202;
+  --color-primary: #6d4acb;
+  --color-primary-rgb: 109 74 203;
+  --color-primary-hover: #5739b2;
+  --color-primary-hover-rgb: 87 57 178;
   --color-primary-contrast: #ffffff;
   --color-primary-contrast-rgb: 255 255 255;
 
@@ -108,8 +106,8 @@
   --color-income-rgb: 5 150 105;
   --color-expense: #dc2626;
   --color-expense-rgb: 220 38 38;
-  --color-saving: #2563eb;
-  --color-saving-rgb: 37 99 235;
+  --color-saving: #6d4acb;
+  --color-saving-rgb: 109 74 203;
 
   /* Riesgo en claro (más contraste) */
   --risk-low: #059669;

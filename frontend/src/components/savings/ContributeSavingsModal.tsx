@@ -3,6 +3,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { formatCurrency } from "@/utils/Formatters";
+import { useToast } from "@/components/ui/Toast";
 import type { SavingsGoal, CreateContributionPayload } from "@/types";
 
 interface ContributeSavingsModalProps {
@@ -18,6 +19,7 @@ export function ContributeSavingsModal({
   onClose,
   onSubmit,
 }: ContributeSavingsModalProps) {
+  const { showToast } = useToast();
   const [monto, setMonto] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
 
@@ -27,7 +29,14 @@ export function ContributeSavingsModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!monto || Number(monto) < 1000) return;
+    if (!monto || Number(monto) < 1000) {
+      showToast({
+        type: "error",
+        title: "Monto insuficiente",
+        message: "El aporte mínimo permitido es de 1.000.",
+      });
+      return;
+    }
 
     setSubmitting(true);
     const success = await onSubmit({

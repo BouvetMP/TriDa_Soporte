@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { MapPin } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useMapTransactions } from "@/hooks/useMapTransactions";
@@ -13,6 +13,7 @@ const InteractiveExpenseMap = lazy(() =>
 );
 
 export function MapPage() {
+  const [searchTerm, setSearchTerm] = useState("");
   const {
     transactions,
     total,
@@ -25,6 +26,38 @@ export function MapPage() {
     updateFilters,
     resetFilters,
   } = useMapTransactions();
+  const visibleTransactions = useMemo(() => {
+    const query = searchTerm.trim().toLocaleLowerCase();
+    if (!query) return transactions;
+    return transactions.filter((transaction) =>
+      [
+        transaction.comercio,
+        transaction.ciudad,
+        transaction.pais,
+        transaction.nombre_categoria,
+        transaction.nombre_cuenta,
+      ]
+        .filter(Boolean)
+        .some((value) => value?.toLocaleLowerCase().includes(query) ?? false),
+    );
+  }, [searchTerm, transactions]);
+
+  useEffect(() => {
+    setSelectedTransaction(
+      (current) =>
+        visibleTransactions.find(
+          (transaction) =>
+            transaction.id_transaccion === current?.id_transaccion,
+        ) ??
+        visibleTransactions[0] ??
+        null,
+    );
+  }, [setSelectedTransaction, visibleTransactions]);
+
+  const handleResetFilters = () => {
+    resetFilters();
+    setSearchTerm("");
+  };
 
   return (
     <div className="space-y-6">
@@ -52,8 +85,10 @@ export function MapPage() {
       {/* Barra de Filtros */}
       <MapFiltersBar
         filters={filters}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
         onFilterChange={updateFilters}
-        onReset={resetFilters}
+        onReset={handleResetFilters}
       />
 
       {/* Contenido Principal: Mapa + Lista */}
@@ -61,12 +96,23 @@ export function MapPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <Spinner size="lg" />
         </div>
+      ) : visibleTransactions.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-12 text-center">
+          <MapPin className="mx-auto mb-3 h-8 w-8 text-text-muted" />
+          <h2 className="text-base font-semibold text-text-primary">
+            No hay ubicaciones que coincidan
+          </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Prueba con otro término o modifica los filtros del mapa.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {truncated && (
+          {(truncated || searchTerm.trim()) && (
             <p className="lg:col-span-12 text-xs text-[var(--color-text-muted)]">
-              Se muestran {transactions.length} de {total} ubicaciones. Ajusta
-              los filtros para ver un conjunto más específico.
+              {searchTerm.trim()
+                ? `${visibleTransactions.length} coincidencias en las ubicaciones cargadas.`
+                : `Se muestran ${transactions.length} de ${total} ubicaciones. Ajusta los filtros para ver un conjunto más específico.`}
             </p>
           )}
           <div className="lg:col-span-8">
@@ -78,7 +124,7 @@ export function MapPage() {
               }
             >
               <InteractiveExpenseMap
-                transactions={transactions}
+                transactions={visibleTransactions}
                 selectedTransaction={selectedTransaction}
                 onSelectTransaction={setSelectedTransaction}
               />
@@ -87,7 +133,7 @@ export function MapPage() {
 
           <div className="lg:col-span-4">
             <GeoTransactionsList
-              transactions={transactions}
+              transactions={visibleTransactions}
               selectedTransaction={selectedTransaction}
               onSelectTransaction={setSelectedTransaction}
             />
